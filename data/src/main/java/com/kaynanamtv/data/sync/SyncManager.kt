@@ -896,28 +896,17 @@ class SyncManager @Inject constructor(
         trackInitialLiveOnboarding: Boolean = false,
         syncReason: XtreamLiveSyncReason = XtreamLiveSyncReason.FOREGROUND
     ): SyncOutcome {
-        // ── TTFC Benchmark ────────────────────────────────────────────────────────────
-        val BENCH = "TTFC_BENCHMARK"
-        val t0 = System.currentTimeMillis()
-        fun bench(phase: String, startMs: Long): Long {
-            val end = System.currentTimeMillis()
-            Log.i(BENCH, "[$phase] START=${startMs - t0}ms END=${end - t0}ms DUR=${end - startMs}ms")
-            return end
-        }
-        // ──────────────────────────────────────────────────────────────────────────────
         val warnings = mutableListOf<String>()
         UrlSecurityPolicy.validateXtreamServerUrl(provider.serverUrl)?.let { message ->
             throw IllegalStateException(message)
         }
 
         progress(provider.id, onProgress, "Sunucuya bağlanılıyor...")
-        val tPreSetup = System.currentTimeMillis()
         val useTextClassification = preferencesRepository.useXtreamTextClassification.first()
         val enableBase64TextCompatibility = preferencesRepository.xtreamBase64TextCompatibility.first()
         val hiddenLiveCategoryIds = preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE).first()
         val api = createXtreamSyncProvider(provider, useTextClassification, enableBase64TextCompatibility)
         val runtimeProfile = CatalogSyncRuntimeProfile.from(applicationContext)
-        bench("PRE_SETUP", tPreSetup)
         val now = System.currentTimeMillis()
         var metadata = syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)
 
@@ -981,7 +970,6 @@ class SyncManager @Inject constructor(
                 )
             }
             progress(provider.id, onProgress, "Canlı TV kanalları indiriliyor...")
-            val tLiveNet = System.currentTimeMillis()
             val liveSyncResult = syncXtreamLiveCatalog(
                 provider = provider,
                 api = api,
@@ -994,7 +982,6 @@ class SyncManager @Inject constructor(
             )
             if (trackInitialLiveOnboarding) {
                 val stagedAcceptedCount = liveSyncResult.stagedAcceptedCount
-                bench("LIVE_NETWORK_FETCH", tLiveNet)
                 recordXtreamLiveOnboardingState(
                     provider = provider,
                     phase = if (liveSyncResult.stagedSessionId != null) {
@@ -1040,14 +1027,12 @@ class SyncManager @Inject constructor(
                             syncProfileStrategy = liveSyncResult.profileStrategyName(runtimeProfile, trackInitialLiveOnboarding)
                         )
                     }
-                    val tDbCommit = System.currentTimeMillis()
                     finalizeXtreamLiveCatalog(
                         providerId = provider.id,
                         liveSyncResult = liveSyncResult,
                         hiddenLiveCategoryIds = hiddenLiveCategoryIds,
                         onProgress = onProgress
                     ).also { commitResult ->
-                        bench("DB_COMMIT_LIVE", tDbCommit)
                         warnings += commitResult.warnings
                     }.acceptedCount
                 }
@@ -1066,7 +1051,6 @@ class SyncManager @Inject constructor(
                             syncProfileStrategy = liveSyncResult.profileStrategyName(runtimeProfile, trackInitialLiveOnboarding)
                         )
                     }
-                    val tDbCommitPartial = System.currentTimeMillis()
                     finalizeXtreamLiveCatalog(
                         providerId = provider.id,
                         liveSyncResult = liveSyncResult,
@@ -1074,7 +1058,6 @@ class SyncManager @Inject constructor(
                         onProgress = onProgress,
                         partialCompletionWarning = "Live TV sync completed partially."
                     ).also { commitResult ->
-                        bench("DB_COMMIT_LIVE_PARTIAL", tDbCommitPartial)
                         warnings += commitResult.warnings
                     }.acceptedCount
                 }
@@ -1170,8 +1153,6 @@ class SyncManager @Inject constructor(
                 runCatching { scheduleBackgroundEpgSync(provider.id) }
             }
 
-            val totalMs = completedAt - t0
-            Log.i(BENCH, "[TTFC_TOTAL] provider=${provider.id} channels=$liveCount total=${totalMs}ms")
             Log.i(TAG, "Fast Live Sync completed for provider ${provider.id} in ${completedAt - now}ms. User released to Live TV. VOD/Series/EPG scheduled for background.")
             return if (warnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = warnings.distinct())
         }
