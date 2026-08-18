@@ -34,22 +34,19 @@ data class ForumIPTVAccount(
 )
 
 class MemoryCookieJar : CookieJar {
-    private val cache = HashMap<String, MutableList<Cookie>>()
+    private val cookieStore = java.util.concurrent.CopyOnWriteArrayList<Cookie>()
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        val host = url.host
-        val list = cache.getOrPut(host) { ArrayList() }
-        cookies.forEach { cookie ->
-            list.removeAll { it.name == cookie.name }
-            list.add(cookie)
+        cookies.forEach { newCookie ->
+            cookieStore.removeAll { it.name == newCookie.name && it.matches(url) }
+            cookieStore.add(newCookie)
         }
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
-        val host = url.host
-        val result = ArrayList<Cookie>()
-        cache[host]?.let { result.addAll(it) }
-        return result
+        val now = System.currentTimeMillis()
+        cookieStore.removeAll { it.expiresAt < now }
+        return cookieStore.filter { it.matches(url) }
     }
 }
 
@@ -407,13 +404,13 @@ object ForumScraper {
                                 }
                             }
                         }
-                        val pages = when (depthVal) {
-                            "Son 1 Sayfa" -> listOf(lastPage)
-                            "Son 3 Sayfa" -> (maxOf(1, lastPage - 2)..lastPage).toList()
-                            "Son 5 Sayfa" -> (maxOf(1, lastPage - 4)..lastPage).toList()
-                            else -> listOf(lastPage)
+                        val urls = mutableListOf<String>()
+                        if (lastPage > 1) {
+                            urls.add("${threadUrl}page-$lastPage")
+                            if (lastPage > 2) urls.add("${threadUrl}page-${lastPage - 1}")
                         }
-                        pages.map { p -> if (p <= 1) threadUrl else "${threadUrl}page-$p" }
+                        urls.add(threadUrl)
+                        urls
                     }
                 }
                 threadJobs.awaitAll().forEach { allPageUrls.addAll(it) }
