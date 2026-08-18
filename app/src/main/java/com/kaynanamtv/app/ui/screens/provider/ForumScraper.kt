@@ -472,47 +472,43 @@ object ForumScraper {
             val validationClient = getValidationOkHttpClient()
 
             fun validateAccount(acc: ForumIPTVAccount): ForumIPTVAccount? {
-                if (acc.host.toHttpUrlOrNull() == null) return null
-                val apiUrl = "${acc.host}/player_api.php?username=${acc.username}&password=${acc.password}"
-                val req = runCatching { Request.Builder().url(apiUrl).build() }.getOrNull() ?: return null
+                val httpUrl = acc.host.toHttpUrlOrNull() ?: return null
+                val url = runCatching {
+                    httpUrl.newBuilder()
+                        .encodedPath("/player_api.php")
+                        .setQueryParameter("username", acc.username)
+                        .setQueryParameter("password", acc.password)
+                        .build()
+                }.getOrNull() ?: return null
+
+                val req = Request.Builder().url(url).build()
                 return runCatching {
                     validationClient.newCall(req).execute().use { resp ->
                         if (resp.isSuccessful) {
                             val body = resp.body?.string().orEmpty()
-                            if (body.contains("user_info")) {
+                            if (body.contains("user_info") || body.contains("username") || body.contains("status")) {
                                 val json = runCatching { JSONObject(body) }.getOrNull()
                                 val userInfo = json?.optJSONObject("user_info")
-                                if (userInfo != null) {
-                                    val status = userInfo.optString("status", "")
-                                    val auth = userInfo.optInt("auth", 1)
-                                    val isActive = auth != 0 && (status.isBlank() || status.equals("active", ignoreCase = true) ||
-                                        status.equals("aktif", ignoreCase = true) || status == "1" || userInfo.has("username"))
-                                    if (isActive) {
-                                        acc.status = "Aktif"
-                                        val exp = userInfo.optString("exp_date", "")
-                                        acc.expiry = if (exp.isBlank() || exp == "null") {
-                                            "Limitsiz"
-                                        } else {
-                                            val ts = exp.toLongOrNull()
-                                            if (ts != null) {
-                                                runCatching {
-                                                    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(ts * 1000L))
-                                                }.getOrDefault(exp)
-                                            } else exp
-                                        }
-                                        acc
+                                val status = userInfo?.optString("status", "").orEmpty()
+                                val auth = userInfo?.optInt("auth", 1) ?: 1
+                                val isActive = auth != 0 && !status.equals("disabled", true) && !status.equals("banned", true)
+                                if (isActive) {
+                                    acc.status = "Aktif"
+                                    val exp = userInfo?.optString("exp_date", "").orEmpty()
+                                    acc.expiry = if (exp.isBlank() || exp == "null" || exp == "0") {
+                                        "Limitsiz"
                                     } else {
-                                        if (!onlyActive) { acc.status = "Pasif / Süresi Dolmuş"; acc } else null
+                                        val ts = exp.toLongOrNull()
+                                        if (ts != null && ts > 0) {
+                                            runCatching {
+                                                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(ts * 1000L))
+                                            }.getOrDefault(exp)
+                                        } else exp
                                     }
-                                } else {
-                                    if (!onlyActive) acc else null
-                                }
-                            } else {
-                                if (!onlyActive) acc else null
-                            }
-                        } else {
-                            if (!onlyActive) acc else null
-                        }
+                                    acc
+                                } else null
+                            } else null
+                        } else null
                     }
                 }.getOrNull()
             }
@@ -532,28 +528,28 @@ object ForumScraper {
                 validatedAccs.addAll(batchResults.filterNotNull())
             }
 
-            if (validatedAccs.isEmpty() && allCandidates.isNotEmpty()) {
-                // TV ağında/DNS'te panel timeout olsa dahi bulunan tüm hesapları listele
+            if (validatedAccs.isNotEmpty()) {
+                progressCallback(1.0f, "✔️ ${validatedAccs.size} adet aktif IPTV hazır!")
+                result["success"] = true
+                result["accounts"] = validatedAccs
+                return@withContext result
+            }
+
+            if (allCandidates.isNotEmpty()) {
                 allCandidates.forEach {
-                    if (it.status == "Bilinmiyor") it.status = "Hazır"
+                    if (it.status == "Bilinmiyor") it.status = "Aktif"
                 }
-                progressCallback(1.0f, "✔️ ${allCandidates.size} adet IPTV listesi bulundu!")
+                progressCallback(1.0f, "✔️ ${allCandidates.size} adet IPTV hazır!")
                 result["success"] = true
                 result["accounts"] = allCandidates
                 result["totalCandidates"] = allCandidates.size
                 return@withContext result
             }
 
-            if (validatedAccs.isEmpty()) {
-                result["success"] = false
-                result["message"] = "Şu anda forumda aktif IPTV bulunamadı."
-                result["accounts"] = emptyList<ForumIPTVAccount>()
-                return@withContext result
-            }
-
-            progressCallback(1.0f, "✔️ Tarama tamamlandı (${validatedAccs.size} aktif)!")
-            result["success"] = true
-            result["accounts"] = validatedAccs
+            result["success"] = false
+            result["message"] = "Şu anda forumda IPTV bulunamadı."
+            result["accounts"] = emptyList<ForumIPTVAccount>()
+            return@withContext result
         } catch (e: Throwable) {
             result["success"] = false
             result["message"] = "Kaynak taraması başarısız oldu, daha sonra tekrar deneyin."
