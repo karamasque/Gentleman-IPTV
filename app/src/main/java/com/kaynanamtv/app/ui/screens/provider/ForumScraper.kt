@@ -149,28 +149,24 @@ object ForumScraper {
 
     fun parseXtreamUrl(url: String): ForumIPTVAccount? {
         return try {
-            val trimmedUrl = url.trim()
-            if (trimmedUrl.length < 10) return null
-            val urlLower = trimmedUrl.lowercase(Locale.ROOT)
+            val unescaped = unescapeHtml(url.trim())
+            if (unescaped.length < 10) return null
+            val urlLower = unescaped.lowercase(Locale.ROOT)
 
             // 1. Live/Movie/Series/Play path format (e.g., http://host:port/live/user/pass/123.ts)
             for (kw in listOf("/live/", "/movie/", "/series/", "/play/")) {
                 if (urlLower.contains(kw)) {
                     val idx = urlLower.indexOf(kw)
                     if (idx <= 0) continue
-                    val rawHost = trimmedUrl.substring(0, idx).trim().removeSuffix("/")
+                    val rawHost = unescaped.substring(0, idx).trim().removeSuffix("/")
                     val host = normalizeHost(rawHost)
-                    val rest = trimmedUrl.substring(idx + kw.length)
+                    val rest = unescaped.substring(idx + kw.length)
                     val parts = rest.split("/").filter { it.isNotEmpty() }
                     if (parts.size >= 2) {
                         val username = parts[0].trim()
                         var password = parts[1].trim()
-                        if (password.contains("?")) {
-                            password = password.substringBefore("?")
-                        }
-                        if (password.contains(".")) {
-                            password = password.substringBefore(".")
-                        }
+                        if (password.contains("?")) password = password.substringBefore("?")
+                        if (password.contains(".")) password = password.substringBefore(".")
                         if (username.isNotEmpty() && password.isNotEmpty()) {
                             return ForumIPTVAccount(
                                 host = host,
@@ -187,42 +183,39 @@ object ForumScraper {
                 if (urlLower.contains(kw)) {
                     val idx = urlLower.indexOf(kw)
                     if (idx <= 0) continue
-                    val rawHost = trimmedUrl.substring(0, idx).trim().removeSuffix("/")
+                    val rawHost = unescaped.substring(0, idx).trim().removeSuffix("/")
                     val host = normalizeHost(rawHost)
-                    val uri = runCatching { Uri.parse(trimmedUrl) }.getOrNull() ?: continue
-                    val username = uri.getQueryParameter("username") ?: uri.getQueryParameter("user") ?: uri.getQueryParameter("auth")
-                    val password = uri.getQueryParameter("password") ?: uri.getQueryParameter("pass")
-                    if (!username.isNullOrBlank() && !password.isNullOrBlank()) {
-                        return ForumIPTVAccount(
-                            host = host,
-                            username = username.trim(),
-                            password = password.trim()
-                        )
+                    val userMatch = Regex("""[?&](?:username|user|auth)=([^&#\s]+)""", RegexOption.IGNORE_CASE).find(unescaped)
+                    val passMatch = Regex("""[?&](?:password|pass)=([^&#\s]+)""", RegexOption.IGNORE_CASE).find(unescaped)
+                    if (userMatch != null && passMatch != null) {
+                        val u = safeUrlDecode(userMatch.groupValues[1].trim())
+                        val p = safeUrlDecode(passMatch.groupValues[1].trim())
+                        if (u.isNotEmpty() && p.isNotEmpty()) {
+                            return ForumIPTVAccount(
+                                host = host,
+                                username = u,
+                                password = p
+                            )
+                        }
                     }
                 }
             }
 
-            // 3. Fallback three-segment path format
-            val uri = runCatching { Uri.parse(trimmedUrl) }.getOrNull()
-            val path = uri?.path.orEmpty()
-            val segments = path.split("/").filter { it.isNotEmpty() }
-            if (segments.size >= 3) {
-                val username = segments[segments.size - 3]
-                val password = segments[segments.size - 2]
-                val matchSegment = "/$username/$password/"
-                val idx = trimmedUrl.indexOf(matchSegment)
-                if (idx > 0) {
-                    val rawHost = trimmedUrl.substring(0, idx).trim().removeSuffix("/")
-                    val host = normalizeHost(rawHost)
-                    if (username.isNotBlank() && password.isNotBlank()) {
-                        return ForumIPTVAccount(
-                            host = host,
-                            username = safeUrlDecode(username.trim()),
-                            password = safeUrlDecode(password.trim())
-                        )
-                    }
+            // 3. Plain text line format: http://host:port user pass
+            val lineMatch = Regex("""(https?://[^\s/:,]+:\d+)[/\s,;|]+([^\s:,;|]+)[\s:,;|]+([^\s:,;|]+)""").find(unescaped)
+            if (lineMatch != null) {
+                val host = normalizeHost(lineMatch.groupValues[1])
+                val u = safeUrlDecode(lineMatch.groupValues[2].trim())
+                val p = safeUrlDecode(lineMatch.groupValues[3].trim())
+                if (u.isNotEmpty() && p.isNotEmpty()) {
+                    return ForumIPTVAccount(
+                        host = host,
+                        username = u,
+                        password = p
+                    )
                 }
             }
+
             null
         } catch (_: Throwable) {
             null
@@ -233,32 +226,33 @@ object ForumScraper {
         val list = ArrayList<ForumIPTVAccount>()
         val seen = HashSet<String>()
         val textUnescaped = unescapeHtml(text)
-        val urlPattern = runCatching { Pattern.compile("https?://[^\\s\"'<>]+") }.getOrNull() ?: return emptyList()
-        val matcher = urlPattern.matcher(textUnescaped)
 
-        while (matcher.find()) {
-            val url = matcher.group(0) ?: continue
-            val parsed = parseXtreamUrl(url)
-            if (parsed != null && parsed.host.isNotBlank() && parsed.username.isNotBlank() && parsed.password.isNotBlank()) {
-                val key = "${parsed.host}_${parsed.username}_${parsed.password}"
-                if (seen.add(key)) {
-                    list.add(parsed)
+        // 1. Scan URLs
+        val urlPattern = runCatching { Pattern.compile("https?://[^\\s\"'<>]+") }.getOrNull()
+        if (urlPattern != null) {
+            val matcher = urlPattern.matcher(textUnescaped)
+            while (matcher.find()) {
+                val url = matcher.group(0) ?: continue
+                val parsed = parseXtreamUrl(url)
+                if (parsed != null && parsed.host.isNotBlank() && parsed.username.isNotBlank() && parsed.password.isNotBlank()) {
+                    val key = "${parsed.host}_${parsed.username}_${parsed.password}"
+                    if (seen.add(key)) {
+                        list.add(parsed)
+                    }
                 }
             }
         }
 
-        if (list.isEmpty()) {
-            val lines = textUnescaped.split('\n', '\r')
-            for (line in lines) {
-                val trimmed = line.trim()
-                if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
-                    val parsed = parseXtreamUrl(trimmed)
-                    if (parsed != null && parsed.host.isNotBlank() && parsed.username.isNotBlank() && parsed.password.isNotBlank()) {
-                        val key = "${parsed.host}_${parsed.username}_${parsed.password}"
-                        if (seen.add(key)) {
-                            list.add(parsed)
-                        }
-                    }
+        // 2. Scan text lines
+        val lines = textUnescaped.split('\n', '\r')
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.length < 10) continue
+            val parsed = parseXtreamUrl(trimmed)
+            if (parsed != null && parsed.host.isNotBlank() && parsed.username.isNotBlank() && parsed.password.isNotBlank()) {
+                val key = "${parsed.host}_${parsed.username}_${parsed.password}"
+                if (seen.add(key)) {
+                    list.add(parsed)
                 }
             }
         }
