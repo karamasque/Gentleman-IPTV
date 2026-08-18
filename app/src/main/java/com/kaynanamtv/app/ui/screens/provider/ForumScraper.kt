@@ -277,6 +277,7 @@ object ForumScraper {
         String(OBF_PASS.map { (it.toInt() xor MASK_KEY).toByte() }.toByteArray(), Charsets.UTF_8)
 
     private val TARGET_THREADS = listOf(
+        "https://forumsitesi.com.tr/konular/atmaca-iptv-linkleri.1208873/",
         "https://forumsitesi.com.tr/konular/byxm-herkese-acik-iptv-m3u-panel-linkleri-2026.1285748/",
         "https://forumsitesi.com.tr/konular/byxm-premium-uyelere-ozel-iptv-m3u-panel-linkleri-2026.1285769/"
     )
@@ -297,7 +298,8 @@ object ForumScraper {
             val cookieJar = MemoryCookieJar()
             val client = getUnsafeOkHttpClient(cookieJar)
 
-            // Step 1: Get CSRF token from login page
+            // Step 1: Attempt login if possible
+            progressCallback(0.15f, "🔑 Otomatik oturum hazırlanıyor...")
             val rLogin = Request.Builder().url("https://forumsitesi.com.tr/login/").build()
             var token = ""
             runCatching {
@@ -314,84 +316,32 @@ object ForumScraper {
                 }
             }
 
-            if (token.isBlank()) {
-                result["success"] = false
-                result["message"] = "Kaynak taraması başarısız oldu, forum erişilemez veya korumada olabilir. Lütfen daha sonra tekrar deneyin."
-                result["accounts"] = emptyList<ForumIPTVAccount>()
-                return@withContext result
-            }
+            if (token.isNotBlank()) {
+                val formBody = FormBody.Builder()
+                    .add("login", effectiveUser.trim())
+                    .add("password", effectivePass.trim())
+                    .add("_xfToken", token)
+                    .add("remember", "1")
+                    .add("_xfRedirect", "https://forumsitesi.com.tr/")
+                    .add("_xfResponseType", "json")
+                    .build()
 
-            // Step 2: XHR/AJAX login
-            progressCallback(0.15f, "🔑 Otomatik güvenli giriş yapılıyor...")
-            val formBody = FormBody.Builder()
-                .add("login", effectiveUser.trim())
-                .add("password", effectivePass.trim())
-                .add("_xfToken", token)
-                .add("remember", "1")
-                .add("_xfRedirect", "https://forumsitesi.com.tr/")
-                .add("_xfResponseType", "json")
-                .build()
+                val rPost = Request.Builder()
+                    .url("https://forumsitesi.com.tr/login/login")
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .header("Accept", "application/json, text/javascript, */*; q=0.01")
+                    .header("Referer", "https://forumsitesi.com.tr/login/")
+                    .header("Origin", "https://forumsitesi.com.tr")
+                    .post(formBody)
+                    .build()
 
-            val rPost = Request.Builder()
-                .url("https://forumsitesi.com.tr/login/login")
-                .header("X-Requested-With", "XMLHttpRequest")
-                .header("Accept", "application/json, text/javascript, */*; q=0.01")
-                .header("Referer", "https://forumsitesi.com.tr/login/")
-                .header("Origin", "https://forumsitesi.com.tr")
-                .post(formBody)
-                .build()
-
-            var loginSuccess = false
-            runCatching {
-                client.newCall(rPost).execute().use { response ->
-                    val body = response.body?.string().orEmpty()
-                    val hasUserCookie = cookieJar.loadForRequest(
-                        "https://forumsitesi.com.tr".toHttpUrlOrNull() ?: return@use
-                    ).any { it.name == "xf_user" }
-
-                    if (hasUserCookie) {
-                        loginSuccess = true
-                    } else {
-                        val json = runCatching { JSONObject(body) }.getOrNull()
-                        if (json != null) {
-                            val status = json.optString("status", "")
-                            if (status == "ok") {
-                                loginSuccess = true
-                            } else if (status == "error") {
-                                val errors = json.optJSONArray("errors")
-                                val errorMsg = if (errors != null && errors.length() > 0) errors.optString(0, "Giriş başarısız") else "Bilinmeyen hata"
-                                result["success"] = false
-                                result["message"] = "Forum giriş hatası: $errorMsg"
-                                result["accounts"] = emptyList<ForumIPTVAccount>()
-                                return@withContext result
-                            }
-                        } else {
-                            loginSuccess = body.contains("data-logged-in=\"true\"") || body.contains("log-out")
-                        }
-                    }
-                }
-            }
-
-            if (!loginSuccess) {
                 runCatching {
-                    val rCheck = Request.Builder().url("https://forumsitesi.com.tr/").build()
-                    client.newCall(rCheck).execute().use { response ->
-                        val body = response.body?.string().orEmpty()
-                        loginSuccess = body.contains("data-logged-in=\"true\"") || body.contains("log-out") ||
-                                cookieJar.loadForRequest("https://forumsitesi.com.tr".toHttpUrlOrNull() ?: return@use).any { it.name == "xf_user" }
-                    }
+                    client.newCall(rPost).execute().close()
                 }
             }
 
-            if (!loginSuccess) {
-                result["success"] = false
-                result["message"] = "Giriş başarısız oldu. Lütfen daha sonra tekrar deneyin."
-                result["accounts"] = emptyList<ForumIPTVAccount>()
-                return@withContext result
-            }
-
-            // Step 3: Fetch thread info and detect pagination across all target threads
-            progressCallback(0.25f, "🔍 Forum konuları inceleniyor (${TARGET_THREADS.size} kaynak)...")
+            // Step 2: Fetch thread pages and extract IPTV accounts
+            progressCallback(0.25f, "🔍 Forum kaynakları taranıyor...")
 
             val allPageUrls = mutableListOf<String>()
             supervisorScope {
