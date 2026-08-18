@@ -108,9 +108,9 @@ object ForumScraper {
         }
         val builder = OkHttpClient.Builder()
             .dispatcher(dispatcher)
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(12, TimeUnit.SECONDS)
-            .writeTimeout(8, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(6, TimeUnit.SECONDS)
+            .writeTimeout(4, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor { chain ->
@@ -278,10 +278,7 @@ object ForumScraper {
 
     private val TARGET_THREADS = listOf(
         "https://forumsitesi.com.tr/konular/byxm-herkese-acik-iptv-m3u-panel-linkleri-2026.1285748/",
-        "https://forumsitesi.com.tr/konular/atmaca-iptv-linkleri.1208873/",
-        "https://forumsitesi.com.tr/konular/byxm-premium-uyelere-ozel-iptv-m3u-panel-linkleri-2026.1285769/",
-        "https://forumsitesi.com.tr/konular/atmaca-premium-linkleri.1286421/",
-        "https://forumsitesi.com.tr/konular/abidin-002.1284212/"
+        "https://forumsitesi.com.tr/konular/byxm-premium-uyelere-ozel-iptv-m3u-panel-linkleri-2026.1285769/"
     )
 
     suspend fun scrapeAndValidate(
@@ -520,9 +517,9 @@ object ForumScraper {
                 }.getOrNull()
             }
 
-            // 25'lik gruplar halinde doğrula
-            val BATCH_SIZE = 25
-            val allCandidates = filteredAccs.take(150)
+            // 20'lik gruplar halinde hızlı doğrula
+            val BATCH_SIZE = 20
+            val allCandidates = filteredAccs.take(40)
             val totalBatches = (allCandidates.size + BATCH_SIZE - 1) / BATCH_SIZE
             val validatedAccs = mutableListOf<ForumIPTVAccount>()
 
