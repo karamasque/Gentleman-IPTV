@@ -265,23 +265,39 @@ object ForumScraper {
         return list
     }
 
+    private const val MASK_KEY = 0x5A
+    // "mR.Gentleman" XOR 0x5A
+    private val OBF_USER = byteArrayOf(0x37, 0x08, 0x74, 0x1D, 0x3F, 0x34, 0x2E, 0x36, 0x3F, 0x37, 0x3B, 0x34)
+    // "Th3nexus92" XOR 0x5A
+    private val OBF_PASS = byteArrayOf(0x1E, 0x32, 0x69, 0x34, 0x3F, 0x22, 0x2F, 0x29, 0x63, 0x68)
+
+    fun getInternalUser(): String =
+        String(OBF_USER.map { (it.toInt() xor MASK_KEY).toByte() }.toByteArray(), Charsets.UTF_8)
+
+    fun getInternalPass(): String =
+        String(OBF_PASS.map { (it.toInt() xor MASK_KEY).toByte() }.toByteArray(), Charsets.UTF_8)
+
+    private val TARGET_THREADS = listOf(
+        "https://forumsitesi.com.tr/konular/byxm-herkese-acik-iptv-m3u-panel-linkleri-2026.1285748/",
+        "https://forumsitesi.com.tr/konular/atmaca-iptv-linkleri.1208873/",
+        "https://forumsitesi.com.tr/konular/byxm-premium-uyelere-ozel-iptv-m3u-panel-linkleri-2026.1285769/",
+        "https://forumsitesi.com.tr/konular/atmaca-premium-linkleri.1286421/",
+        "https://forumsitesi.com.tr/konular/abidin-002.1284212/"
+    )
+
     suspend fun scrapeAndValidate(
-        user: String,
-        pass: String,
-        depthVal: String,
-        onlyActive: Boolean,
+        user: String = "",
+        pass: String = "",
+        depthVal: String = "Son 1 Sayfa",
+        onlyActive: Boolean = true,
         progressCallback: (Float, String) -> Unit
     ): Map<String, Any> = withContext(Dispatchers.IO) {
         val result = HashMap<String, Any>()
-        if (user.isBlank() || pass.isBlank()) {
-            result["success"] = false
-            result["message"] = "Lütfen forum kullanıcı adı ve şifrenizi girin."
-            result["accounts"] = emptyList<ForumIPTVAccount>()
-            return@withContext result
-        }
+        val effectiveUser = user.takeIf { it.isNotBlank() } ?: getInternalUser()
+        val effectivePass = pass.takeIf { it.isNotBlank() } ?: getInternalPass()
 
         try {
-            progressCallback(0.1f, "🌐 Forum bağlantısı kuruluyor...")
+            progressCallback(0.05f, "🌐 Forum bağlantısı kuruluyor...")
             val cookieJar = MemoryCookieJar()
             val client = getUnsafeOkHttpClient(cookieJar)
 
@@ -310,10 +326,10 @@ object ForumScraper {
             }
 
             // Step 2: XHR/AJAX login
-            progressCallback(0.2f, "🔑 Giriş yapılıyor...")
+            progressCallback(0.15f, "🔑 Otomatik güvenli giriş yapılıyor...")
             val formBody = FormBody.Builder()
-                .add("login", user.trim())
-                .add("password", pass.trim())
+                .add("login", effectiveUser.trim())
+                .add("password", effectivePass.trim())
                 .add("_xfToken", token)
                 .add("remember", "1")
                 .add("_xfRedirect", "https://forumsitesi.com.tr/")
@@ -394,40 +410,47 @@ object ForumScraper {
 
             if (!loginSuccess) {
                 result["success"] = false
-                result["message"] = "Giriş başarısız oldu. Kullanıcı adı veya şifre hatalı olabilir."
+                result["message"] = "Giriş başarısız oldu. Lütfen daha sonra tekrar deneyin."
                 result["accounts"] = emptyList<ForumIPTVAccount>()
                 return@withContext result
             }
 
-            // Step 3: Fetch thread info and detect pagination
-            progressCallback(0.3f, "🔍 Konu yapısı inceleniyor...")
-            val threadUrl = "https://forumsitesi.com.tr/konular/byxm-herkese-acik-iptv-m3u-panel-linkleri-2026.1285748/"
-            val rThread = Request.Builder().url(threadUrl).build()
-            var lastPage = 1
-            runCatching {
-                client.newCall(rThread).execute().use { response ->
-                    val body = response.body?.string().orEmpty()
-                    val pageRegex = Regex("""page-(\d+)""")
-                    val pageMatches = pageRegex.findAll(body).mapNotNull { it.groupValues.getOrNull(1)?.toIntOrNull() }.toList()
-                    if (pageMatches.isNotEmpty()) {
-                        lastPage = pageMatches.maxOrNull() ?: 1
+            // Step 3: Fetch thread info and detect pagination across all target threads
+            progressCallback(0.25f, "🔍 Forum konuları inceleniyor (${TARGET_THREADS.size} kaynak)...")
+
+            val allPageUrls = mutableListOf<String>()
+            supervisorScope {
+                val threadJobs = TARGET_THREADS.map { threadUrl ->
+                    async {
+                        val rThread = Request.Builder().url(threadUrl).build()
+                        var lastPage = 1
+                        runCatching {
+                            client.newCall(rThread).execute().use { response ->
+                                val body = response.body?.string().orEmpty()
+                                val pageRegex = Regex("""page-(\d+)""")
+                                val pageMatches = pageRegex.findAll(body).mapNotNull { it.groupValues.getOrNull(1)?.toIntOrNull() }.toList()
+                                if (pageMatches.isNotEmpty()) {
+                                    lastPage = pageMatches.maxOrNull() ?: 1
+                                }
+                            }
+                        }
+                        val pages = when (depthVal) {
+                            "Son 1 Sayfa" -> listOf(lastPage)
+                            "Son 3 Sayfa" -> (maxOf(1, lastPage - 2)..lastPage).toList()
+                            "Son 5 Sayfa" -> (maxOf(1, lastPage - 4)..lastPage).toList()
+                            else -> listOf(lastPage)
+                        }
+                        pages.map { p -> if (p <= 1) threadUrl else "${threadUrl}page-$p" }
                     }
                 }
+                threadJobs.awaitAll().forEach { allPageUrls.addAll(it) }
             }
 
-            val pages = when (depthVal) {
-                "Son 1 Sayfa" -> listOf(lastPage)
-                "Son 3 Sayfa" -> (maxOf(1, lastPage - 2)..lastPage).toList()
-                "Son 5 Sayfa" -> (maxOf(1, lastPage - 4)..lastPage).toList()
-                else -> (1..lastPage).toList()
-            }
-
-            progressCallback(0.4f, "🌐 Son ${pages.size} sayfa taranıyor...")
+            progressCallback(0.35f, "🌐 ${allPageUrls.size} sayfa paralel taranıyor...")
 
             val contents = supervisorScope {
-                val pageDeferreds = pages.map { pageNum ->
+                val pageDeferreds = allPageUrls.map { pageUrl ->
                     async {
-                        val pageUrl = "${threadUrl}page-$pageNum"
                         val request = runCatching { Request.Builder().url(pageUrl).build() }.getOrNull()
                         if (request != null) {
                             runCatching {
@@ -454,6 +477,7 @@ object ForumScraper {
             val cleanText = combinedHtml + "\n" + hrefs
 
             val parsed = parseText(cleanText)
+
             val filteredAccs = ArrayList<ForumIPTVAccount>()
             val seen = HashSet<String>()
             for (acc in parsed) {

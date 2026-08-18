@@ -2590,24 +2590,8 @@ private fun SourceTypeTabRow(
 @Composable
 private fun ForumProviderForm(
     onSelectAccount: (host: String, user: String, pass: String) -> Unit,
-    viewModel: ProviderSetupViewModel = hiltViewModel()
+    @Suppress("UNUSED_PARAMETER") viewModel: ProviderSetupViewModel = hiltViewModel()
 ) {
-    val savedUser by viewModel.savedForumUser.collectAsStateWithLifecycle()
-    val savedPass by viewModel.savedForumPass.collectAsStateWithLifecycle()
-
-    var forumUser by remember { mutableStateOf("") }
-    var forumPass by remember { mutableStateOf("") }
-    var depth by remember { mutableStateOf("Son 3 Sayfa") }
-    var onlyActive by remember { mutableStateOf(true) }
-
-    LaunchedEffect(savedUser, savedPass) {
-        if (forumUser.isEmpty() && savedUser.isNotEmpty()) {
-            forumUser = savedUser
-        }
-        if (forumPass.isEmpty() && savedPass.isNotEmpty()) {
-            forumPass = savedPass
-        }
-    }
 
     var isLoading by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("") }
@@ -2619,27 +2603,14 @@ private fun ForumProviderForm(
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(
-            text = "Otomatik IPTV",
+            text = "Otomatik IPTV Taraması",
             style = MaterialTheme.typography.titleLarge,
             color = TextPrimary
         )
         Text(
-            text = "Forumda paylaşılan aktif M3U listelerini otomatik çekin.",
+            text = "Forum ve topluluk kaynaklarındaki güncel IPTV listelerini otomatik tarayın ve çalışan hesapları tek tıkla ekleyin.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
-        )
-
-        ProviderTextField(
-            value = forumUser,
-            onValueChange = { forumUser = it },
-            placeholder = "Forum Kullanıcı Adı"
-        )
-
-        ProviderTextField(
-            value = forumPass,
-            onValueChange = { forumPass = it },
-            placeholder = "Forum Şifresi",
-            isPassword = true
         )
 
         val depth = "Son 1 Sayfa"
@@ -2667,11 +2638,8 @@ private fun ForumProviderForm(
                     errorMessage = null
                     accounts = emptyList()
                     scanSummary = null
-                    viewModel.saveForumCredentials(forumUser, forumPass)
                     coroutineScope.launch {
                         val res = ForumScraper.scrapeAndValidate(
-                            user = forumUser,
-                            pass = forumPass,
                             depthVal = depth,
                             onlyActive = onlyActive,
                             progressCallback = { prog, msg ->
