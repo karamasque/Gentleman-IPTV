@@ -360,29 +360,7 @@ object ForumScraper {
                         if (json != null) {
                             val status = json.optString("status", "")
                             if (status == "ok") {
-                                val html = json.optJSONObject("html")?.optString("content", "").orEmpty()
-                                if (html.contains("bulunamadı") || html.contains("bulunamad")) {
-                                    result["success"] = false
-                                    result["message"] = "Kullanıcı adı forumda kayıtlı değil. Lütfen bilgilerinizi kontrol edin."
-                                    result["accounts"] = emptyList<ForumIPTVAccount>()
-                                    return@withContext result
-                                }
-                                if (html.contains("şifre") || html.contains("password") || html.contains("ifre")) {
-                                    result["success"] = false
-                                    result["message"] = "Şifre hatalı. Lütfen forum şifrenizi kontrol edin."
-                                    result["accounts"] = emptyList<ForumIPTVAccount>()
-                                    return@withContext result
-                                }
-                                val redirect = json.optString("redirect", "")
-                                if (redirect.isNotEmpty()) {
-                                    runCatching {
-                                        val rRedirect = Request.Builder().url(redirect).build()
-                                        client.newCall(rRedirect).execute().use { rResp ->
-                                            val rBody = rResp.body?.string().orEmpty()
-                                            loginSuccess = rBody.contains("data-logged-in=\"true\"") || rBody.contains("log-out")
-                                        }
-                                    }
-                                }
+                                loginSuccess = true
                             } else if (status == "error") {
                                 val errors = json.optJSONArray("errors")
                                 val errorMsg = if (errors != null && errors.length() > 0) errors.optString(0, "Giriş başarısız") else "Bilinmeyen hata"
@@ -403,7 +381,8 @@ object ForumScraper {
                     val rCheck = Request.Builder().url("https://forumsitesi.com.tr/").build()
                     client.newCall(rCheck).execute().use { response ->
                         val body = response.body?.string().orEmpty()
-                        loginSuccess = body.contains("data-logged-in=\"true\"") || body.contains("log-out")
+                        loginSuccess = body.contains("data-logged-in=\"true\"") || body.contains("log-out") ||
+                                cookieJar.loadForRequest("https://forumsitesi.com.tr".toHttpUrlOrNull() ?: return@use).any { it.name == "xf_user" }
                     }
                 }
             }
@@ -446,51 +425,38 @@ object ForumScraper {
                 threadJobs.awaitAll().forEach { allPageUrls.addAll(it) }
             }
 
-            progressCallback(0.35f, "🌐 ${allPageUrls.size} sayfa paralel taranıyor...")
-
-            val contents = supervisorScope {
-                val pageDeferreds = allPageUrls.map { pageUrl ->
-                    async {
-                        val request = runCatching { Request.Builder().url(pageUrl).build() }.getOrNull()
-                        if (request != null) {
-                            runCatching {
-                                client.newCall(request).execute().use { response ->
-                                    if (response.isSuccessful) response.body?.string().orEmpty() else ""
-                                }
-                            }.getOrDefault("")
-                        } else ""
-                    }
-                }
-                pageDeferreds.awaitAll()
-            }
-            val combinedHtml = contents.joinToString("\n")
-            if (combinedHtml.trim().isEmpty()) {
-                result["success"] = false
-                result["message"] = "Şu anda otomatik IPTV bulunamadı. Lütfen daha sonra tekrar deneyin."
-                result["accounts"] = emptyList<ForumIPTVAccount>()
-                return@withContext result
-            }
-
-            // Gather href links
-            val hrefRegex = Regex("""href="([^"]+)"""")
-            val hrefs = hrefRegex.findAll(combinedHtml).mapNotNull { it.groupValues.getOrNull(1) }.joinToString("\n")
-            val cleanText = combinedHtml + "\n" + hrefs
-
-            val parsed = parseText(cleanText)
+            progressCallback(0.35f, "🌐 Konu sayfaları taranıyor...")
 
             val filteredAccs = ArrayList<ForumIPTVAccount>()
             val seen = HashSet<String>()
-            for (acc in parsed) {
-                val hostLower = acc.host.lowercase(Locale.ROOT)
-                if (hostLower.contains("forumsitesi.com.tr") || hostLower.contains("uyduportal.com") ||
-                    hostLower.contains("google") || hostLower.contains("yandex") ||
-                    hostLower.contains("github") || hostLower.contains("facebook") ||
-                    hostLower.contains("t.me") || hostLower.contains("telegram")) {
-                    continue
-                }
-                val key = "${acc.host}_${acc.username}_${acc.password}"
-                if (seen.add(key)) {
-                    filteredAccs.add(acc)
+            val MAX_CANDIDATES = 100
+
+            for (pageUrl in allPageUrls) {
+                if (filteredAccs.size >= MAX_CANDIDATES) break
+                val request = runCatching { Request.Builder().url(pageUrl).build() }.getOrNull() ?: continue
+                runCatching {
+                    client.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            val pageHtml = response.body?.string().orEmpty()
+                            val hrefs = Regex("""href="([^"]+)"""").findAll(pageHtml).mapNotNull { it.groupValues.getOrNull(1) }.joinToString("\n")
+                            val pageText = pageHtml + "\n" + hrefs
+                            val pageAccounts = parseText(pageText)
+                            for (acc in pageAccounts) {
+                                val hostLower = acc.host.lowercase(Locale.ROOT)
+                                if (hostLower.contains("forumsitesi.com.tr") || hostLower.contains("uyduportal.com") ||
+                                    hostLower.contains("google") || hostLower.contains("yandex") ||
+                                    hostLower.contains("github") || hostLower.contains("facebook") ||
+                                    hostLower.contains("t.me") || hostLower.contains("telegram")) {
+                                    continue
+                                }
+                                val key = "${acc.host}_${acc.username}_${acc.password}"
+                                if (seen.add(key)) {
+                                    filteredAccs.add(acc)
+                                    if (filteredAccs.size >= MAX_CANDIDATES) break
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
