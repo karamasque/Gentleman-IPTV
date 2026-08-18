@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'ADMIN'
+      );
+    }
+
+    // ── Users Collection ──────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+
+      // Normal user can register with standard initial trial entitlement
+      allow create: if isOwner(userId) &&
+        request.resource.data.role == 'USER' &&
+        request.resource.data.isAdmin == false &&
+        request.resource.data.premiumPlan in ['FREE', 'TRIAL'] &&
+        request.resource.data.trialUsed == true;
+
+      // Normal user can ONLY update profile/settings, NEVER entitlement or admin fields
+      allow update: if (
+        isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'isPremium',
+          'premiumPlan',
+          'premiumStartedAt',
+          'premiumExpiresAt',
+          'trialUsed',
+          'trialStartedAt',
+          'trialExpiresAt',
+          'transitionTrialGranted',
+          'entitlement',
+          'entitlementVersion',
+          'role',
+          'isAdmin'
+        ])
+      ) || isAdmin();
+
+      allow delete: if isAdmin();
+    }
+
+    // ── Payment Requests ──────────────────────────────────────────────
+    match /payment_requests/{requestId} {
+      allow read: if (isAuthenticated() && (resource.data.uid == request.auth.uid || resource.data.userId == request.auth.uid)) || isAdmin();
+
+      // Normal user can submit a PENDING payment request for their own UID
+      allow create: if isAuthenticated() &&
+        (request.resource.data.uid == request.auth.uid || request.resource.data.userId == request.auth.uid) &&
+        request.resource.data.status == 'PENDING' &&
+        request.resource.data.plan in ['YEARLY', 'LIFETIME'];
+
+      // Client CANNOT approve or modify payment requests (Admin SDK only)
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Premium Audit Logs ───────────────────────────────────────────
+    match /premium_audit/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false; // Admin SDK writes directly
+    }
+
+    // ── System Configuration & Remote Update Config ───────────────────
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Community Chat Rooms & Messages ───────────────────────────────
+    match /chat_rooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated();
+      }
+    }
+
+    // ── Active / Online Users Presence ────────────────────────────────
+    match /active_users/{senderId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── Private Chat (DMs) ────────────────────────────────────────────
+    match /private_chats/{chatId} {
+      allow read, write: if isAuthenticated();
+
+      match /messages/{messageId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // ── User Badges & Roles ───────────────────────────────────────────
+    match /user_badges/{targetSenderId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── Banned Users List ─────────────────────────────────────────────
+    match /banned_users/{deviceId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── Chat Reports ──────────────────────────────────────────────────
+    match /reports/{reportId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ── Device Code Pairing / Activation ──────────────────────────────
+    match /device_activations/{code} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

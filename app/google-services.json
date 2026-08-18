@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "136172863066",
+    "project_id": "kaynanam-tv",
+    "storage_bucket": "kaynanam-tv.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:136172863066:android:62ef7bff7295c7f8dae263",
+        "android_client_info": {
+          "package_name": "com.kaynanamtv.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2Y2k1XgWhPPQ9meTo9x8i8n9LeKnEKW0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
