@@ -108,11 +108,19 @@ object ForumScraper {
         }
         val builder = OkHttpClient.Builder()
             .dispatcher(dispatcher)
-            .connectTimeout(8, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .writeTimeout(5, TimeUnit.SECONDS)
-            .followRedirects(false)
-            .followSslRedirects(false)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
+            .writeTimeout(8, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .addInterceptor { chain ->
+                chain.proceed(
+                    chain.request().newBuilder()
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                        .header("Accept", "*/*")
+                        .build()
+                )
+            }
         if (sslCtx != null) {
             builder.sslSocketFactory(sslCtx.socketFactory, tm as X509TrustManager)
             builder.hostnameVerifier { _, _ -> true }
@@ -480,9 +488,8 @@ object ForumScraper {
                                 if (userInfo != null) {
                                     val status = userInfo.optString("status", "")
                                     val auth = userInfo.optInt("auth", 1)
-                                    val isActive = auth != 0 && (status.equals("active", ignoreCase = true) ||
-                                        status.equals("aktif", ignoreCase = true) ||
-                                        status.equals("Active", ignoreCase = false))
+                                    val isActive = auth != 0 && (status.isBlank() || status.equals("active", ignoreCase = true) ||
+                                        status.equals("aktif", ignoreCase = true) || status == "1" || userInfo.has("username"))
                                     if (isActive) {
                                         acc.status = "Aktif"
                                         val exp = userInfo.optString("exp_date", "")
@@ -513,9 +520,9 @@ object ForumScraper {
                 }.getOrNull()
             }
 
-            // 20'lik gruplar halinde doğrula — aşırı paralel bağlantıdan kaçın
-            val BATCH_SIZE = 20
-            val allCandidates = filteredAccs.take(100)
+            // 25'lik gruplar halinde doğrula
+            val BATCH_SIZE = 25
+            val allCandidates = filteredAccs.take(150)
             val totalBatches = (allCandidates.size + BATCH_SIZE - 1) / BATCH_SIZE
             val validatedAccs = mutableListOf<ForumIPTVAccount>()
 
