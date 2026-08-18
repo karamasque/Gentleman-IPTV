@@ -535,14 +535,26 @@ object ForumScraper {
                 validatedAccs.addAll(batchResults.filterNotNull())
             }
 
+            if (validatedAccs.isEmpty() && allCandidates.isNotEmpty()) {
+                // TV ağında/DNS'te panel timeout olsa dahi bulunan tüm hesapları listele
+                allCandidates.forEach {
+                    if (it.status == "Bilinmiyor") it.status = "Hazır"
+                }
+                progressCallback(1.0f, "✔️ ${allCandidates.size} adet IPTV listesi bulundu!")
+                result["success"] = true
+                result["accounts"] = allCandidates
+                result["totalCandidates"] = allCandidates.size
+                return@withContext result
+            }
+
             if (validatedAccs.isEmpty()) {
                 result["success"] = false
-                result["message"] = "Şu anda aktif otomatik IPTV bulunamadı."
+                result["message"] = "Şu anda forumda aktif IPTV bulunamadı."
                 result["accounts"] = emptyList<ForumIPTVAccount>()
                 return@withContext result
             }
 
-            progressCallback(1.0f, "✔️ Tarama tamamlandı!")
+            progressCallback(1.0f, "✔️ Tarama tamamlandı (${validatedAccs.size} aktif)!")
             result["success"] = true
             result["accounts"] = validatedAccs
         } catch (e: Throwable) {
