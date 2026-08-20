@@ -69,6 +69,8 @@ import com.kaynanamtv.domain.repository.SyncMetadataRepository
 import com.kaynanamtv.domain.sync.Section
 import com.kaynanamtv.domain.sync.SyncProgress
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -198,6 +200,7 @@ class SyncManager @Inject constructor(
     private val syncProgressBus: SyncProgressBus,
     private val mediaPrefetcher: com.kaynanamtv.domain.manager.MediaPrefetcher
 ) {
+    private val applicationSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncStateTracker = SyncStateTracker()
     private val syncErrorSanitizer = SyncErrorSanitizer()
     private val xtreamAdaptiveSyncPolicy = XtreamAdaptiveSyncPolicy()
@@ -1129,13 +1132,12 @@ class SyncManager @Inject constructor(
             lastError = null
         )
 
-        // FAST LIVE SYNC: İlk onboarding ise (yeni provider eklendiyse), Canlı TV yüklendiği anda
-        // onboarding aşamasını tamamla. Kullanıcı beklemeden Live TV'ye geçsin.
-        // Movies, Series ve EPG işlemlerini arka plana (WorkManager) aktar.
-        // ULTRA FAST FULL CATALOG ONBOARDING: Canlı TV, Filmler ve Diziler paralel 3 bağımsız fast-path olarak başlatılır.
+        // FAST LIVE SYNC: İlk onboarding ise (yeni provider eklendiyse), Canlı TV hazır olduğu anda
+        // onboarding aşamasını tamamla ve UI'a hemen kontrolü ver.
+        // Movies, Series ve EPG işlemlerini applicationSyncScope üzerinde arka plana aktar.
         if (trackInitialLiveOnboarding) {
             val tOnboardingStart = System.currentTimeMillis()
-            Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE READY totalLiveMs=${tOnboardingStart - now}ms liveCount=${liveCount}")
+            Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] FULL_LIVE_DONE totalLiveMs=${tOnboardingStart - now}ms liveCount=${liveCount}")
             var onboardingProgress = com.kaynanamtv.domain.sync.FullCatalogOnboardingProgress(
                 serverAuthVerified = true,
                 live = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
@@ -1173,8 +1175,8 @@ class SyncManager @Inject constructor(
                 )
             )
 
-            // Movies & Series paralel bağımsız fast-path başlat
-            kotlinx.coroutines.supervisorScope {
+            // Movies & Series arka plan bağımsız asenkron fast-path başlat (ONBOARDING'I KESİNLİKLE BLOKLAMAZ)
+            applicationSyncScope.launch(Dispatchers.IO) {
                 val moviesJob = async(Dispatchers.IO) {
                     val tMoviesStart = System.currentTimeMillis()
                     runCatching {
@@ -1196,7 +1198,7 @@ class SyncManager @Inject constructor(
                         val movieCount = movieDao.getCount(provider.id).first()
                         val tMoviesEnd = System.currentTimeMillis()
                         val movieMs = tMoviesEnd - tMoviesStart
-                        Log.i("CATALOG_BENCHMARK", "[MOVIES] REQUEST_COUNT=2 NETWORK_MS=${movieMs * 60 / 100} PARSE_MS=${movieMs * 20 / 100} DB_MS=${movieMs * 20 / 100} FIRST_USABLE_MS=$movieMs FULL_READY_MS=$movieMs MOVIE_DETAIL_REQUEST_COUNT_DURING_ONBOARDING=0 items=$movieCount")
+                        Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] MOVIES_DONE items=$movieCount elapsed=${movieMs}ms")
 
                         synchronized(onboardingProgress) {
                             onboardingProgress = onboardingProgress.copy(
@@ -1264,7 +1266,7 @@ class SyncManager @Inject constructor(
                         val seriesCount = seriesDao.getCount(provider.id).first()
                         val tSeriesEnd = System.currentTimeMillis()
                         val seriesMs = tSeriesEnd - tSeriesStart
-                        Log.i("CATALOG_BENCHMARK", "[SERIES] REQUEST_COUNT=2 NETWORK_MS=${seriesMs * 60 / 100} PARSE_MS=${seriesMs * 20 / 100} DB_MS=${seriesMs * 20 / 100} FIRST_USABLE_MS=$seriesMs FULL_READY_MS=$seriesMs SERIES_INFO_REQUEST_COUNT_DURING_ONBOARDING=0 items=$seriesCount")
+                        Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] SERIES_DONE items=$seriesCount elapsed=${seriesMs}ms")
 
                         synchronized(onboardingProgress) {
                             onboardingProgress = onboardingProgress.copy(
@@ -1310,14 +1312,13 @@ class SyncManager @Inject constructor(
 
                 moviesJob.await()
                 seriesJob.await()
+
+                if (provider.epgSyncMode != ProviderEpgSyncMode.SKIP) {
+                    runCatching { scheduleBackgroundEpgSync(provider.id) }
+                }
             }
 
-            if (provider.epgSyncMode != ProviderEpgSyncMode.SKIP) {
-                runCatching { scheduleBackgroundEpgSync(provider.id) }
-            }
-
-            val totalDuration = System.currentTimeMillis() - tOnboardingStart
-            Log.i(TAG, "Full Catalog Onboarding completed for provider ${provider.id} in ${totalDuration}ms. Live, Movies, and Series fast paths ready.")
+            Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] INITIAL_ONBOARDING_RETURNING_SUCCESS provider=${provider.id} in ${System.currentTimeMillis() - tOnboardingStart}ms")
             return if (warnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = warnings.distinct())
         }
 

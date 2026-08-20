@@ -980,6 +980,85 @@ class SyncManagerXtreamLiveStrategyTest {
         assertThat(requestCount.get()).isEqualTo(1)
     }
 
+    @Test
+    fun `initial live onboarding emits partial ready and returns usable result without blocking`() = runTest {
+        val requestCount = AtomicInteger(0)
+        val httpService = OkHttpXtreamApiService(
+            client = OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    requestCount.incrementAndGet()
+                    val body = """
+                        [
+                          {
+                            "num": "1",
+                            "name": "Live Channel 1",
+                            "stream_id": "101",
+                            "stream_icon": "https://img.example.test/101.png",
+                            "category_id": "1",
+                            "category_name": "News",
+                            "container_extension": "m3u8"
+                          }
+                        ]
+                    """.trimIndent()
+                    Response.Builder()
+                        .request(Request.Builder().url(chain.request().url).build())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(body.toResponseBody("application/json".toMediaType()))
+                        .build()
+                }
+                .build(),
+            json = json
+        )
+        val apiService = FakeXtreamApiService(
+            liveCategories = listOf(XtreamCategory(categoryId = "1", categoryName = "News"))
+        )
+        val provider = Provider(
+            id = 42L,
+            name = "Xtream Fast",
+            type = ProviderType.XTREAM_CODES,
+            serverUrl = "https://example.test",
+            username = "user",
+            password = "pass",
+            allowedOutputFormats = listOf("m3u8", "ts")
+        )
+        val xtreamProvider = XtreamProvider(
+            providerId = provider.id,
+            api = apiService,
+            serverUrl = provider.serverUrl,
+            username = provider.username,
+            password = provider.password,
+            allowedOutputFormats = provider.allowedOutputFormats
+        )
+        val strategy = createStrategy(
+            apiService = apiService,
+            httpService = httpService,
+            stageChannelItems = { _, channels, _, fallbackCollector, _ ->
+                StagedCatalogSnapshot(
+                    sessionId = 100L,
+                    acceptedCount = channels.size,
+                    fallbackCategories = fallbackCollector.entities()
+                )
+            }
+        )
+
+        val payload = strategy.syncXtreamLiveCatalog(
+            provider = provider,
+            api = xtreamProvider,
+            existingMetadata = SyncMetadata(provider.id),
+            hiddenLiveCategoryIds = emptySet(),
+            onProgress = null,
+            runtimeProfile = testRuntimeProfile(tier = DeviceSyncTier.HIGH, batchSize = 10),
+            trackInitialLiveOnboarding = true
+        )
+
+        assertThat(payload.catalogResult).isInstanceOf(CatalogStrategyResult.Success::class.java)
+        assertThat(payload.stagedAcceptedCount).isEqualTo(1)
+        assertThat(payload.strategyFeedback.attemptedFullCatalog).isTrue()
+        assertThat(requestCount.get()).isEqualTo(1)
+    }
+
     private fun createStrategy(
         apiService: XtreamApiService,
         httpService: OkHttpXtreamApiService,

@@ -603,6 +603,7 @@ class ProviderRepositoryImpl @Inject constructor(
         return when (val authResult = provider.authenticate()) {
             is Result.Success -> {
                 val authDuration = System.currentTimeMillis() - tAuthStart
+                Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] AUTH_DONE elapsed=${authDuration}ms")
                 Log.i("FAST_ONBOARDING", "[AUTH] completed in ${authDuration}ms")
                 val providerData = if (existingProvider != null) {
                     onProgress?.invoke("1/4 • Sağlayıcı güncelleniyor…")
@@ -626,6 +627,7 @@ class ProviderRepositoryImpl @Inject constructor(
                     )
                     providerDao.update(updated.toSecureEntity())
                     syncProviderIdToFirestore(updated.id)
+                    Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] PROVIDER_UPDATED id=${updated.id}")
                     updated.copy(password = "")
                 } else {
                     val newData = authResult.data.copy(
@@ -642,6 +644,7 @@ class ProviderRepositoryImpl @Inject constructor(
                     )
                     val newId = insertProvider(newData)
                     syncProviderIdToFirestore(newId)
+                    Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] PROVIDER_CREATED id=$newId")
                     newData.copy(id = newId).copy(password = "")
                 }
 

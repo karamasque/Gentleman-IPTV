@@ -315,6 +315,8 @@ internal class SyncManagerXtreamLiveStrategy(
                 syncCatalogStore.insertChannelsDirect(provider.id, mappedChannels.map { it.toEntity() })
                 partialReadyEmitted = true
                 val elapsed = System.currentTimeMillis() - tStreamStart
+                Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] LIVE_FIRST_BATCH_DB count=${mappedChannels.size} elapsed=${elapsed}ms")
+                Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] LIVE_PARTIAL_READY count=${acceptedCount} elapsed=${elapsed}ms")
                 Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE FIRST_DB_VISIBLE_MS=${elapsed}ms count=${mappedChannels.size}")
                 Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE PARTIAL_READY_MS=${elapsed}ms")
                 syncProgressBus.emit(

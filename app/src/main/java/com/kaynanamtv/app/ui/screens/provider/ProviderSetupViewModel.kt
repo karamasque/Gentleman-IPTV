@@ -1,5 +1,6 @@
 package com.kaynanamtv.app.ui.screens.provider
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kaynanamtv.app.pairing.ProviderQrPairingManager
@@ -442,6 +443,7 @@ class ProviderSetupViewModel @Inject constructor(
         httpUserAgent: String,
         httpHeaders: String
     ) {
+        Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] LOGIN_CLICK")
         _uiState.update {
             it.copy(
                 validationError = null,
@@ -474,6 +476,7 @@ class ProviderSetupViewModel @Inject constructor(
                 onProgress = { msg -> _uiState.update { it.copy(syncProgress = msg) } }
             )) {
                 is ValidateAndAddProviderResult.Success -> {
+                    Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] VIEWMODEL_SUCCESS providerId=${result.provider.id}")
                     makeProviderActiveAndDefault(result.provider.id)
                     _uiState.update {
                         it.copy(
@@ -483,7 +486,8 @@ class ProviderSetupViewModel @Inject constructor(
                             createdProviderId = result.provider.id,
                             error = null,
                             validationError = null,
-                            syncProgress = null
+                            syncProgress = null,
+                            fullCatalogProgress = null
                         )
                     }
                 }

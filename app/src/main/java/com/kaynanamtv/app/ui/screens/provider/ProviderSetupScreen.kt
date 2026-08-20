@@ -1,5 +1,6 @@
 package com.kaynanamtv.app.ui.screens.provider
 
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
@@ -622,6 +623,11 @@ fun ProviderSetupScreen(
     if (uiState.syncProgress != null && uiState.jellyfinQuickConnectCode.isBlank()) {
         ProviderOnboardingProgressDialog(
             message = uiState.syncProgress!!,
+            fullCatalogProgress = uiState.fullCatalogProgress,
+            onEnterApp = {
+                Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] ON_PROVIDER_ADDED (manual button)")
+                onProviderAdded()
+            },
             onDismiss = null
         )
     }
@@ -725,11 +731,16 @@ fun ProviderSetupScreen(
     ) {
         val context = LocalContext.current
         val lifecycle = LocalLifecycleOwner.current.lifecycle
+        var hasNavigated by remember { mutableStateOf(false) }
         LaunchedEffect(uiState.onboardingCompletion, uiState.completionWarning, uiState.pendingCombinedAttachProfileId) {
             if (
+                !hasNavigated &&
                 uiState.onboardingCompletion != ProviderSetupViewModel.OnboardingCompletion.NONE &&
                 uiState.pendingCombinedAttachProfileId == null
             ) {
+                hasNavigated = true
+                Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] ON_PROVIDER_ADDED")
+                Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] NAVIGATION_HOME")
                 if (uiState.completionWarning != null) {
                     Toast.makeText(
                         context,
