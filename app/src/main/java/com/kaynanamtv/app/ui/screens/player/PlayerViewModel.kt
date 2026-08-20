@@ -752,39 +752,6 @@ class PlayerViewModel @Inject constructor(
                 }
         }
         viewModelScope.launch {
-            preferencesRepository.playerEnginePreference.collect { pref ->
-                val targetType = playerEngineFactory.resolveEngineType(pref)
-                val currentEngine = activePlayerEngineFlow.value
-                val isCurrentlyVlc = currentEngine is com.kaynanamtv.player.VlcPlayerEngine
-                val isCurrentlyMedia3 = currentEngine is com.kaynanamtv.player.Media3PlayerEngine
-                val needsSwitch = (targetType == com.kaynanamtv.player.PlayerEngineType.VLC && !isCurrentlyVlc) ||
-                                  (targetType == com.kaynanamtv.player.PlayerEngineType.MEDIA3 && !isCurrentlyMedia3)
-
-                if (needsSwitch) {
-                    val wasPlaying = currentEngine.isPlaying.value
-                    val lastPos = currentEngine.currentPosition.value
-                    val lastStream = currentResolvedStreamInfo
-
-                    // Lifecycle order: old engine stop -> surface detach -> release -> new engine prepare/play
-                    currentEngine.stop()
-                    currentEngine.clearRenderBinding()
-                    if (currentEngine !== mainPlayerEngine) {
-                        currentEngine.release()
-                    }
-
-                    val newEngine = playerEngineFactory.createEngine(targetType)
-                    activePlayerEngineFlow.value = newEngine
-
-                    if (lastStream != null && wasPlaying) {
-                        newEngine.prepare(lastStream)
-                        if (lastPos > 0) {
-                            newEngine.seekTo(lastPos)
-                        }
-                    }
-                }
-            }
-        }
-        viewModelScope.launch {
             var consecutiveLowBandwidthSeconds = 0
             var noticeShown = false
             activePlayerEngineFlow.flatMapLatest { it.playerStats }.collect { stats ->

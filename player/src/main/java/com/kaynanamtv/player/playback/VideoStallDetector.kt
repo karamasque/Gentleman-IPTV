@@ -4,9 +4,9 @@ import com.kaynanamtv.player.PlaybackState
 
 class VideoStallDetector(
     private val nowMs: () -> Long = System::currentTimeMillis,
-    private val initialGraceMs: Long = 10_000L,
+    private val initialGraceMs: Long = 5_000L,
     private val stallThresholdMs: Long = 8_000L,
-    private val bufferingStallThresholdMs: Long = 15_000L,
+    private val bufferingStallThresholdMs: Long = 6_000L,
     private val minPositionAdvanceMs: Long = 2_000L
 ) {
     private var startedAtMs: Long = 0L

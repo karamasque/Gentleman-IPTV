@@ -3488,8 +3488,8 @@ class SyncManagerTest {
 
     @Test
     fun `resetState_afterPartial_returnsToIdle`() = runTest {
-        val mgr = buildManager()
-        mgr.sync(1L) // fails → Partial
+        val mgr = buildManager(providerType = ProviderType.M3U)
+        mgr.sync(1L) // fails → Error/Partial
         advanceUntilIdle()
 
         assertThat(mgr.currentSyncState(1L)).isNotEqualTo(SyncState.Idle)

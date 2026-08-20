@@ -11,8 +11,8 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 private const val FAST_TRANSIENT_RETRY_DELAY_MS = 500L
-private const val LIVE_TRANSIENT_RETRY_ATTEMPTS = 5
-private const val LIVE_HLS_MALFORMED_RETRY_ATTEMPTS_AFTER_START = 5
+private const val LIVE_TRANSIENT_RETRY_ATTEMPTS = 10
+private const val LIVE_HLS_MALFORMED_RETRY_ATTEMPTS_AFTER_START = 12
 
 data class PlaybackRetryContext(
     val resolvedStreamType: ResolvedStreamType,

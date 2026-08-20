@@ -99,9 +99,9 @@ internal fun rememberSettingsScreenLabels(
     }
     val playerEnginePreferenceLabel = remember(uiState.playerEnginePreference) {
         when (uiState.playerEnginePreference) {
-            com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO -> "Otomatik (TV: VLC, Mobil: Media3)"
+            com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO -> "Media3 + FFmpeg (Önerilen)"
             com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3 -> "Media3 (ExoPlayer)"
-            com.kaynanamtv.domain.model.PlayerEnginePreference.VLC -> "Dahili VLC Player"
+            com.kaynanamtv.domain.model.PlayerEnginePreference.VLC -> "Media3 + FFmpeg"
         }
     }
     val playbackBufferModeLabel = remember(uiState.playerPlaybackBufferMode, context) {

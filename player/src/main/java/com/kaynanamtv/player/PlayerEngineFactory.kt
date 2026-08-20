@@ -33,59 +33,24 @@ class PlayerEngineFactory @Inject constructor(
     }
 
     /**
-     * Resolves the target player engine based on user preference, hardware profile, and device type.
-     * Respects explicit manual user selection.
+     * Resolves the target player engine. Media3 (with bundled FFmpeg extension) is the sole unified engine.
      */
-    fun resolveEngineType(preference: PlayerEnginePreference): PlayerEngineType {
-        val isTv = isTvDevice(context)
-        return when (preference) {
-            PlayerEnginePreference.AUTO -> {
-                if (isTv) {
-                    val model = android.os.Build.MODEL.orEmpty().uppercase()
-                    val board = android.os.Build.BOARD.orEmpty().uppercase()
-                    val isMiBoxLowRam = model.contains("MIBOX") || model.contains("MDZ-16") || model.contains("MDZ-22") || board.contains("MIBOX")
-                    if (isMiBoxLowRam) {
-                        Log.i(TAG, "[PLAYER_ENGINE] device=MiBox mode=AUTO selected=VLC (Hardware-tuned LibVLC)")
-                        PlayerEngineType.VLC
-                    } else {
-                        Log.i(TAG, "[PLAYER_ENGINE] device=TV mode=AUTO selected=VLC")
-                        PlayerEngineType.VLC
-                    }
-                } else {
-                    Log.i(TAG, "[PLAYER_ENGINE] device=MOBILE mode=AUTO selected=MEDIA3")
-                    PlayerEngineType.MEDIA3
-                }
-            }
-            PlayerEnginePreference.MEDIA3 -> {
-                Log.i(TAG, "[PLAYER_ENGINE] mode=MANUAL selected=MEDIA3")
-                PlayerEngineType.MEDIA3
-            }
-            PlayerEnginePreference.VLC -> {
-                Log.i(TAG, "[PLAYER_ENGINE] mode=MANUAL selected=VLC")
-                PlayerEngineType.VLC
-            }
-        }
+    fun resolveEngineType(preference: PlayerEnginePreference = PlayerEnginePreference.AUTO): PlayerEngineType {
+        Log.i(TAG, "[PLAYER_ENGINE] Standardized on MEDIA3 (ExoPlayer + FFmpeg)")
+        return PlayerEngineType.MEDIA3
     }
 
-    fun createEngine(type: PlayerEngineType): PlayerEngine {
-        return when (type) {
-            PlayerEngineType.MEDIA3 -> {
-                Media3PlayerEngine(
-                    context,
-                    okHttpClient,
-                    playbackCompatibilityRepository,
-                    audioCompatibilityMemoryStore,
-                    playbackSupportSnapshotStore
-                )
-            }
-            PlayerEngineType.VLC -> {
-                VlcPlayerEngine(context)
-            }
-        }
+    fun createEngine(type: PlayerEngineType = PlayerEngineType.MEDIA3): PlayerEngine {
+        return Media3PlayerEngine(
+            context,
+            okHttpClient,
+            playbackCompatibilityRepository,
+            audioCompatibilityMemoryStore,
+            playbackSupportSnapshotStore
+        )
     }
 }
 
 enum class PlayerEngineType {
-    MEDIA3,
-    VLC
+    MEDIA3
 }

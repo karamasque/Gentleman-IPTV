@@ -146,9 +146,6 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.ui)
 
-    // LibVLC (Dahili VLC Player Motoru)
-    implementation(libs.libvlc)
-
     // OkHttp (for custom data source)
     implementation(libs.okhttp)
 

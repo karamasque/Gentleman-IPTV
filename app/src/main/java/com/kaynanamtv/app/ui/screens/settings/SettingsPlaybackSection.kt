@@ -103,9 +103,8 @@ internal fun LazyListScope.settingsPlaybackSection(
         }
         val playerEngineOptions = remember {
             listOf(
-                com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO to "Otomatik (TV: VLC, Mobil: Media3)",
-                com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3 to "Media3 (ExoPlayer)",
-                com.kaynanamtv.domain.model.PlayerEnginePreference.VLC to "Dahili VLC Player"
+                com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO to "Media3 + FFmpeg (Önerilen)",
+                com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3 to "Media3 (ExoPlayer)"
             )
         }
 
