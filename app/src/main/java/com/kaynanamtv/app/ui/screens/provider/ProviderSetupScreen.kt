@@ -3103,47 +3103,44 @@ fun ProviderOnboardingProgressDialog(
 
                 // Canlı TV
                 OnboardingStatusRow(
-                    isVerified = progress.live.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY,
+                    isVerified = progress.live.state.isUsable,
                     isLoading = progress.live.state == com.kaynanamtv.domain.sync.CatalogSectionState.LOADING,
                     isFailed = progress.live.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED,
-                    label = if (progress.live.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY) {
-                        "Canlı TV hazır (${progress.live.itemsIndexed} kanal)"
-                    } else if (progress.live.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED) {
-                        "Canlı TV aktarılamadı"
-                    } else {
-                        "Canlı TV hazırlanıyor…"
+                    label = when (progress.live.state) {
+                        com.kaynanamtv.domain.sync.CatalogSectionState.PARTIAL_READY -> "Canlı TV hazır (${progress.live.itemsIndexed} kanal yüklendi)"
+                        com.kaynanamtv.domain.sync.CatalogSectionState.READY -> "Canlı TV hazır (${progress.live.itemsIndexed} kanal)"
+                        com.kaynanamtv.domain.sync.CatalogSectionState.FAILED -> "Canlı TV aktarılamadı"
+                        else -> "Canlı TV hazırlanıyor…"
                     },
-                    subLabel = if (progress.live.fullReadyMs > 0) "${progress.live.fullReadyMs}ms" else null
+                    subLabel = if (progress.live.firstUsableMs > 0) "${progress.live.firstUsableMs}ms" else if (progress.live.fullReadyMs > 0) "${progress.live.fullReadyMs}ms" else null
                 )
 
                 // Filmler
                 OnboardingStatusRow(
-                    isVerified = progress.movies.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY,
+                    isVerified = progress.movies.state.isUsable,
                     isLoading = progress.movies.state == com.kaynanamtv.domain.sync.CatalogSectionState.LOADING,
                     isFailed = progress.movies.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED,
-                    label = if (progress.movies.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY) {
-                        "Filmler hazır (${progress.movies.itemsIndexed} film)"
-                    } else if (progress.movies.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED) {
-                        "Filmler aktarılamadı"
-                    } else {
-                        "Filmler hazırlanıyor…"
+                    label = when (progress.movies.state) {
+                        com.kaynanamtv.domain.sync.CatalogSectionState.PARTIAL_READY -> "Filmler hazır (${progress.movies.itemsIndexed} film yüklendi)"
+                        com.kaynanamtv.domain.sync.CatalogSectionState.READY -> "Filmler hazır (${progress.movies.itemsIndexed} film)"
+                        com.kaynanamtv.domain.sync.CatalogSectionState.FAILED -> "Filmler aktarılamadı"
+                        else -> "Filmler hazırlanıyor…"
                     },
-                    subLabel = if (progress.movies.fullReadyMs > 0) "${progress.movies.fullReadyMs}ms" else null
+                    subLabel = if (progress.movies.firstUsableMs > 0) "${progress.movies.firstUsableMs}ms" else if (progress.movies.fullReadyMs > 0) "${progress.movies.fullReadyMs}ms" else null
                 )
 
                 // Diziler
                 OnboardingStatusRow(
-                    isVerified = progress.series.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY,
+                    isVerified = progress.series.state.isUsable,
                     isLoading = progress.series.state == com.kaynanamtv.domain.sync.CatalogSectionState.LOADING,
                     isFailed = progress.series.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED,
-                    label = if (progress.series.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY) {
-                        "Diziler hazır (${progress.series.itemsIndexed} dizi)"
-                    } else if (progress.series.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED) {
-                        "Diziler aktarılamadı"
-                    } else {
-                        "Diziler hazırlanıyor…"
+                    label = when (progress.series.state) {
+                        com.kaynanamtv.domain.sync.CatalogSectionState.PARTIAL_READY -> "Diziler hazır (${progress.series.itemsIndexed} dizi yüklendi)"
+                        com.kaynanamtv.domain.sync.CatalogSectionState.READY -> "Diziler hazır (${progress.series.itemsIndexed} dizi)"
+                        com.kaynanamtv.domain.sync.CatalogSectionState.FAILED -> "Diziler aktarılamadı"
+                        else -> "Diziler hazırlanıyor…"
                     },
-                    subLabel = if (progress.series.fullReadyMs > 0) "${progress.series.fullReadyMs}ms" else null
+                    subLabel = if (progress.series.firstUsableMs > 0) "${progress.series.firstUsableMs}ms" else if (progress.series.fullReadyMs > 0) "${progress.series.fullReadyMs}ms" else null
                 )
 
                 if (message.isNotBlank() && !message.contains("hazır")) {

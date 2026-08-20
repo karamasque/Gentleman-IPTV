@@ -16,7 +16,7 @@ class PlayerPlaybackRecoverySupportTest {
 
         assertThat(classifyPlaybackError(error)).isEqualTo(PlayerRecoveryType.SOURCE)
         assertThat(resolvePlaybackErrorMessage(error))
-            .isEqualTo("Provider rejected playback, likely max connections or bandwidth limit.")
+            .isEqualTo("Yayın sunucusu oynatmayı reddetti; muhtemelen maksimum bağlantı sınırı veya bant genişliği limiti aşıldı.")
     }
 
     @Test

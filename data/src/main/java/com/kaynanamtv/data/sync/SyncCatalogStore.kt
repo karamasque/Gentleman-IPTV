@@ -153,6 +153,8 @@ internal class SyncCatalogStore(
     }
 
     suspend fun applyStagedLiveCatalog(providerId: Long, sessionId: Long, categories: List<CategoryEntity>?) {
+        val t0 = System.currentTimeMillis()
+        Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE DB_FINALIZE_START providerId=$providerId sessionId=$sessionId")
         try {
             transactionRunner.inTransaction {
                 categories?.let { stageCategories(providerId, sessionId, it) }
@@ -160,6 +162,8 @@ internal class SyncCatalogStore(
                 applyChannels(providerId, sessionId)
                 catalogSyncDao.rebuildChannelFts()
             }
+            val dur = System.currentTimeMillis() - t0
+            Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE DB_FINALIZE_DONE duration=${dur}ms")
         } finally {
             clearSession(providerId, sessionId)
         }
@@ -189,6 +193,67 @@ internal class SyncCatalogStore(
             }
         } finally {
             clearSession(providerId, sessionId)
+        }
+    }
+
+    suspend fun insertChannelsDirect(providerId: Long, channels: List<ChannelEntity>) {
+        if (channels.isEmpty()) return
+        transactionRunner.inTransaction {
+            channelDao.insertAll(channels)
+        }
+    }
+
+    suspend fun insertCategoriesDirect(providerId: Long, categories: List<CategoryEntity>?) {
+        if (categories.isNullOrEmpty()) return
+        transactionRunner.inTransaction {
+            categoryDao.insertAll(categories)
+        }
+    }
+
+    suspend fun insertMoviesDirect(providerId: Long, movies: List<MovieEntity>) {
+        if (movies.isEmpty()) return
+        transactionRunner.inTransaction {
+            movieDao.insertAll(movies)
+        }
+    }
+
+    suspend fun insertSeriesDirect(providerId: Long, series: List<SeriesEntity>) {
+        if (series.isEmpty()) return
+        transactionRunner.inTransaction {
+            seriesDao.insertAll(series)
+        }
+    }
+
+    fun scheduleChannelFtsRebuildAsync() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val t0 = System.currentTimeMillis()
+            runCatching {
+                catalogSyncDao.rebuildChannelFts()
+                val dur = System.currentTimeMillis() - t0
+                Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE FTS_READY duration=${dur}ms")
+            }.onFailure { e ->
+                Log.w("SYNC_TRACE", "[SYNC_TRACE] LIVE FTS rebuild failed: ${e.message}")
+            }
+        }
+    }
+
+    fun scheduleMovieFtsRebuildAsync() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val t0 = System.currentTimeMillis()
+            runCatching {
+                catalogSyncDao.rebuildMovieFts()
+                Log.i("SYNC_TRACE", "[SYNC_TRACE] MOVIES FTS_READY duration=${System.currentTimeMillis() - t0}ms")
+            }
+        }
+    }
+
+    fun scheduleSeriesFtsRebuildAsync() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val t0 = System.currentTimeMillis()
+            runCatching {
+                catalogSyncDao.rebuildSeriesFts()
+                Log.i("SYNC_TRACE", "[SYNC_TRACE] SERIES FTS_READY duration=${System.currentTimeMillis() - t0}ms")
+            }
         }
     }
 

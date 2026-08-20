@@ -27,8 +27,12 @@ enum class Section {
 enum class CatalogSectionState {
     PENDING,
     LOADING,
+    PARTIAL_READY,
     READY,
-    FAILED
+    FAILED;
+
+    val isUsable: Boolean
+        get() = this == PARTIAL_READY || this == READY
 }
 
 data class SectionOnboardingStatus(
@@ -51,12 +55,12 @@ data class FullCatalogOnboardingProgress(
     val series: SectionOnboardingStatus = SectionOnboardingStatus()
 ) {
     val isAnyCatalogReady: Boolean
-        get() = live.state == CatalogSectionState.READY ||
-                movies.state == CatalogSectionState.READY ||
-                series.state == CatalogSectionState.READY
+        get() = live.state.isUsable ||
+                movies.state.isUsable ||
+                series.state.isUsable
 
     val isAllCatalogsFinished: Boolean
-        get() = (live.state == CatalogSectionState.READY || live.state == CatalogSectionState.FAILED) &&
-                (movies.state == CatalogSectionState.READY || movies.state == CatalogSectionState.FAILED) &&
-                (series.state == CatalogSectionState.READY || series.state == CatalogSectionState.FAILED)
+        get() = (live.state.isUsable || live.state == CatalogSectionState.FAILED) &&
+                (movies.state.isUsable || movies.state == CatalogSectionState.FAILED) &&
+                (series.state.isUsable || series.state == CatalogSectionState.FAILED)
 }

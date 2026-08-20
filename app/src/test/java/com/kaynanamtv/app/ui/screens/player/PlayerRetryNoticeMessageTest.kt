@@ -13,7 +13,7 @@ class PlayerRetryNoticeMessageTest {
             status = PlayerRetryStatus(attempt = 1, maxAttempts = 10, delayMs = 500L)
         )
 
-        assertThat(message).isEqualTo("Retrying HLS 1/10...")
+        assertThat(message).isEqualTo("HLS yeniden deneniyor (1/10)...")
     }
 
     @Test
@@ -23,6 +23,6 @@ class PlayerRetryNoticeMessageTest {
             status = PlayerRetryStatus(attempt = 2, maxAttempts = 10, delayMs = 1_000L)
         )
 
-        assertThat(message).isEqualTo("Retrying HLS 2/10 in 1s...")
+        assertThat(message).isEqualTo("HLS yeniden deneniyor (2/10) (1 sn)...")
     }
 }

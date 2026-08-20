@@ -96,42 +96,60 @@ internal class SyncManagerXtreamLiveStrategy(
         )
         val shouldAttemptFullCatalog = effectiveLiveSyncMethod == EffectiveXtreamLiveSyncMethod.STREAM_ALL &&
             hiddenLiveCategoryIds.isEmpty()
+        Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE_POLICY_SELECTED=$effectiveLiveSyncMethod shouldAttemptFull=$shouldAttemptFullCatalog hiddenCategories=${hiddenLiveCategoryIds.size}")
         if (shouldAttemptFullCatalog) {
             progress(provider.id, onProgress, "Canlı TV kanalları indiriliyor...")
-            fullPayload = loadXtreamLiveFull(provider, api, runtimeProfile)
+            val isNewProvider = trackInitialLiveOnboarding || existingMetadata.liveCount == 0
+            fullPayload = loadXtreamLiveFull(
+                provider = provider,
+                api = api,
+                runtimeProfile = runtimeProfile,
+                categories = visibleResolvedCategories,
+                isNewProviderOnboarding = isNewProvider
+            )
             when (val fullResult = fullPayload.catalogResult) {
-                is CatalogStrategyResult.Success -> return fullPayload.copy(
-                    categories = catalogStrategySupport.mergePreferredAndFallbackCategories(
-                        visibleResolvedCategories,
-                        fullPayload.categories ?: catalogStrategySupport.buildFallbackLiveCategories(provider.id, fullResult.items)
-                    ),
-                    warnings = emptyList(),
-                    strategyFeedback = XtreamStrategyFeedback(
-                        attemptedFullCatalog = true,
-                        fullCatalogUnsafe = false
+                is CatalogStrategyResult.Success -> {
+                    Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE BULK SUCCESS items=${fullPayload.stagedAcceptedCount}")
+                    return fullPayload.copy(
+                        categories = catalogStrategySupport.mergePreferredAndFallbackCategories(
+                            visibleResolvedCategories,
+                            fullPayload.categories ?: catalogStrategySupport.buildFallbackLiveCategories(provider.id, fullResult.items)
+                        ),
+                        warnings = emptyList(),
+                        strategyFeedback = XtreamStrategyFeedback(
+                            attemptedFullCatalog = true,
+                            fullCatalogUnsafe = false
+                        )
                     )
-                )
-                is CatalogStrategyResult.Partial -> return fullPayload.copy(
-                    categories = catalogStrategySupport.mergePreferredAndFallbackCategories(
-                        visibleResolvedCategories,
-                        fullPayload.categories ?: catalogStrategySupport.buildFallbackLiveCategories(provider.id, fullResult.items)
-                    ),
-                    warnings = emptyList(),
-                    strategyFeedback = XtreamStrategyFeedback(
-                        attemptedFullCatalog = true,
-                        fullCatalogUnsafe = false
+                }
+                is CatalogStrategyResult.Partial -> {
+                    Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE BULK PARTIAL items=${fullPayload.stagedAcceptedCount}")
+                    return fullPayload.copy(
+                        categories = catalogStrategySupport.mergePreferredAndFallbackCategories(
+                            visibleResolvedCategories,
+                            fullPayload.categories ?: catalogStrategySupport.buildFallbackLiveCategories(provider.id, fullResult.items)
+                        ),
+                        warnings = emptyList(),
+                        strategyFeedback = XtreamStrategyFeedback(
+                            attemptedFullCatalog = true,
+                            fullCatalogUnsafe = false
+                        )
                     )
-                )
-                else -> Unit
+                }
+                else -> {
+                    Log.w("SYNC_TRACE", "[SYNC_TRACE] LIVE BULK FAILED -> CATEGORY_BY_CATEGORY FALLBACK TRIGGERED!")
+                }
             }
         } else {
             Log.i(
                 XTREAM_LIVE_STRATEGY_TAG,
                 "Xtream live full catalog skipped for provider ${provider.id}: hiddenCategories=${hiddenLiveCategoryIds.size} profile=${runtimeProfile.diagnosticsLabel} initial=$trackInitialLiveOnboarding."
             )
+            Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE BULK SKIPPED -> using CATEGORY_BY_CATEGORY")
         }
 
         progress(provider.id, onProgress, "Canlı TV indiriliyor...")
+        Log.w("SYNC_TRACE", "[SYNC_TRACE] LIVE CATEGORY_BY_CATEGORY_STARTED categoriesCount=${filteredRawLiveCategories.size}")
         val categoryPayload = loadXtreamLiveByCategory(
             provider = provider,
             api = api,
@@ -140,6 +158,7 @@ internal class SyncManagerXtreamLiveStrategy(
             preferSequential = existingMetadata.liveSequentialFailuresRemembered || runtimeProfile.maxCategoryConcurrency <= 1,
             runtimeProfile = runtimeProfile
         )
+        Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE CATEGORY_BY_CATEGORY_FINISHED acceptedCount=${categoryPayload.stagedAcceptedCount}")
         return CatalogSyncPayload(
             catalogResult = categoryPayload.catalogResult,
             categories = catalogStrategySupport.mergePreferredAndFallbackCategories(
@@ -165,7 +184,9 @@ internal class SyncManagerXtreamLiveStrategy(
     suspend fun loadXtreamLiveFull(
         provider: Provider,
         api: XtreamProvider,
-        runtimeProfile: CatalogSyncRuntimeProfile
+        runtimeProfile: CatalogSyncRuntimeProfile,
+        categories: List<com.kaynanamtv.data.local.entity.CategoryEntity>? = null,
+        isNewProviderOnboarding: Boolean = false
     ): CatalogSyncPayload<Channel> {
         val endpoint = XtreamUrlFactory.buildPlayerApiUrl(
             serverUrl = provider.serverUrl,
@@ -181,7 +202,9 @@ internal class SyncManagerXtreamLiveStrategy(
                 failureNextStep = "category-bulk",
                 streamItems = { item -> xtreamCatalogHttpService.streamLiveStreams(endpoint, onItem = item) },
                 mapRawBatch = { batch -> api.mapLiveStreamsSequence(batch) },
-                runtimeProfile = runtimeProfile
+                runtimeProfile = runtimeProfile,
+                categories = categories,
+                isNewProviderOnboarding = isNewProviderOnboarding
             )
         }
 
@@ -191,7 +214,9 @@ internal class SyncManagerXtreamLiveStrategy(
             failureNextStep = "legacy-full",
             streamItems = { item -> xtreamCatalogHttpService.streamLiveStreamRows(endpoint, onItem = item) },
             mapRawBatch = { batch -> api.mapLiveStreamRowsSequence(batch) },
-            runtimeProfile = runtimeProfile
+            runtimeProfile = runtimeProfile,
+            categories = categories,
+            isNewProviderOnboarding = isNewProviderOnboarding
         )
         if (!thinPayload.shouldRetryLegacyFullDecode()) {
             return thinPayload
@@ -207,7 +232,9 @@ internal class SyncManagerXtreamLiveStrategy(
             failureNextStep = "category-bulk",
             streamItems = { item -> xtreamCatalogHttpService.streamLiveStreams(endpoint, onItem = item) },
             mapRawBatch = { batch -> api.mapLiveStreamsSequence(batch) },
-            runtimeProfile = runtimeProfile
+            runtimeProfile = runtimeProfile,
+            categories = categories,
+            isNewProviderOnboarding = isNewProviderOnboarding
         )
     }
 
@@ -226,7 +253,9 @@ internal class SyncManagerXtreamLiveStrategy(
         failureNextStep: String,
         streamItems: suspend (suspend (RawItem) -> Unit) -> Int,
         mapRawBatch: suspend (Sequence<RawItem>) -> Sequence<Channel>,
-        runtimeProfile: CatalogSyncRuntimeProfile
+        runtimeProfile: CatalogSyncRuntimeProfile,
+        categories: List<com.kaynanamtv.data.local.entity.CategoryEntity>? = null,
+        isNewProviderOnboarding: Boolean = false
     ): CatalogSyncPayload<Channel> {
         val fallbackCollector = FallbackCategoryCollector(provider.id, ContentType.LIVE)
         val seenStreamIds = HashSet<Long>()
@@ -238,14 +267,11 @@ internal class SyncManagerXtreamLiveStrategy(
         var flushCount = 0
         var mappingElapsedMs = 0L
         var stagingElapsedMs = 0L
+        var partialReadyEmitted = false
+        val tStreamStart = System.currentTimeMillis()
 
         fun abortIfLowMemory() {
             if (isCurrentlyLowOnMemory()) {
-                // D12 — emission finale avant l'avortement low-memory : reflete l'etat
-                // au moment de l'echec (section LIVE, mode indetermine, nombre d'items
-                // deja acceptes). Le `reset()` du finally cote SyncManager (T3) viendra
-                // ensuite ramener le flow a null — c'est volontaire (D7) pour eviter que
-                // l'ecran suivant n'herite d'un etat partiel.
                 syncProgressBus.emit(
                     SyncProgress(
                         section = Section.LIVE,
@@ -280,20 +306,48 @@ internal class SyncManagerXtreamLiveStrategy(
             stagedSessionId = staged.sessionId
             acceptedCount += staged.acceptedCount
             flushCount++
-            rawBatch.clear()
-            // D10 — mode HIGH (full catalog) : pas de count par categorie disponible,
-            // on emet en indetermine (`total = 0`) une fois par flush de batch (cadence
-            // <= 1/s en pratique, jamais par item). Le label reste vide car aucune
-            // categorie ne correspond a la fenetre courante.
-            syncProgressBus.emit(
-                SyncProgress(
-                    section = Section.LIVE,
-                    current = 0,
-                    total = 0,
-                    currentLabel = "",
-                    itemsIndexed = acceptedCount
+
+            if (isNewProviderOnboarding && flushCount == 1) {
+                // First batch progressive commit: write first batch directly to Room DB so UI has immediate data
+                if (!categories.isNullOrEmpty()) {
+                    syncCatalogStore.insertCategoriesDirect(provider.id, categories)
+                }
+                syncCatalogStore.insertChannelsDirect(provider.id, mappedChannels.map { it.toEntity() })
+                partialReadyEmitted = true
+                val elapsed = System.currentTimeMillis() - tStreamStart
+                Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE FIRST_DB_VISIBLE_MS=${elapsed}ms count=${mappedChannels.size}")
+                Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE PARTIAL_READY_MS=${elapsed}ms")
+                syncProgressBus.emit(
+                    SyncProgress(
+                        section = Section.LIVE,
+                        current = 0,
+                        total = 0,
+                        currentLabel = "Canlı TV hazır (${acceptedCount} kanal aktarılıyor…)",
+                        itemsIndexed = acceptedCount,
+                        onboardingProgress = com.kaynanamtv.domain.sync.FullCatalogOnboardingProgress(
+                            serverAuthVerified = true,
+                            live = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
+                                state = com.kaynanamtv.domain.sync.CatalogSectionState.PARTIAL_READY,
+                                itemsIndexed = acceptedCount,
+                                firstUsableMs = elapsed
+                            )
+                        )
+                    )
                 )
-            )
+            } else {
+                syncProgressBus.emit(
+                    SyncProgress(
+                        section = Section.LIVE,
+                        current = 0,
+                        total = 0,
+                        currentLabel = "",
+                        itemsIndexed = acceptedCount
+                    )
+                )
+            }
+
+            Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE flushBatch #${flushCount} itemsInBatch=${mappedChannels.size} totalStaged=${acceptedCount} mapMs=${mappingElapsedMs} stageMs=${stagingElapsedMs}")
+            rawBatch.clear()
             abortIfLowMemory()
         }
 
@@ -316,6 +370,7 @@ internal class SyncManagerXtreamLiveStrategy(
                 is Attempt.Success -> Unit
                 is Attempt.Failure -> {
                     fullChannelsFailure = attempt.error
+                    Log.w("SYNC_TRACE", "[SYNC_TRACE] LIVE loadXtreamLiveFull attempt failed: ${attempt.error.message}")
                     stagedSessionId?.let { sessionId ->
                         syncCatalogStore.discardStagedImport(provider.id, sessionId)
                         stagedSessionId = null

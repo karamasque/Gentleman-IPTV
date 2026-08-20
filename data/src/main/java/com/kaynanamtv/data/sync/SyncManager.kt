@@ -1135,6 +1135,7 @@ class SyncManager @Inject constructor(
         // ULTRA FAST FULL CATALOG ONBOARDING: Canlı TV, Filmler ve Diziler paralel 3 bağımsız fast-path olarak başlatılır.
         if (trackInitialLiveOnboarding) {
             val tOnboardingStart = System.currentTimeMillis()
+            Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE READY totalLiveMs=${tOnboardingStart - now}ms liveCount=${liveCount}")
             var onboardingProgress = com.kaynanamtv.domain.sync.FullCatalogOnboardingProgress(
                 serverAuthVerified = true,
                 live = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
@@ -5479,17 +5480,22 @@ class SyncManager @Inject constructor(
                     )
                     liveSyncResult.stagedAcceptedCount
                 } ?: run {
-                    val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
-                        providerId = providerId,
-                        visibleCategories = liveSyncResult.categories,
-                        visibleChannels = liveResult.items.map { it.toEntity() },
-                        hiddenLiveCategoryIds = hiddenLiveCategoryIds
-                    )
-                    syncCatalogStore.replaceLiveCatalog(
-                        providerId = providerId,
-                        categories = liveCatalog.categories,
-                        channels = liveCatalog.channels
-                    )
+                    if (liveResult.items.isEmpty() && liveSyncResult.stagedAcceptedCount > 0) {
+                        syncCatalogStore.scheduleChannelFtsRebuildAsync()
+                        liveSyncResult.stagedAcceptedCount
+                    } else {
+                        val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
+                            providerId = providerId,
+                            visibleCategories = liveSyncResult.categories,
+                            visibleChannels = liveResult.items.map { it.toEntity() },
+                            hiddenLiveCategoryIds = hiddenLiveCategoryIds
+                        )
+                        syncCatalogStore.replaceLiveCatalog(
+                            providerId = providerId,
+                            categories = liveCatalog.categories,
+                            channels = liveCatalog.channels
+                        )
+                    }
                 }
             }
             is CatalogStrategyResult.Partial -> {
@@ -5509,17 +5515,22 @@ class SyncManager @Inject constructor(
                     )
                     liveSyncResult.stagedAcceptedCount
                 } ?: run {
-                    val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
-                        providerId = providerId,
-                        visibleCategories = liveSyncResult.categories,
-                        visibleChannels = liveResult.items.map { it.toEntity() },
-                        hiddenLiveCategoryIds = hiddenLiveCategoryIds
-                    )
-                    syncCatalogStore.upsertLiveCatalog(
-                        providerId = providerId,
-                        categories = liveCatalog.categories,
-                        channels = liveCatalog.channels
-                    )
+                    if (liveResult.items.isEmpty() && liveSyncResult.stagedAcceptedCount > 0) {
+                        syncCatalogStore.scheduleChannelFtsRebuildAsync()
+                        liveSyncResult.stagedAcceptedCount
+                    } else {
+                        val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
+                            providerId = providerId,
+                            visibleCategories = liveSyncResult.categories,
+                            visibleChannels = liveResult.items.map { it.toEntity() },
+                            hiddenLiveCategoryIds = hiddenLiveCategoryIds
+                        )
+                        syncCatalogStore.upsertLiveCatalog(
+                            providerId = providerId,
+                            categories = liveCatalog.categories,
+                            channels = liveCatalog.channels
+                        )
+                    }
                 }
             }
             is CatalogStrategyResult.EmptyValid,
