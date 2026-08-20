@@ -37,6 +37,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import com.kaynanamtv.data.sync.SyncProgressBus
 import org.mockito.kotlin.whenever
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -49,7 +50,19 @@ class ProviderSetupViewModelTest {
     private val driveBackupSyncManager: DriveBackupSyncManager = mock()
     private val providerQrPairingManager: ProviderQrPairingManager = mock()
     private val preferencesRepository: PreferencesRepository = mock()
+    private val syncProgressBus: SyncProgressBus = SyncProgressBus()
     private val testDispatcher = StandardTestDispatcher()
+
+    private fun createViewModel() = ProviderSetupViewModel(
+        providerRepository = providerRepository,
+        combinedM3uRepository = combinedM3uRepository,
+        validateAndAddProvider = validateAndAddProvider,
+        importBackup = importBackup,
+        driveBackupSyncManager = driveBackupSyncManager,
+        providerQrPairingManager = providerQrPairingManager,
+        preferencesRepository = preferencesRepository,
+        syncProgressBus = syncProgressBus
+    )
 
     @Before
     fun setup() {
@@ -88,15 +101,7 @@ class ProviderSetupViewModelTest {
             ValidateAndAddProviderResult.Success(createdProvider)
         )
 
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         viewModel.addM3u("https://example.com/list.m3u", "Playlist 7", "", "", "")
         advanceUntilIdle()
@@ -121,15 +126,7 @@ class ProviderSetupViewModelTest {
             ValidateAndAddProviderResult.Success(createdProvider)
         )
 
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         viewModel.loginXtream("https://example.com", "user", "pass", "New IPTV", "", "")
         advanceUntilIdle()
@@ -158,15 +155,7 @@ class ProviderSetupViewModelTest {
             )
         )
 
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         viewModel.loginXtream("https://example.com", "alice", "secret", "Premium", "", "")
         advanceUntilIdle()
@@ -192,15 +181,7 @@ class ProviderSetupViewModelTest {
             ImportBackupResult.Success(BackupImportResult(importedSections = listOf("Providers")))
         )
 
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
         val field = ProviderSetupViewModel::class.java.getDeclaredField("_uiState").apply { isAccessible = true }
         @Suppress("UNCHECKED_CAST")
         val stateFlow = field.get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<ProviderSetupState>
@@ -220,15 +201,7 @@ class ProviderSetupViewModelTest {
 
     @Test
     fun `attach created provider to combined keeps combined source active`() = runTest {
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         val seededState = viewModel.uiState.value.copy(
             createdProviderId = 12L,
@@ -273,15 +246,7 @@ class ProviderSetupViewModelTest {
             )
         )
 
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         viewModel.addM3u("https://example.com/list.m3u", "Playlist 7", "", "", "")
         advanceUntilIdle()
@@ -296,15 +261,7 @@ class ProviderSetupViewModelTest {
 
     @Test
     fun `stalker source defaults epg sync mode to background when user has not customized it`() = runTest {
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.STALKER)
         advanceUntilIdle()
@@ -315,15 +272,7 @@ class ProviderSetupViewModelTest {
 
     @Test
     fun `xtream source defaults epg sync mode to background when user has not customized it`() = runTest {
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.XTREAM)
         advanceUntilIdle()
@@ -334,15 +283,7 @@ class ProviderSetupViewModelTest {
 
     @Test
     fun `m3u source defaults epg sync mode to background when user has not customized it`() = runTest {
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.M3U)
         advanceUntilIdle()
@@ -353,15 +294,7 @@ class ProviderSetupViewModelTest {
 
     @Test
     fun `source defaults do not override customized epg sync mode`() = runTest {
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         viewModel.updateEpgSyncMode(ProviderEpgSyncMode.SKIP)
         viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.STALKER)
@@ -387,15 +320,7 @@ class ProviderSetupViewModelTest {
             ValidateAndAddProviderResult.Success(editedProvider)
         )
 
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         // Simulate being in edit mode for provider 7.
         val field = ProviderSetupViewModel::class.java.getDeclaredField("_uiState").apply { isAccessible = true }
@@ -421,15 +346,7 @@ class ProviderSetupViewModelTest {
             )
         )
 
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         viewModel.addM3u("https://example.com/list.m3u", "Playlist", "", "", "")
         advanceUntilIdle()
@@ -447,15 +364,7 @@ class ProviderSetupViewModelTest {
             )
         )
 
-        val viewModel = ProviderSetupViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            validateAndAddProvider = validateAndAddProvider,
-            importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager,
-            providerQrPairingManager = providerQrPairingManager,
-            preferencesRepository = preferencesRepository,
-        )
+        val viewModel = createViewModel()
 
         viewModel.loginStalker(
             portalUrl = "https://portal.example.com",

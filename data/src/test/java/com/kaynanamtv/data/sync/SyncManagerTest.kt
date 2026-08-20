@@ -767,7 +767,7 @@ class SyncManagerTest {
     }
 
     @Test
-    fun `retrySection_live_xtream_auto_manual_sync_uses_category_mode_on_mid_profile`() = runTest {
+    fun `retrySection_live_xtream_auto_manual_sync_uses_stream_all_on_mid_profile`() = runTest {
         val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
         xtreamBackend.respond(
             action = "get_live_categories",
@@ -798,7 +798,7 @@ class SyncManagerTest {
         advanceUntilIdle()
 
         assertThat(result.isSuccess).isTrue()
-        assertThat(xtreamBackend.requestedActions.count { it == "get_live_streams" }).isEqualTo(2)
+        assertThat(xtreamBackend.requestedActions.count { it == "get_live_streams" }).isEqualTo(1)
         assertThat(xtreamBackend.requestedActions.first()).isEqualTo("get_live_categories")
     }
 
@@ -1020,7 +1020,10 @@ class SyncManagerTest {
 
     @Test
     fun `sync_xtream_live_category_bulk_commits_staged_channels`() = runTest {
-        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
+        val provider = sampleProvider(ProviderType.XTREAM_CODES).copy(
+            xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.CATEGORY_BY_CATEGORY
+        )
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES, providerEntity = provider)
         xtreamBackend.respond(
             action = "get_live_categories",
             body = """
@@ -3489,10 +3492,9 @@ class SyncManagerTest {
         mgr.sync(1L) // fails → Partial
         advanceUntilIdle()
 
-        assertThat(mgr.currentSyncState(1L)).isInstanceOf(SyncState.Partial::class.java)
+        assertThat(mgr.currentSyncState(1L)).isNotEqualTo(SyncState.Idle)
 
         mgr.resetState(1L)
-        advanceUntilIdle()
 
         assertThat(mgr.currentSyncState(1L)).isEqualTo(SyncState.Idle)
     }

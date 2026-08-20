@@ -43,13 +43,8 @@ internal object XtreamLiveSyncPolicy {
         hiddenLiveCategoryIds: Set<Long>
     ): EffectiveXtreamLiveSyncMethod {
         if (hiddenLiveCategoryIds.isNotEmpty()) return EffectiveXtreamLiveSyncMethod.CATEGORY_BY_CATEGORY
-        if (runtimeProfile.tier == DeviceSyncTier.LOW || runtimeProfile.snapshot.isCurrentlyLowOnMemory) {
-            return EffectiveXtreamLiveSyncMethod.CATEGORY_BY_CATEGORY
-        }
-        if (syncReason == XtreamLiveSyncReason.MANUAL_SETTINGS || syncReason == XtreamLiveSyncReason.BACKGROUND_STALE) {
-            return EffectiveXtreamLiveSyncMethod.CATEGORY_BY_CATEGORY
-        }
-        if (metadata.liveAvoidFullUntil != null && metadata.liveAvoidFullUntil!! > now) {
+        val avoidUntil = metadata.liveAvoidFullUntil
+        if (avoidUntil != null && avoidUntil > now) {
             return EffectiveXtreamLiveSyncMethod.CATEGORY_BY_CATEGORY
         }
         if (metadata.liveSequentialFailuresRemembered && metadata.liveHealthySyncStreak < 3) {

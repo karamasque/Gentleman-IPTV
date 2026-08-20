@@ -75,34 +75,8 @@ internal class SyncCatalogStore(
         }
     }
 
-    private fun scheduleChannelFtsRebuildAsync() {
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            try {
-                val t0 = System.currentTimeMillis()
-                catalogSyncDao.rebuildChannelFts()
-                Log.i("TTFC_BENCHMARK", "[DB_FTS_REBUILD_ASYNC] completed in ${System.currentTimeMillis() - t0}ms")
-            } catch (e: Throwable) {
-                Log.w(TAG, "Async FTS rebuild skipped: ${e.message}")
-            }
-        }
-    }
-
     suspend fun replaceLiveCatalog(providerId: Long, categories: List<CategoryEntity>?, channels: List<ChannelEntity>): Int {
         val t0 = System.currentTimeMillis()
-        val isNewEmptyProvider = channelDao.countByProvider(providerId) == 0
-        if (isNewEmptyProvider) {
-            val tDirect = System.currentTimeMillis()
-            val limitedChannels = channels.distinctBy { it.streamId }.take(sizeLimits.maxChannelsPerProvider)
-            transactionRunner.inTransaction {
-                categories?.let { categoryDao.insertAll(it) }
-                limitedChannels.chunked(STAGE_BATCH_SIZE).forEach { chunk ->
-                    channelDao.insertAll(chunk)
-                }
-            }
-            Log.i("TTFC_BENCHMARK", "[DB_DIRECT_INSERT] channels=${limitedChannels.size} dur=${System.currentTimeMillis() - tDirect}ms")
-            scheduleChannelFtsRebuildAsync()
-            return limitedChannels.size
-        }
         val sessionId = newSessionId()
         val stagedChannels = buildChannelStages(providerId, sessionId, channels)
         val limitedChannels = limitChannels(providerId, stagedChannels)
@@ -125,10 +99,10 @@ internal class SyncCatalogStore(
                 } else {
                     applyChannels(providerId, sessionId)
                 }
+                catalogSyncDao.rebuildChannelFts()
             }
             val tTxEnd = System.currentTimeMillis()
             Log.i("TTFC_BENCHMARK", "[DB_TRANSACTION] dur=${tTxEnd - tTx}ms overflow=$overflowed")
-            scheduleChannelFtsRebuildAsync()
             return limitedChannels.size
         } finally {
             clearSession(providerId, sessionId)
@@ -184,8 +158,8 @@ internal class SyncCatalogStore(
                 categories?.let { stageCategories(providerId, sessionId, it) }
                 categories?.let { applyCategories(providerId, sessionId, "LIVE") }
                 applyChannels(providerId, sessionId)
+                catalogSyncDao.rebuildChannelFts()
             }
-            scheduleChannelFtsRebuildAsync()
         } finally {
             clearSession(providerId, sessionId)
         }
@@ -231,8 +205,8 @@ internal class SyncCatalogStore(
                 categories?.let { stageCategories(providerId, sessionId, it) }
                 categories?.let { applyCategories(providerId, sessionId, "LIVE", pruneStale = false) }
                 upsertChannels(providerId, sessionId)
+                catalogSyncDao.rebuildChannelFts()
             }
-            scheduleChannelFtsRebuildAsync()
         } finally {
             clearSession(providerId, sessionId)
         }
@@ -509,15 +483,9 @@ internal class SyncCatalogStore(
     }
 
     private suspend fun applyChannels(providerId: Long, sessionId: Long) {
-        val hasExisting = channelDao.countByProvider(providerId) > 0
-        if (hasExisting) {
-            catalogSyncDao.updateChangedChannelsFromStage(providerId, sessionId)
-            catalogSyncDao.insertMissingChannelsFromStage(providerId, sessionId)
-            catalogSyncDao.deleteStaleChannelsForStage(providerId, sessionId)
-        } else {
-            // New provider: direct insert from stage without diff/stale scans
-            catalogSyncDao.insertMissingChannelsFromStage(providerId, sessionId)
-        }
+        catalogSyncDao.updateChangedChannelsFromStage(providerId, sessionId)
+        catalogSyncDao.insertMissingChannelsFromStage(providerId, sessionId)
+        catalogSyncDao.deleteStaleChannelsForStage(providerId, sessionId)
     }
 
     /**

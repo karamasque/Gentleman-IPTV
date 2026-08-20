@@ -86,7 +86,7 @@ internal data class CatalogSyncRuntimeProfile(
                     tier = tier,
                     stageBatchSize = MID_STAGE_BATCH_SIZE,
                     maxCategoryConcurrency = 5,
-                    preferSegmentedLiveOnboarding = true,
+                    preferSegmentedLiveOnboarding = false,
                     deferBackgroundWorkOnLowMemory = snapshot.isCurrentlyLowOnMemory,
                     snapshot = snapshot
                 )

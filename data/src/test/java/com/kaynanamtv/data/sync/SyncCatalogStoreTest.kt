@@ -58,6 +58,7 @@ class SyncCatalogStoreTest {
     @Before
     fun setup() {
         runBlocking {
+            whenever(channelDao.countByProvider(any())).thenReturn(1)
             whenever(movieDao.getTmdbIdsByProvider(any())).thenReturn(emptyList())
             whenever(seriesDao.getTmdbIdsByProvider(any())).thenReturn(emptyList())
         }

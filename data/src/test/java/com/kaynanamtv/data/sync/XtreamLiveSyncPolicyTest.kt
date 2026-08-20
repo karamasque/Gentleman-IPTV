@@ -7,7 +7,7 @@ import org.junit.Test
 
 class XtreamLiveSyncPolicyTest {
     @Test
-    fun `auto uses category by category for low devices`() {
+    fun `auto uses stream all for low devices during initial onboarding`() {
         val method = XtreamLiveSyncPolicy.resolve(
             userMode = ProviderXtreamLiveSyncMode.AUTO,
             runtimeProfile = runtimeProfile(DeviceSyncTier.LOW),
@@ -17,11 +17,11 @@ class XtreamLiveSyncPolicyTest {
             hiddenLiveCategoryIds = emptySet()
         )
 
-        assertThat(method).isEqualTo(EffectiveXtreamLiveSyncMethod.CATEGORY_BY_CATEGORY)
+        assertThat(method).isEqualTo(EffectiveXtreamLiveSyncMethod.STREAM_ALL)
     }
 
     @Test
-    fun `auto uses category by category for manual and background sync`() {
+    fun `auto uses stream all for manual and background sync`() {
         val profile = runtimeProfile(DeviceSyncTier.HIGH)
         val metadata = SyncMetadata(providerId = 1L)
 
@@ -34,7 +34,7 @@ class XtreamLiveSyncPolicyTest {
                 now = 1_000L,
                 hiddenLiveCategoryIds = emptySet()
             )
-        ).isEqualTo(EffectiveXtreamLiveSyncMethod.CATEGORY_BY_CATEGORY)
+        ).isEqualTo(EffectiveXtreamLiveSyncMethod.STREAM_ALL)
 
         assertThat(
             XtreamLiveSyncPolicy.resolve(
@@ -45,7 +45,7 @@ class XtreamLiveSyncPolicyTest {
                 now = 1_000L,
                 hiddenLiveCategoryIds = emptySet()
             )
-        ).isEqualTo(EffectiveXtreamLiveSyncMethod.CATEGORY_BY_CATEGORY)
+        ).isEqualTo(EffectiveXtreamLiveSyncMethod.STREAM_ALL)
     }
 
     @Test
