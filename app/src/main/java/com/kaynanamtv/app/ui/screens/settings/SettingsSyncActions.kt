@@ -131,7 +131,7 @@ internal class SettingsSyncActions(
                         syncStartedAt = 0L,
                         syncSectionLabel = null,
                         syncCanCancel = false,
-                        userMessage = "Retry failed: ${result.message}"
+                        userMessage = "Yeniden deneme başarısız: ${result.message}"
                     )
                 } else {
                     val currentWarnings = state.syncWarningsByProvider[providerId].orEmpty()

@@ -394,29 +394,25 @@ class Media3PlayerEngine @Inject constructor(
                     recoverFrameSilentReadyStalls =
                         shouldRecoverFrameSilentReadyStalls(currentResolvedStreamType)
                 )
-                _playerStats.value = _playerStats.value.copy(
-                    lastVideoFrameAgoMs = videoStallDetector.lastVideoFrameAgoMs(),
-                    videoStallCount = videoStallCount,
-                    videoDecoderName = selectedVideoDecoderName,
-                    audioDecoderName = selectedAudioDecoderName,
-                    ffmpegAvailable = ffmpegAvailability.available,
-                    ffmpegVersion = ffmpegAvailability.version,
-                    audioOutputPath = audioOutputPath,
-                    compatibilityDecisionSource = compatibilityDecisionSource,
-                    activeDecoderPolicy = activeDecoderPolicySummary(),
-                    renderSurfaceType = _renderSurfaceType.value.name,
-                    audioVideoSyncEnabled = _audioVideoSyncEnabled.value,
-                    audioVideoSyncSinkActive = audioVideoSyncSinkActive
-                )
-                if (shouldRefreshPlaybackSupportSnapshot()) {
-                    playbackSupportSnapshotStore.write(buildPlaybackSupportSnapshot())
-                }
-                if (_isPlaying.value) {
-                    val vf = _videoFormat.value
-                    Log.d(
-                        TAG,
-                        "[PLAYER] decoder=$selectedVideoDecoderName resolution=${vf.width}x${vf.height} " +
-                            "fps=${vf.frameRate} droppedFrames=${stats.droppedFrames} bufferMs=${stats.bufferedDurationMs}"
+                val lastFrameAgo = videoStallDetector.lastVideoFrameAgoMs()
+                if (stats.lastVideoFrameAgoMs != lastFrameAgo ||
+                    stats.videoStallCount != videoStallCount ||
+                    stats.videoDecoderName != selectedVideoDecoderName ||
+                    stats.audioDecoderName != selectedAudioDecoderName
+                ) {
+                    _playerStats.value = stats.copy(
+                        lastVideoFrameAgoMs = lastFrameAgo,
+                        videoStallCount = videoStallCount,
+                        videoDecoderName = selectedVideoDecoderName,
+                        audioDecoderName = selectedAudioDecoderName,
+                        ffmpegAvailable = ffmpegAvailability.available,
+                        ffmpegVersion = ffmpegAvailability.version,
+                        audioOutputPath = audioOutputPath,
+                        compatibilityDecisionSource = compatibilityDecisionSource,
+                        activeDecoderPolicy = activeDecoderPolicySummary(),
+                        renderSurfaceType = _renderSurfaceType.value.name,
+                        audioVideoSyncEnabled = _audioVideoSyncEnabled.value,
+                        audioVideoSyncSinkActive = audioVideoSyncSinkActive
                     )
                 }
                 if (promoteLiveHlsBufferIfNeeded()) {
@@ -424,6 +420,7 @@ class Media3PlayerEngine @Inject constructor(
                 }
                 if (shouldFallbackTextureViewBeforeFirstFrame(stats)) {
                     fallbackTextureViewSurface("NO_FIRST_FRAME")
+                    updatePlaybackSupportSnapshot()
                     continue
                 }
                 if (stalled) {
@@ -434,8 +431,20 @@ class Media3PlayerEngine @Inject constructor(
                         )
                     } else {
                         handleVideoStall()
+                        updatePlaybackSupportSnapshot()
                     }
                 }
+            }
+        }
+    }
+
+    private fun updatePlaybackSupportSnapshot() {
+        if (isDisposed) return
+        scope.launch(Dispatchers.IO) {
+            try {
+                playbackSupportSnapshotStore.write(buildPlaybackSupportSnapshot())
+            } catch (e: Throwable) {
+                // Ignore snapshot write errors during playback transitions
             }
         }
     }
@@ -913,6 +922,7 @@ class Media3PlayerEngine @Inject constructor(
 
     override fun release() {
         if (isDisposed) return
+        updatePlaybackSupportSnapshot()
         isDisposed = true
         activeInstances.remove(this)
         Log.i(TAG, "[PLAYER_INSTANCE] released id=$instanceId activeCount=${activeInstances.size}")
@@ -1111,8 +1121,7 @@ class Media3PlayerEngine @Inject constructor(
             activeVideoDecoderMode != preferredVideoDecoderMode ||
             previousAudioDecoderPolicy != nextAudioDecoderPolicy ||
             previousVideoDecoderPolicy != nextVideoDecoderPolicy ||
-            isLiveBuffer != currentBufferIsLive ||
-            nextBufferPolicy.label != currentBufferPolicyLabel ||
+            (exoPlayer == null) ||
             requestedAudioDecoderMode == DecoderMode.COMPATIBILITY ||
             requestedVideoDecoderMode == DecoderMode.COMPATIBILITY
         activeAudioDecoderMode = preferredAudioDecoderMode
@@ -1581,7 +1590,10 @@ class Media3PlayerEngine @Inject constructor(
                     if (_playbackState.value == PlaybackState.READY) {
                         markPlaybackStarted("playing-ready")
                     }
-                    statsCollector.start()
+                    statsCollector.start(
+                        isLive = isCurrentStreamLive(),
+                        isTimeshiftActive = { liveTimeshiftManager.state.value.isActive }
+                    )
                     audioFocusController.onPlaybackStarted()
                 } else {
                     statsCollector.stop()
@@ -1741,6 +1753,7 @@ class Media3PlayerEngine @Inject constructor(
         }
         recordCompatibilitySuccess()
         refreshKnownBadCompatibilityRecords()
+        updatePlaybackSupportSnapshot()
     }
 
     private fun resolveActiveDecoderPolicy(mode: DecoderMode): ActiveDecoderPolicy = when (mode) {
@@ -2432,6 +2445,7 @@ class Media3PlayerEngine @Inject constructor(
         if (streamInfo == null || mediaId == null || retryPolicy == null || retryContext == null) {
             _retryStatus.value = null
             lastSupportErrorMessage = error.message
+            updatePlaybackSupportSnapshot()
             _error.tryEmit(PlayerError.fromException(error))
             _playbackState.value = PlaybackState.ERROR
             return

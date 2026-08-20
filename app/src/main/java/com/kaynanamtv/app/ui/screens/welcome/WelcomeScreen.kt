@@ -491,7 +491,7 @@ private fun TrialExpiredCard(
                     onClick = onNavigateToHome,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(text = "Ana Ekrana Geç (Free)")
+                    Text(text = "Ana Ekrana Geç (Ücretsiz)")
                 }
                 TvButton(
                     onClick = onLogout,

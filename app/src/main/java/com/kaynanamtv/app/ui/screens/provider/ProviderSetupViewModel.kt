@@ -68,6 +68,7 @@ class ProviderSetupViewModel @Inject constructor(
     private val driveBackupSyncManager: DriveBackupSyncManager,
     private val providerQrPairingManager: ProviderQrPairingManager,
     private val preferencesRepository: PreferencesRepository,
+    private val syncProgressBus: com.kaynanamtv.data.sync.SyncProgressBus
 ) : ViewModel() {
 
     val savedForumUser: StateFlow<String> = preferencesRepository.forumUsername.stateIn(
@@ -129,6 +130,15 @@ class ProviderSetupViewModel @Inject constructor(
             driveBackupSyncManager.authState.collect { state ->
                 _uiState.update {
                     it.copy(driveSignedIn = state is DriveAuthState.SignedIn)
+                }
+            }
+        }
+        viewModelScope.launch {
+            syncProgressBus.flow.collect { progress ->
+                if (progress?.onboardingProgress != null) {
+                    _uiState.update {
+                        it.copy(fullCatalogProgress = progress.onboardingProgress)
+                    }
                 }
             }
         }
@@ -1114,6 +1124,7 @@ data class ProviderSetupState(
     val validationError: String? = null,
     val completionWarning: String? = null,
     val syncProgress: String? = null,
+    val fullCatalogProgress: com.kaynanamtv.domain.sync.FullCatalogOnboardingProgress? = null,
     val isEditing: Boolean = false,
     val existingProviderId: Long? = null,
     val selectedTab: Int = 0,

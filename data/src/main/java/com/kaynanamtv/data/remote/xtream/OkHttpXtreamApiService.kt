@@ -335,6 +335,9 @@ class OkHttpXtreamApiService(
             val call = clientFor(effectiveProfile).newCall(request)
             executeCancellable(call).use { response ->
                 if (!response.isSuccessful) {
+                    if (response.code == 304) {
+                        return@withContext 0
+                    }
                     val message = "HTTP ${response.code}"
                     Log.w(
                         TAG,
@@ -491,18 +494,36 @@ class OkHttpXtreamApiService(
                 JsonToken.BEGIN_ARRAY -> {
                     var emittedCount = 0
                     reader.beginArray()
+                    val liveRowSerializer = XtreamLiveStreamRow.serializer()
+                    val streamSerializer = XtreamStream.serializer()
+                    val seriesItemSerializer = XtreamSeriesItem.serializer()
+
                     while (reader.hasNext()) {
-                        val element = try {
-                            JsonParser.parseReader(reader)
-                        } catch (e: RuntimeException) {
-                            throw XtreamParsingException(
-                                "Malformed JSON from ${descriptor.hint}${sanitizedPreview(preview)?.let { " (preview=$it)" } ?: ""}",
-                                e
-                            )
-                        }
-                        val item = try {
-                            json.decodeFromString(deserializer, element.toString())
-                        } catch (e: SerializationException) {
+                        val item: T = try {
+                            when (deserializer) {
+                                liveRowSerializer -> {
+                                    @Suppress("UNCHECKED_CAST")
+                                    (XtreamStreamJsonReader.readLiveStreamRow(reader) as? T)
+                                        ?: throw XtreamParsingException("Malformed LiveStreamRow from ${descriptor.hint}")
+                                }
+                                streamSerializer -> {
+                                    @Suppress("UNCHECKED_CAST")
+                                    (XtreamStreamJsonReader.readStream(reader) as? T)
+                                        ?: throw XtreamParsingException("Malformed Stream from ${descriptor.hint}")
+                                }
+                                seriesItemSerializer -> {
+                                    @Suppress("UNCHECKED_CAST")
+                                    (XtreamStreamJsonReader.readSeriesItem(reader) as? T)
+                                        ?: throw XtreamParsingException("Malformed SeriesItem from ${descriptor.hint}")
+                                }
+                                else -> {
+                                    val element = JsonParser.parseReader(reader)
+                                    json.decodeFromString(deserializer, element.toString())
+                                }
+                            }
+                        } catch (e: XtreamApiException) {
+                            throw e
+                        } catch (e: Exception) {
                             throw XtreamParsingException(
                                 "Malformed JSON from ${descriptor.hint}${sanitizedPreview(preview)?.let { " (preview=$it)" } ?: ""}",
                                 e

@@ -29,6 +29,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URI
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -54,7 +56,8 @@ enum class AppUpdateDownloadStatus {
 @Singleton
 class AppUpdateInstaller @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val preferencesRepository: PreferencesRepository
+    private val preferencesRepository: PreferencesRepository,
+    private val okHttpClient: OkHttpClient
 ) {
     private val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -82,13 +85,6 @@ class AppUpdateInstaller @Inject constructor(
     }
 
     suspend fun refreshState(): AppUpdateDownloadState = withContext(Dispatchers.IO) {
-        val dm = downloadManager
-        if (dm == null) {
-            val emptyState = AppUpdateDownloadState()
-            _downloadState.value = emptyState
-            return@withContext emptyState
-        }
-
         val downloadId = preferencesRepository.appUpdateDownloadId.first()
         val downloadingVersionName = preferencesRepository.appUpdateDownloadVersionName.first()
         var downloadedVersionName = preferencesRepository.downloadedAppUpdateVersionName.first()
@@ -99,6 +95,20 @@ class AppUpdateInstaller @Inject constructor(
             downloadedVersionName = null
         }
         val apkFile = downloadedVersionName?.let(::apkFileForVersion)
+
+        val dm = downloadManager
+        if (dm == null) {
+            val restoredState = if (downloadedVersionName != null && apkFile?.exists() == true) {
+                downloadedState(downloadedVersionName)
+            } else {
+                if (downloadedVersionName != null) {
+                    preferencesRepository.setDownloadedAppUpdateVersionName(null)
+                }
+                AppUpdateDownloadState()
+            }
+            _downloadState.value = restoredState
+            return@withContext restoredState
+        }
 
         if (downloadId == null) {
             preferencesRepository.setAppUpdateDownloadVersionName(null)
@@ -198,20 +208,23 @@ class AppUpdateInstaller @Inject constructor(
             return@withContext Result.error("Update download is unavailable because the download URL is not HTTPS")
         }
 
+        val targetFile = apkFileForVersion(releaseInfo.versionName)
+        targetFile.parentFile?.mkdirs()
+        if (targetFile.exists()) {
+            targetFile.delete()
+        }
+
+        val existingVersion = preferencesRepository.downloadedAppUpdateVersionName.first()
+        if (existingVersion != null && existingVersion != releaseInfo.versionName) {
+            apkFileForVersion(existingVersion).delete()
+        }
+
         val dm = downloadManager
-            ?: return@withContext Result.error("Download manager service is not available on this device")
+        if (dm == null) {
+            return@withContext downloadViaOkHttp(releaseInfo, targetFile)
+        }
 
         try {
-            val targetFile = apkFileForVersion(releaseInfo.versionName)
-            targetFile.parentFile?.mkdirs()
-            if (targetFile.exists()) {
-                targetFile.delete()
-            }
-
-            val existingVersion = preferencesRepository.downloadedAppUpdateVersionName.first()
-            if (existingVersion != null && existingVersion != releaseInfo.versionName) {
-                apkFileForVersion(existingVersion).delete()
-            }
             preferencesRepository.appUpdateDownloadId.first()?.let { oldDownloadId ->
                 runCatching { dm.remove(oldDownloadId) }
             }
@@ -241,10 +254,84 @@ class AppUpdateInstaller @Inject constructor(
             _downloadState.value = state
             syncPollingForState(state)
             Result.success(Unit)
-        } catch (error: IllegalArgumentException) {
-            Result.error("Failed to start update download", error)
-        } catch (error: SecurityException) {
-            Result.error("Update download requires additional permissions", error)
+        } catch (error: Exception) {
+            android.util.Log.w("AppUpdateInstaller", "DownloadManager failed (${error.message}), falling back to OkHttp", error)
+            downloadViaOkHttp(releaseInfo, targetFile)
+        }
+    }
+
+    private suspend fun downloadViaOkHttp(releaseInfo: GitHubReleaseInfo, targetFile: File): Result<Unit> = withContext(Dispatchers.IO) {
+        val downloadUrl = releaseInfo.downloadUrl ?: return@withContext Result.error("Download URL is missing")
+        try {
+            val request = Request.Builder()
+                .url(downloadUrl)
+                .header("User-Agent", "KaynanamTV-AppUpdate")
+                .build()
+
+            _downloadState.value = AppUpdateDownloadState(
+                status = AppUpdateDownloadStatus.Downloading,
+                versionName = releaseInfo.versionName,
+                downloadId = null,
+                bytesDownloaded = 0L,
+                bytesTotal = 0L
+            )
+
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    _downloadState.value = AppUpdateDownloadState(status = AppUpdateDownloadStatus.Failed)
+                    return@withContext Result.error("İndirme başarısız oldu: HTTP ${response.code}")
+                }
+                val body = response.body ?: return@withContext Result.error("Boş yanıt alındı")
+                val totalBytes = body.contentLength()
+                var downloaded = 0L
+                targetFile.parentFile?.mkdirs()
+                if (targetFile.exists()) targetFile.delete()
+
+                body.byteStream().use { input ->
+                    targetFile.outputStream().use { output ->
+                        val buffer = ByteArray(32 * 1024)
+                        var read: Int
+                        var lastEmittedPercent = -1
+                        while (input.read(buffer).also { read = it } != -1) {
+                            output.write(buffer, 0, read)
+                            downloaded += read
+                            val percent = if (totalBytes > 0) ((downloaded * 100) / totalBytes).toInt() else 0
+                            if (percent != lastEmittedPercent) {
+                                lastEmittedPercent = percent
+                                _downloadState.value = AppUpdateDownloadState(
+                                    status = AppUpdateDownloadStatus.Downloading,
+                                    versionName = releaseInfo.versionName,
+                                    bytesDownloaded = downloaded,
+                                    bytesTotal = totalBytes
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val pkgInfo = context.packageManager.getPackageArchiveInfo(targetFile.absolutePath, 0)
+                if (pkgInfo == null) {
+                    targetFile.delete()
+                    _downloadState.value = AppUpdateDownloadState(status = AppUpdateDownloadStatus.Failed)
+                    return@withContext Result.error("İndirilen dosya geçerli bir APK paketi değil")
+                }
+
+                preferencesRepository.setDownloadedAppUpdateVersionName(releaseInfo.versionName)
+                preferencesRepository.setAppUpdateDownloadId(null)
+                preferencesRepository.setAppUpdateDownloadVersionName(null)
+
+                val state = AppUpdateDownloadState(
+                    status = AppUpdateDownloadStatus.Downloaded,
+                    versionName = releaseInfo.versionName,
+                    bytesDownloaded = downloaded,
+                    bytesTotal = totalBytes
+                )
+                _downloadState.value = state
+                Result.success(Unit)
+            }
+        } catch (e: Exception) {
+            _downloadState.value = AppUpdateDownloadState(status = AppUpdateDownloadStatus.Failed)
+            Result.error("İndirme sırasında hata oluştu: ${e.message}", e)
         }
     }
 
@@ -263,11 +350,11 @@ class AppUpdateInstaller @Inject constructor(
             _downloadState.value = permissionRequiredState
             return@withContext try {
                 context.startActivity(settingsIntent)
-                Result.error("Allow installs from this app, then try Install update again")
+                Result.error("Bilinmeyen kaynaklardan kuruluma izin verin ve ardından Güncellemeyi Kur'a tekrar dokunun")
             } catch (error: ActivityNotFoundException) {
-                Result.error("Open Android settings, allow installs from this app, then try Install update again", error)
+                Result.error("Ayarlardan bu uygulama için yükleme iznini açın ve tekrar deneyin", error)
             } catch (error: SecurityException) {
-                Result.error("The install permission settings screen could not be opened", error)
+                Result.error("Yükleme izni ekranı açılamadı", error)
             }
         }
 
@@ -277,6 +364,15 @@ class AppUpdateInstaller @Inject constructor(
             preferencesRepository.setAppUpdateDownloadVersionName(null)
             preferencesRepository.setDownloadedAppUpdateVersionName(null)
             return@withContext Result.error("Downloaded update file is missing")
+        }
+
+        val pkgInfo = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+        if (pkgInfo == null) {
+            apkFile.delete()
+            preferencesRepository.setAppUpdateDownloadId(null)
+            preferencesRepository.setAppUpdateDownloadVersionName(null)
+            preferencesRepository.setDownloadedAppUpdateVersionName(null)
+            return@withContext Result.error("İndirilen APK dosyası geçersiz veya bozuk. Lütfen tekrar indirin.")
         }
 
         // SEC-L02: Verify SHA-256 integrity before handing the APK to the package manager.

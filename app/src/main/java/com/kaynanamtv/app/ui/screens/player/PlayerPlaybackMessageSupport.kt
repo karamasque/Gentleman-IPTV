@@ -21,16 +21,16 @@ internal fun resolveCatchUpFailureMessage(
     programHasArchive: Boolean
 ): String {
     if (!archiveRequested || channel == null) {
-        return "Catch-up playback needs a valid live channel context."
+        return "Geriye dönük oynatma geçerli bir canlı kanal bağlamı gerektirir."
     }
     val archiveCapability = channel.archivePlaybackCapability()
     return when {
         !archiveCapability.advertisedByProvider && !programHasArchive ->
-            "This channel does not advertise archive support on the current provider."
+            "Bu kanal mevcut yayın sunucusunda arşiv desteği sunmuyor."
         !archiveCapability.canBuildReplayCandidate ->
-            "The provider advertises catch-up, but did not expose enough replay metadata for this channel."
+            "Yayın sunucusu geriye dönük izleme bildiriyor ancak bu kanal için yeterli tekrar üst verisi sağlamadı."
         else ->
-            "Replay is unavailable for the selected program right now."
+            "Seçilen program için geriye dönük izleme şu anda mevcut değil."
     }
 }
 

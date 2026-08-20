@@ -60,8 +60,8 @@ android {
         applicationId = "com.kaynanamtv.app"
         minSdk = 25
         targetSdk = 36
-        versionCode = 68
-        versionName = "1.0.68"
+        versionCode = 82
+        versionName = "1.0.82"
         multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "OFFICIAL_APPLICATION_ID", "\"com.kaynanamtv.app\"")
@@ -105,6 +105,7 @@ android {
                 }
             }
             enableV1Signing = true
+            enableV2Signing = true
         }
     }
 

@@ -726,17 +726,20 @@ fun PlayerScreen(
                         }
                     }
                     when (event.nativeKeyEvent.keyCode) {
-                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                            if (showChannelListOverlay || showEpgOverlay || showChannelInfoOverlay || showDiagnostics) {
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                            if (seekPreview.visible) {
+                                viewModel.seekTo(seekPreview.positionMs)
+                                true
+                            } else if (showChannelListOverlay || showEpgOverlay || showChannelInfoOverlay || showDiagnostics) {
                                 viewModel.onLiveOverlayInteraction()
-                            }
-                            if (contentType == "LIVE" && !isCatchUpPlayback && viewModel.hasPendingNumericChannelInput()) {
+                                false
+                            } else if (contentType == "LIVE" && !isCatchUpPlayback && viewModel.hasPendingNumericChannelInput()) {
                                 viewModel.commitNumericChannelInput()
-                                   true
+                                true
                             } else if (contentType == "LIVE" && !isCatchUpPlayback) {
-                                    if (showChannelInfoOverlay) viewModel.closeChannelInfoOverlay()
-                                    else viewModel.openChannelInfoOverlay()
-                                   true
+                                if (showChannelInfoOverlay) viewModel.closeChannelInfoOverlay()
+                                else viewModel.openChannelInfoOverlay()
+                                true
                             } else if (showControls) {
                                 false
                             } else {
@@ -748,16 +751,24 @@ fun PlayerScreen(
                             if (showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showChannelInfoOverlay || showDiagnostics) {
                                 viewModel.onLiveOverlayInteraction()
                             }
-                            if (showControls && (contentType != "LIVE" || isCatchUpPlayback)) return@onKeyEvent false
-                            if (showChannelListOverlay && contentType == "LIVE" && !isCatchUpPlayback) {
-                                // Second left press while channel list is open → open category list
-                                viewModel.openCategoryListOverlay()
-                                true
-                            } else if (contentType == "LIVE" && !isCatchUpPlayback && !showChannelListOverlay && !showCategoryListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
-                                if (isRtl) viewModel.openEpgOverlay() else viewModel.openChannelListOverlay()
-                                true
-                            } else if (!showChannelListOverlay && !showCategoryListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
-                                if (isRtl) viewModel.seekForward() else viewModel.seekBackward()
+                            if (contentType == "LIVE" && !isCatchUpPlayback) {
+                                if (showControls) return@onKeyEvent false
+                                if (showChannelListOverlay) {
+                                    viewModel.openCategoryListOverlay()
+                                    true
+                                } else if (!showCategoryListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
+                                    if (isRtl) viewModel.openEpgOverlay() else viewModel.openChannelListOverlay()
+                                    true
+                                } else false
+                            } else if (!showControls && !showChannelListOverlay && !showCategoryListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
+                                val repeatCount = event.nativeKeyEvent.repeatCount
+                                val deltaMs = when {
+                                    repeatCount == 0 -> 10_000L
+                                    repeatCount < 5 -> 15_000L
+                                    repeatCount < 10 -> 30_000L
+                                    else -> 60_000L
+                                }
+                                if (isRtl) viewModel.seekForward(deltaMs) else viewModel.seekBackward(deltaMs)
                                 true
                             } else {
                                 false
@@ -767,12 +778,21 @@ fun PlayerScreen(
                             if (showChannelListOverlay || showEpgOverlay || showChannelInfoOverlay || showDiagnostics) {
                                 viewModel.onLiveOverlayInteraction()
                             }
-                            if (showControls && (contentType != "LIVE" || isCatchUpPlayback)) return@onKeyEvent false
-                            if (contentType == "LIVE" && !isCatchUpPlayback && !showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
-                                if (isRtl) viewModel.openChannelListOverlay() else viewModel.openEpgOverlay()
-                                true
-                            } else if (!showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
-                                if (isRtl) viewModel.seekBackward() else viewModel.seekForward()
+                            if (contentType == "LIVE" && !isCatchUpPlayback) {
+                                if (showControls) return@onKeyEvent false
+                                if (!showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
+                                    if (isRtl) viewModel.openChannelListOverlay() else viewModel.openEpgOverlay()
+                                    true
+                                } else false
+                            } else if (!showControls && !showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
+                                val repeatCount = event.nativeKeyEvent.repeatCount
+                                val deltaMs = when {
+                                    repeatCount == 0 -> 10_000L
+                                    repeatCount < 5 -> 15_000L
+                                    repeatCount < 10 -> 30_000L
+                                    else -> 60_000L
+                                }
+                                if (isRtl) viewModel.seekBackward(deltaMs) else viewModel.seekForward(deltaMs)
                                 true
                             } else {
                                 false
@@ -1527,8 +1547,12 @@ private fun PlayerControlsOverlayHost(
     onSeekPreviewPositionChanged: (Long?) -> Unit,
     onUserInteraction: () -> Unit
 ) {
-    val currentPosition by playerEngine.currentPosition.collectAsStateWithLifecycle()
-    val duration by playerEngine.duration.collectAsStateWithLifecycle()
+    val currentPosition = if (visible || seekPreview.visible) {
+        playerEngine.currentPosition.collectAsStateWithLifecycle().value
+    } else 0L
+    val duration = if (visible || seekPreview.visible) {
+        playerEngine.duration.collectAsStateWithLifecycle().value
+    } else 0L
 
     PlayerControlsOverlay(
         visible = visible,

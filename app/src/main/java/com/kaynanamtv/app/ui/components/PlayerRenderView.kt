@@ -80,7 +80,7 @@ fun PlayerRenderView(
         }
     }
 
-    key(playerEngine, surfaceType, resizeMode) {
+    key(playerEngine, surfaceType) {
         AndroidView(
             factory = { context ->
                 playerEngine.createRenderView(context, resizeMode, surfaceType).apply {

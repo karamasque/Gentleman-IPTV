@@ -92,8 +92,8 @@ fun PluginsScreen(
     AppScreenScaffold(
         currentRoute = currentRoute,
         onNavigate = onNavigate,
-        title = "Plugins",
-        subtitle = "Install companion APKs, activate capabilities, and sync plugin providers.",
+        title = "Eklentiler",
+        subtitle = "Yardımcı APK'ları yükleyin, özellikleri aktifleştirin ve eklenti kaynaklarını senkronize edin.",
         modifier = modifier,
         navigationChrome = AppNavigationChrome.TopBar,
         compactHeader = true
@@ -156,7 +156,7 @@ fun PluginsScreen(
                     if (uiState.plugins.isEmpty() && !uiState.isLoading) {
                         item {
                             Text(
-                                text = "No compatible KaynanamTV plugins are installed.",
+                                text = "Yüklü uyumlu KaynanamTV eklentisi bulunamadı.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = AppColors.TextSecondary
                             )
@@ -258,20 +258,20 @@ private fun PluginInstallPanel(
                 onClick = onInstallFromUrl,
                 tone = PluginButtonTone.Primary
             ) {
-                Text("Install URL")
+                Text("URL ile Yükle")
             }
             PluginButton(
                 enabled = !isInstalling,
                 onClick = onInstallFromFile
             ) {
-                Text("Install file")
+                Text("Dosyadan Yükle")
             }
             PluginButton(onClick = onRefresh) {
-                Text("Refresh")
+                Text("Yenile")
             }
         }
         Text(
-            text = "Manual installs are detected when this screen refreshes. Compatible plugins expose the KaynanamTV plugin service.",
+            text = "Manuel yüklemeler bu ekran yenilendiğinde algılanır. Uyumlu eklentiler KaynanamTV eklenti hizmetini kullanır.",
             style = MaterialTheme.typography.bodySmall,
             color = AppColors.TextTertiary
         )
@@ -303,8 +303,8 @@ private fun PluginInstallUrlDialog(
     }
 
     PremiumDialog(
-        title = "Install plugin from URL",
-        subtitle = "Enter the direct APK URL. KaynanamTV will download it and open the installer.",
+        title = "URL ile eklenti yükle",
+        subtitle = "Doğrudan APK URL'sini girin. KaynanamTV dosyayı indirip yükleyiciyi açacaktır.",
         onDismissRequest = {
             keyboardController?.hide()
             if (!isInstalling) onDismiss()
@@ -320,7 +320,7 @@ private fun PluginInstallUrlDialog(
                     .focusRequester(focusRequester),
                 enabled = !isInstalling,
                 singleLine = true,
-                label = { androidx.compose.material3.Text("Plugin APK URL") },
+                label = { androidx.compose.material3.Text("Eklenti APK URL'si") },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Uri,
                     imeAction = ImeAction.Done
@@ -342,7 +342,7 @@ private fun PluginInstallUrlDialog(
         },
         footer = {
             PremiumDialogFooterButton(
-                label = "Cancel",
+                label = "İptal",
                 onClick = {
                     keyboardController?.hide()
                     onDismiss()
@@ -350,7 +350,7 @@ private fun PluginInstallUrlDialog(
                 enabled = !isInstalling
             )
             PremiumDialogFooterButton(
-                label = if (isInstalling) "Installing..." else "Download and install",
+                label = if (isInstalling) "Yükleniyor..." else "İndir ve Yükle",
                 onClick = ::submitUrl,
                 enabled = !isInstalling && normalizedUrl.isNotBlank(),
                 emphasized = true
@@ -388,7 +388,7 @@ private fun PluginCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     StatusPill(
-                        label = if (plugin.enabled) "Enabled" else "Disabled",
+                        label = if (plugin.enabled) "Etkin" else "Devre Dışı",
                         containerColor = if (plugin.enabled) AppColors.BrandMuted else AppColors.SurfaceEmphasis,
                         contentColor = if (plugin.enabled) AppColors.Brand else AppColors.TextSecondary
                     )
@@ -400,7 +400,7 @@ private fun PluginCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                val version = plugin.manifest.versionName.ifBlank { "unknown" }
+                val version = plugin.manifest.versionName.ifBlank { "bilinmiyor" }
                 Text(
                     text = "${plugin.packageName} · v$version",
                     style = MaterialTheme.typography.bodySmall,
@@ -425,7 +425,7 @@ private fun PluginCard(
                     enabled = !busy && plugin.manifest.canConfigure,
                     onClick = onOpenConfiguration
                 ) {
-                    Text("Configure")
+                    Text("Yapılandır")
                 }
                 Switch(
                     checked = plugin.enabled,
@@ -546,18 +546,18 @@ private fun PluginConfigurationHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                PluginButton(enabled = !busy, onClick = onBack) { Text("Back") }
-                PluginButton(enabled = !busy, onClick = onRefresh) { Text("Refresh") }
+                PluginButton(enabled = !busy, onClick = onBack) { Text("Geri") }
+                PluginButton(enabled = !busy, onClick = onRefresh) { Text("Yenile") }
                 PluginButton(
                     enabled = !busy && configuration.isDirty,
                     onClick = onSave,
                     tone = PluginButtonTone.Primary
-                ) { Text("Save") }
+                ) { Text("Kaydet") }
             }
         }
         if (configuration.validationErrors.isNotEmpty()) {
             Text(
-                text = "Some plugin settings need attention before saving.",
+                text = "Kaydetmeden önce bazı eklenti ayarlarının düzeltilmesi gerekiyor.",
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.Live
             )
@@ -802,7 +802,7 @@ private fun PluginConfigurationActions(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
-            text = "Actions",
+            text = "İşlemler",
             style = MaterialTheme.typography.titleSmall,
             color = AppColors.TextPrimary
         )

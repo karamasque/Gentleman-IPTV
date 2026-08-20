@@ -47,12 +47,12 @@ import com.kaynanamtv.app.update.AppUpdateDownloadStatus
 fun ForceUpdateScreen(
     viewModel: ForceUpdateViewModel = hiltViewModel()
 ) {
-    // ── Hard Block: Prevent back button / D-Pad back from dismissing the screen ──
-    BackHandler(enabled = true) {
-        // Deliberately consumed. User cannot bypass.
-    }
+    val currentContext = LocalContext.current
 
-    val context = LocalContext.current
+    // ── Hard Block: Back button exits the app instead of bypassing force update ──
+    BackHandler(enabled = true) {
+        (currentContext as? Activity)?.finishAffinity()
+    }
     val remoteConfig by viewModel.remoteConfig.collectAsStateWithLifecycle()
     val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
     val userMessage by viewModel.userMessage.collectAsStateWithLifecycle()
@@ -311,28 +311,10 @@ fun ForceUpdateScreen(
                     }
                 }
 
-                // Secondary option: Open Official Download Page in Browser
-                TvButton(
-                    onClick = { viewModel.openBrowserDownloadFallback() },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = ButtonDefaults.shape(RoundedCornerShape(12.dp)),
-                    colors = ButtonDefaults.colors(
-                        containerColor = Color(0xFF1E293B),
-                        focusedContainerColor = Color(0xFF334155),
-                        contentColor = Color(0xFFE2E8F0)
-                    )
-                ) {
-                    Text(
-                        text = "🌐 Resmi İndirme Sayfasını Aç (Tarayıcı)",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
-                }
-
                 // Exit App Button
                 TvButton(
                     onClick = {
-                        (context as? Activity)?.finishAffinity()
+                        (currentContext as? Activity)?.finishAffinity()
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = ButtonDefaults.shape(RoundedCornerShape(12.dp)),
@@ -344,9 +326,10 @@ fun ForceUpdateScreen(
                     )
                 ) {
                     Text(
-                        text = "🚪 Uygulamayı Kapat",
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 13.sp
+                        text = "🚪 UYGULAMADAN ÇIK",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(vertical = 2.dp)
                     )
                 }
             }

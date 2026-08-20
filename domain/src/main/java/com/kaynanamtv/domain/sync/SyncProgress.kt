@@ -2,34 +2,61 @@ package com.kaynanamtv.domain.sync
 
 /**
  * Snapshot immuable de la progression d'un cycle de synchronisation catalogue.
- *
- * Émis par `SyncManager` (côté `:data`) sur le bus partagé, consommé par l'UI Welcome.
- * Tous les champs sont des primitives ou des enums — la donnée est sûre à snapshotter
- * dans un `StateFlow`.
- *
- * @property section Section catalogue en cours d'indexation.
- * @property current Index de la fenêtre courante (catégorie, lot ou item selon la section).
- * @property total Total cible pour la section courante. `0` signale un mode indéterminé
- *                 (ex. profile HIGH pour LIVE, ou import M3U avant fin du parsing).
- * @property currentLabel Libellé contextuel de la fenêtre courante (nom de catégorie,
- *                        d'étape M3U, etc.). Peut être vide.
- * @property itemsIndexed Compteur cumulatif d'items importés depuis le début du sync,
- *                        toutes sections confondues.
  */
 data class SyncProgress(
     val section: Section,
     val current: Int,
     val total: Int,
     val currentLabel: String,
-    val itemsIndexed: Int
+    val itemsIndexed: Int,
+    val onboardingProgress: FullCatalogOnboardingProgress? = null
 )
 
 /**
- * Section du catalogue en cours de synchronisation. L'ordre déclaré reflète la séquence
- * d'exécution du sync (LIVE puis VOD puis SERIES).
+ * Section du catalogue en cours de synchronisation.
  */
 enum class Section {
     LIVE,
     VOD,
     SERIES
+}
+
+/**
+ * Etat d'onboarding autonome pour chaque section (Canlı TV, Filmler, Diziler).
+ */
+enum class CatalogSectionState {
+    PENDING,
+    LOADING,
+    READY,
+    FAILED
+}
+
+data class SectionOnboardingStatus(
+    val state: CatalogSectionState = CatalogSectionState.PENDING,
+    val itemsIndexed: Int = 0,
+    val totalItems: Int = 0,
+    val message: String = "",
+    val networkMs: Long = 0L,
+    val parseMs: Long = 0L,
+    val dbMs: Long = 0L,
+    val firstUsableMs: Long = 0L,
+    val fullReadyMs: Long = 0L,
+    val requestCount: Int = 0
+)
+
+data class FullCatalogOnboardingProgress(
+    val serverAuthVerified: Boolean = false,
+    val live: SectionOnboardingStatus = SectionOnboardingStatus(),
+    val movies: SectionOnboardingStatus = SectionOnboardingStatus(),
+    val series: SectionOnboardingStatus = SectionOnboardingStatus()
+) {
+    val isAnyCatalogReady: Boolean
+        get() = live.state == CatalogSectionState.READY ||
+                movies.state == CatalogSectionState.READY ||
+                series.state == CatalogSectionState.READY
+
+    val isAllCatalogsFinished: Boolean
+        get() = (live.state == CatalogSectionState.READY || live.state == CatalogSectionState.FAILED) &&
+                (movies.state == CatalogSectionState.READY || movies.state == CatalogSectionState.FAILED) &&
+                (series.state == CatalogSectionState.READY || series.state == CatalogSectionState.FAILED)
 }

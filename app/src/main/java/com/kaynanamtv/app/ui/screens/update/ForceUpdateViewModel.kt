@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -39,30 +40,36 @@ class ForceUpdateViewModel @Inject constructor(
 
     fun downloadAndInstall() {
         viewModelScope.launch {
-            val config = remoteConfig.value ?: run {
-                openBrowserDownloadFallback()
-                return@launch
-            }
+            val config = remoteConfig.value
+            val apkUrl = config?.apkDownloadUrl?.takeIf { it.isNotBlank() && it.endsWith(".apk", ignoreCase = true) }
+                ?: preferencesRepository.cachedAppUpdateDownloadUrl.first()?.takeIf { it.endsWith(".apk", ignoreCase = true) }
+                ?: com.kaynanamtv.domain.model.AppUpdateConstants.DEFAULT_DOWNLOAD_URL
 
-            val apkUrl = config.apkDownloadUrl.ifBlank {
-                "https://github.com/emreklc99/KaynanamTV/releases/latest"
-            }
+            val latestName = config?.latestVersionName
+                ?: preferencesRepository.cachedAppUpdateVersionName.first()
+                ?: "Yeni Sürüm"
+
+            val latestCode = config?.latestVersionCode
+                ?: preferencesRepository.cachedAppUpdateVersionCode.first()
+                ?: 72
+
+            val notes = config?.releaseNotes
+                ?: preferencesRepository.cachedAppUpdateReleaseNotes.first()
 
             val releaseInfo = GitHubReleaseInfo(
-                versionName = config.latestVersionName,
-                versionCode = config.latestVersionCode,
+                versionName = latestName,
+                versionCode = latestCode,
                 releaseUrl = apkUrl,
                 downloadUrl = apkUrl,
-                downloadSha256 = null,
-                releaseNotes = config.releaseNotes,
-                publishedAt = null
+                downloadSha256 = preferencesRepository.cachedAppUpdateDownloadSha256.first(),
+                releaseNotes = notes.orEmpty(),
+                publishedAt = preferencesRepository.cachedAppUpdatePublishedAt.first()
             )
 
             _userMessage.value = "Güncelleme indiriliyor..."
             when (val res = appUpdateInstaller.startDownload(releaseInfo)) {
                 is Result.Error -> {
-                    _userMessage.value = "İndirme başlatılamadı, tarayıcıya yönlendiriliyor..."
-                    openBrowserDownloadFallback()
+                    _userMessage.value = "İndirme başlatılamadı: ${res.message}. Tekrar deneyin."
                 }
                 else -> Unit
             }
@@ -83,7 +90,7 @@ class ForceUpdateViewModel @Inject constructor(
     fun openBrowserDownloadFallback() {
         val config = remoteConfig.value
         val url = config?.apkDownloadUrl?.takeIf { it.isNotBlank() }
-            ?: "https://github.com/emreklc99/KaynanamTV/releases/latest"
+            ?: com.kaynanamtv.domain.model.AppUpdateConstants.OFFICIAL_RELEASES_PAGE
         try {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

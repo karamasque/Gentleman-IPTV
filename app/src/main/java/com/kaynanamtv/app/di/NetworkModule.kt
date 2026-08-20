@@ -20,6 +20,7 @@ import com.kaynanamtv.player.AudioCompatibilityMemoryStore
 import com.kaynanamtv.player.Media3PlayerEngine
 import com.kaynanamtv.player.PlayerEngine
 import com.kaynanamtv.player.PlaybackSupportSnapshotStore
+import kotlinx.coroutines.flow.first
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -129,20 +130,33 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    @MainPlayerEngine
-    fun provideMainPlayerEngine(
+    fun providePlayerEngineFactory(
         @ApplicationContext context: Context,
         okHttpClient: OkHttpClient,
         playbackCompatibilityRepository: com.kaynanamtv.domain.repository.PlaybackCompatibilityRepository,
         audioCompatibilityMemoryStore: AudioCompatibilityMemoryStore,
         playbackSupportSnapshotStore: PlaybackSupportSnapshotStore
-    ): PlayerEngine = Media3PlayerEngine(
+    ): com.kaynanamtv.player.PlayerEngineFactory = com.kaynanamtv.player.PlayerEngineFactory(
         context,
         okHttpClient,
         playbackCompatibilityRepository,
         audioCompatibilityMemoryStore,
         playbackSupportSnapshotStore
     )
+
+    @Provides
+    @Singleton
+    @MainPlayerEngine
+    fun provideMainPlayerEngine(
+        preferencesRepository: com.kaynanamtv.data.preferences.PreferencesRepository,
+        playerEngineFactory: com.kaynanamtv.player.PlayerEngineFactory
+    ): PlayerEngine {
+        val pref = kotlinx.coroutines.runBlocking {
+            runCatching { preferencesRepository.playerEnginePreference.first() }.getOrDefault(com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO)
+        }
+        val targetType = playerEngineFactory.resolveEngineType(pref)
+        return playerEngineFactory.createEngine(targetType)
+    }
 
     /**
      * Factory binding for preview and multiview playback.

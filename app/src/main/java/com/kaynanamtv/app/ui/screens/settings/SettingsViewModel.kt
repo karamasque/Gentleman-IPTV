@@ -944,6 +944,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setPlayerEnginePreference(preference: com.kaynanamtv.domain.model.PlayerEnginePreference) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerEnginePreference(preference)
+        }
+    }
+
     fun setPlayerPlaybackBufferMode(mode: PlaybackBufferMode) {
         viewModelScope.launch {
             preferencesRepository.setPlayerPlaybackBufferMode(mode)

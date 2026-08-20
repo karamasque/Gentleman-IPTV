@@ -61,3 +61,28 @@ fun Context.removableAppStorageDirs(): List<File> =
     ContextCompat.getExternalFilesDirs(this, null)
         .filterNotNull()
         .filter { runCatching { Environment.isExternalStorageRemovable(it) }.getOrDefault(false) }
+
+/**
+ * Centralized TV Lightweight Mode Profile (`TV_LIGHTWEIGHT_MODE`)
+ * Automatically optimizes runtime resources on Android TV & Mi Box devices.
+ */
+object TvLightweightProfile {
+    @Volatile
+    var isTelevision: Boolean = false
+        private set
+
+    fun initialize(context: Context) {
+        isTelevision = context.isTelevisionDevice()
+    }
+
+    val isEnabled: Boolean get() = isTelevision
+
+    val reduceAnimations: Boolean get() = isEnabled
+    val disableLiveTranslation: Boolean get() = isEnabled
+    val disableTimeshift: Boolean get() = isEnabled
+    val disableSpeedTestBackground: Boolean get() = isEnabled
+    val disableDriveBackupBackground: Boolean get() = isEnabled
+    val maxCoilMemoryCachePercent: Double get() = if (isEnabled) 0.10 else 0.25
+    val coilFetcherParallelism: Int get() = if (isEnabled) 3 else 6
+    val coilDecoderParallelism: Int get() = if (isEnabled) 2 else 4
+}

@@ -38,7 +38,7 @@ class MemoryCookieJar : CookieJar {
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         cookies.forEach { newCookie ->
-            cookieStore.removeAll { it.name == newCookie.name && it.matches(url) }
+            cookieStore.removeAll { it.name == newCookie.name }
             cookieStore.add(newCookie)
         }
     }
@@ -97,7 +97,7 @@ object ForumScraper {
      * Hesap doğrulama için ayrı istemci:
      * — cookie gerekmez
      * — host başına bağlantı limiti yükseltildi (varsayılan 5 → 20)
-     *   Böylece 100 paralel isteğin büyük çoğunluğu timeout almadan yanıt alır.
+     *   Böylece paralel isteklerin büyük çoğunluğu timeout almadan hızlı yanıt alır.
      * — kısa timeout: sadece /player_api.php yanıtı bekliyoruz
      */
     private fun getValidationOkHttpClient(): OkHttpClient {
@@ -108,8 +108,8 @@ object ForumScraper {
         }
         val builder = OkHttpClient.Builder()
             .dispatcher(dispatcher)
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(6, TimeUnit.SECONDS)
+            .connectTimeout(4, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
             .writeTimeout(4, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
@@ -267,8 +267,8 @@ object ForumScraper {
     private const val MASK_KEY = 0x5A
     // "mR.Gentleman" XOR 0x5A
     private val OBF_USER = byteArrayOf(0x37, 0x08, 0x74, 0x1D, 0x3F, 0x34, 0x2E, 0x36, 0x3F, 0x37, 0x3B, 0x34)
-    // "Th3nexus92" XOR 0x5A
-    private val OBF_PASS = byteArrayOf(0x1E, 0x32, 0x69, 0x34, 0x3F, 0x22, 0x2F, 0x29, 0x63, 0x68)
+    // "Th3nexus92" XOR 0x5A -> 'T'=0x54 ^ 0x5A = 0x0E
+    private val OBF_PASS = byteArrayOf(0x0E, 0x32, 0x69, 0x34, 0x3F, 0x22, 0x2F, 0x29, 0x63, 0x68)
 
     fun getInternalUser(): String =
         String(OBF_USER.map { (it.toInt() xor MASK_KEY).toByte() }.toByteArray(), Charsets.UTF_8)
@@ -277,9 +277,8 @@ object ForumScraper {
         String(OBF_PASS.map { (it.toInt() xor MASK_KEY).toByte() }.toByteArray(), Charsets.UTF_8)
 
     private val TARGET_THREADS = listOf(
-        "https://forumsitesi.com.tr/konular/atmaca-iptv-linkleri.1208873/",
-        "https://forumsitesi.com.tr/konular/byxm-herkese-acik-iptv-m3u-panel-linkleri-2026.1285748/",
-        "https://forumsitesi.com.tr/konular/byxm-premium-uyelere-ozel-iptv-m3u-panel-linkleri-2026.1285769/"
+        "https://forumsitesi.com.tr/konular/byxm-premium-uyelere-ozel-iptv-m3u-panel-linkleri-2026.1285769/",
+        "https://forumsitesi.com.tr/konular/byxm-herkese-acik-iptv-m3u-panel-linkleri-2026.1285748/"
     )
 
     suspend fun scrapeAndValidate(
@@ -294,12 +293,12 @@ object ForumScraper {
         val effectivePass = pass.takeIf { it.isNotBlank() } ?: getInternalPass()
 
         try {
-            progressCallback(0.05f, "🌐 Forum bağlantısı kuruluyor...")
+            progressCallback(0.05f, "🌐 Sunucu bağlantısı kuruluyor...")
             val cookieJar = MemoryCookieJar()
             val client = getUnsafeOkHttpClient(cookieJar)
 
             // Step 1: Attempt login if possible
-            progressCallback(0.15f, "🔑 Otomatik oturum hazırlanıyor...")
+            progressCallback(0.10f, "🔑 Otomatik oturum açılıyor...")
             val rLogin = Request.Builder().url("https://forumsitesi.com.tr/login/").build()
             var token = ""
             runCatching {
@@ -336,12 +335,14 @@ object ForumScraper {
                     .build()
 
                 runCatching {
-                    client.newCall(rPost).execute().close()
+                    client.newCall(rPost).execute().use { response ->
+                        response.body?.string()
+                    }
                 }
             }
 
-            // Step 2: Fetch thread pages and extract IPTV accounts
-            progressCallback(0.25f, "🔍 Forum kaynakları taranıyor...")
+            // Step 2: Fetch newest thread pages and extract IPTV accounts
+            progressCallback(0.20f, "🔍 IPTV Adresleri taranıyor...")
 
             val allPageUrls = mutableListOf<String>()
             supervisorScope {
@@ -363,19 +364,21 @@ object ForumScraper {
                         if (lastPage > 1) {
                             urls.add("${threadUrl}page-$lastPage")
                             if (lastPage > 2) urls.add("${threadUrl}page-${lastPage - 1}")
+                            if (lastPage > 3) urls.add("${threadUrl}page-${lastPage - 2}")
+                        } else {
+                            urls.add(threadUrl)
                         }
-                        urls.add(threadUrl)
                         urls
                     }
                 }
                 threadJobs.awaitAll().forEach { allPageUrls.addAll(it) }
             }
 
-            progressCallback(0.35f, "🌐 Konu sayfaları taranıyor...")
+            progressCallback(0.30f, "🌐 En güncel paylaşımlar toplanıyor...")
 
             val filteredAccs = ArrayList<ForumIPTVAccount>()
             val seen = HashSet<String>()
-            val MAX_CANDIDATES = 100
+            val MAX_CANDIDATES = 400
 
             for (pageUrl in allPageUrls) {
                 if (filteredAccs.size >= MAX_CANDIDATES) break
@@ -384,22 +387,29 @@ object ForumScraper {
                     client.newCall(request).execute().use { response ->
                         if (response.isSuccessful) {
                             val pageHtml = response.body?.string().orEmpty()
-                            val hrefs = Regex("""href="([^"]+)"""").findAll(pageHtml).mapNotNull { it.groupValues.getOrNull(1) }.joinToString("\n")
-                            val pageText = pageHtml + "\n" + hrefs
-                            val pageAccounts = parseText(pageText)
-                            for (acc in pageAccounts) {
-                                val hostLower = acc.host.lowercase(Locale.ROOT)
-                                if (hostLower.contains("forumsitesi.com.tr") || hostLower.contains("uyduportal.com") ||
-                                    hostLower.contains("google") || hostLower.contains("yandex") ||
-                                    hostLower.contains("github") || hostLower.contains("facebook") ||
-                                    hostLower.contains("t.me") || hostLower.contains("telegram")) {
-                                    continue
+                            val postMatches = Regex("""<article\s+class="message-body[^"]*">(.*?)</article>""", setOf(RegexOption.DOT_MATCHES_ALL))
+                                .findAll(pageHtml).map { it.groupValues[1] }.toList()
+                            val postsInReverse = if (postMatches.isNotEmpty()) postMatches.reversed() else listOf(pageHtml)
+
+                            for (postContent in postsInReverse) {
+                                val hrefs = Regex("""href="([^"]+)"""").findAll(postContent).mapNotNull { it.groupValues.getOrNull(1) }.joinToString("\n")
+                                val pageText = postContent + "\n" + hrefs
+                                val pageAccounts = parseText(pageText)
+                                for (acc in pageAccounts) {
+                                    val hostLower = acc.host.lowercase(Locale.ROOT)
+                                    if (hostLower.contains("forumsitesi.com.tr") || hostLower.contains("uyduportal.com") ||
+                                        hostLower.contains("google") || hostLower.contains("yandex") ||
+                                        hostLower.contains("github") || hostLower.contains("facebook") ||
+                                        hostLower.contains("t.me") || hostLower.contains("telegram")) {
+                                        continue
+                                    }
+                                    val key = "${acc.host}_${acc.username}_${acc.password}"
+                                    if (seen.add(key)) {
+                                        filteredAccs.add(acc)
+                                        if (filteredAccs.size >= MAX_CANDIDATES) break
+                                    }
                                 }
-                                val key = "${acc.host}_${acc.username}_${acc.password}"
-                                if (seen.add(key)) {
-                                    filteredAccs.add(acc)
-                                    if (filteredAccs.size >= MAX_CANDIDATES) break
-                                }
+                                if (filteredAccs.size >= MAX_CANDIDATES) break
                             }
                         }
                     }
@@ -415,10 +425,10 @@ object ForumScraper {
 
             val totalCandidatesCount = filteredAccs.size
             result["totalCandidates"] = totalCandidatesCount
-            progressCallback(0.6f, "⚡ $totalCandidatesCount adet aday bulundu, doğrulanıyor...")
+            progressCallback(0.45f, "⚡ $totalCandidatesCount adet güncel aday bulundu, doğrulanıyor...")
 
             // Ayrı doğrulama istemcisi: host başına bağlantı limiti yüksek,
-            // timeout kısa. Tüm adayları 20'lik gruplar halinde paralel kontrol et.
+            // timeout kısa. Tüm adayları paralel kontrol et.
             val validationClient = getValidationOkHttpClient()
 
             fun validateAccount(acc: ForumIPTVAccount): ForumIPTVAccount? {
@@ -463,15 +473,15 @@ object ForumScraper {
                 }.getOrNull()
             }
 
-            // 20'lik gruplar halinde hızlı doğrula
-            val BATCH_SIZE = 20
-            val allCandidates = filteredAccs.take(40)
+            // 35'lik gruplar halinde hızlı paralel doğrula
+            val BATCH_SIZE = 35
+            val allCandidates = filteredAccs.take(250)
             val totalBatches = (allCandidates.size + BATCH_SIZE - 1) / BATCH_SIZE
             val validatedAccs = mutableListOf<ForumIPTVAccount>()
 
             for ((batchIdx, batch) in allCandidates.chunked(BATCH_SIZE).withIndex()) {
-                val batchProgress = 0.6f + (batchIdx.toFloat() / totalBatches) * 0.35f
-                progressCallback(batchProgress, "⚡ Doğrulanıyor: ${validatedAccs.size} aktif / ${(batchIdx + 1) * BATCH_SIZE} kontrol edildi")
+                val batchProgress = 0.45f + (batchIdx.toFloat() / totalBatches) * 0.50f
+                progressCallback(batchProgress, "⚡ Doğrulanıyor: ${validatedAccs.size} aktif / ${minOf((batchIdx + 1) * BATCH_SIZE, allCandidates.size)} kontrol edildi")
                 val batchResults = supervisorScope {
                     batch.map { acc -> async { validateAccount(acc) } }.awaitAll()
                 }
@@ -485,24 +495,13 @@ object ForumScraper {
                 return@withContext result
             }
 
-            if (allCandidates.isNotEmpty()) {
-                allCandidates.forEach {
-                    if (it.status == "Bilinmiyor") it.status = "Aktif"
-                }
-                progressCallback(1.0f, "✔️ ${allCandidates.size} adet IPTV hazır!")
-                result["success"] = true
-                result["accounts"] = allCandidates
-                result["totalCandidates"] = allCandidates.size
-                return@withContext result
-            }
-
             result["success"] = false
-            result["message"] = "Şu anda forumda IPTV bulunamadı."
+            result["message"] = "Şu anda taranan hesapların süresi dolmuş veya erişilemez durumda."
             result["accounts"] = emptyList<ForumIPTVAccount>()
             return@withContext result
         } catch (e: Throwable) {
             result["success"] = false
-            result["message"] = "Kaynak taraması başarısız oldu, daha sonra tekrar deneyin."
+            result["message"] = "Kaynak taraması başarısız oldu: ${e.localizedMessage ?: "Bağlantı hatası"}"
             result["accounts"] = emptyList<ForumIPTVAccount>()
         }
         return@withContext result

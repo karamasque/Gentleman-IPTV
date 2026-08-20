@@ -40,6 +40,7 @@ internal fun LazyListScope.settingsPlaybackSection(
     timeshiftBackendLabel: String,
     audioDecoderModeLabel: String,
     videoDecoderModeLabel: String,
+    playerEnginePreferenceLabel: String,
     playbackBufferModeLabel: String,
     audioOutputPreferenceLabel: String,
     externalPlaybackModeLabel: String,
@@ -91,6 +92,7 @@ internal fun LazyListScope.settingsPlaybackSection(
     item {
         val liveStreamFormatMode by viewModel.playerLiveStreamFormatMode.collectAsStateWithLifecycle()
         var showLiveStreamFormatDialog by rememberSaveable { mutableStateOf(false) }
+        var showPlayerEngineDialog by rememberSaveable { mutableStateOf(false) }
         var showAdvancedSettings by rememberSaveable { mutableStateOf(false) }
         val liveStreamFormatOptions = remember {
             listOf(
@@ -98,6 +100,32 @@ internal fun LazyListScope.settingsPlaybackSection(
                 LiveStreamFormatMode.HLS,
                 LiveStreamFormatMode.MPEG_TS
             )
+        }
+        val playerEngineOptions = remember {
+            listOf(
+                com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO to "Otomatik (TV: VLC, Mobil: Media3)",
+                com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3 to "Media3 (ExoPlayer)",
+                com.kaynanamtv.domain.model.PlayerEnginePreference.VLC to "Dahili VLC Player"
+            )
+        }
+
+        if (showPlayerEngineDialog) {
+            PremiumSelectionDialog(
+                title = "Oynatıcı Motoru",
+                onDismiss = { showPlayerEngineDialog = false }
+            ) {
+                playerEngineOptions.forEachIndexed { index, (pref, label) ->
+                    LevelOption(
+                        level = index,
+                        text = label,
+                        currentLevel = if (uiState.playerEnginePreference == pref) index else -1,
+                        onSelect = {
+                            viewModel.setPlayerEnginePreference(pref)
+                            showPlayerEngineDialog = false
+                        }
+                    )
+                }
+            }
         }
 
         if (showLiveStreamFormatDialog) {
@@ -128,6 +156,13 @@ internal fun LazyListScope.settingsPlaybackSection(
             color = Primary,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+        )
+
+        // Oynatıcı Motoru (Otomatik / Media3 / VLC)
+        ClickableSettingsRow(
+            label = "Oynatıcı Motoru",
+            value = playerEnginePreferenceLabel,
+            onClick = { showPlayerEngineDialog = true }
         )
 
         // Canlı Yayın Formatı (HLS / MPEG-TS)

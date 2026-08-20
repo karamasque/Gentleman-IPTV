@@ -97,6 +97,17 @@ internal fun PlayerViewModel.applyPrepareSessionState(
     val streamClassLabel = if (hasArchiveRequest) "Catch-up" else "Primary"
     applyDefaultPlaybackTimersIfNeeded()
 
+    if (currentContentType != ContentType.LIVE) {
+        previousChannelIndex = -1
+        currentChannelIndex = -1
+        currentChannelFlow.value = null
+        zapBufferWatchdogJob?.cancel()
+        zapBufferWatchdogJob = null
+        recoveryJob?.cancel()
+        recoveryJob = null
+        livePreviewHandoffManager.stopAndClearAll()
+    }
+
     if (currentContentType == ContentType.LIVE && currentCombinedProfileId != null) {
         val activeCombinedProfileId = currentCombinedProfileId
         viewModelScope.launch {

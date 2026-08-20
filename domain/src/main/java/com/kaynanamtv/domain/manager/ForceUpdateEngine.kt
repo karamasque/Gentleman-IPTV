@@ -20,7 +20,10 @@ object ForceUpdateEngine {
         // Fail-closed protection:
         // If the device already knows it is obsolete/blocked, keep it blocked offline unless server now allows it.
         if (cachedForceUpdateBlocked) {
-            if (remoteConfig != null && currentVersionCode >= remoteConfig.minimumSupportedVersionCode) {
+            if (remoteConfig != null &&
+                currentVersionCode >= remoteConfig.minimumSupportedVersionCode &&
+                currentVersionCode >= remoteConfig.latestVersionCode
+            ) {
                 return ForceUpdateDecision.ALLOWED
             }
             return ForceUpdateDecision.BLOCKED_FORCE_UPDATE_REQUIRED
@@ -32,8 +35,10 @@ object ForceUpdateEngine {
             return ForceUpdateDecision.ALLOWED
         }
 
-        // Mandatory update check
-        if (remoteConfig.forceUpdate && currentVersionCode < remoteConfig.minimumSupportedVersionCode) {
+        // Mandatory update check: block if current version is less than minimum required or latest released version
+        if (remoteConfig.forceUpdate &&
+            (currentVersionCode < remoteConfig.minimumSupportedVersionCode || currentVersionCode < remoteConfig.latestVersionCode)
+        ) {
             return ForceUpdateDecision.BLOCKED_FORCE_UPDATE_REQUIRED
         }
 

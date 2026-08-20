@@ -9,14 +9,32 @@ import kotlinx.coroutines.launch
 
 private const val PLAYBACK_CONTROL_MUTE_TOGGLE_DEBOUNCE_MS = 250L
 
-fun PlayerViewModel.seekForward() {
+fun PlayerViewModel.seekForward(deltaMs: Long = 10_000L) {
     notifyUserActivity()
-    playerEngine.seekForward()
+    if (currentContentType != ContentType.LIVE || isCatchUpPlayback.value) {
+        val duration = playerEngine.duration.value
+        if (duration <= 0L) return
+        val currentPos = playerEngine.currentPosition.value
+        val basePos = if (_seekPreview.value.visible) _seekPreview.value.positionMs else currentPos
+        val targetPos = (basePos + deltaMs).coerceIn(0L, duration)
+        updateSeekPreview(targetPos)
+    } else {
+        playerEngine.seekForward()
+    }
 }
 
-fun PlayerViewModel.seekBackward() {
+fun PlayerViewModel.seekBackward(deltaMs: Long = 10_000L) {
     notifyUserActivity()
-    playerEngine.seekBackward()
+    if (currentContentType != ContentType.LIVE || isCatchUpPlayback.value) {
+        val duration = playerEngine.duration.value
+        if (duration <= 0L) return
+        val currentPos = playerEngine.currentPosition.value
+        val basePos = if (_seekPreview.value.visible) _seekPreview.value.positionMs else currentPos
+        val targetPos = (basePos - deltaMs).coerceIn(0L, duration)
+        updateSeekPreview(targetPos)
+    } else {
+        playerEngine.seekBackward()
+    }
 }
 
 fun PlayerViewModel.seekToLiveEdge() {

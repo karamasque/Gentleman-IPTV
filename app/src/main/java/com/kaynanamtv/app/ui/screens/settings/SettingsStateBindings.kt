@@ -56,6 +56,7 @@ internal fun observeSettingsPreferenceSnapshot(
             playerFastRetryOnTransientFailures = false,
             playerAudioDecoderMode = DecoderMode.AUTO,
             playerVideoDecoderMode = DecoderMode.AUTO,
+            playerEnginePreference = com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO,
             playerPlaybackBufferMode = PlaybackBufferMode.AUTO,
             playerAudioOutputPreference = AudioOutputPreference.AUTO,
             playerCompatibilityMemoryEnabled = true,
@@ -146,6 +147,8 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(playerAudioDecoderMode = decoderMode)
     }.combine(preferencesRepository.playerVideoDecoderMode) { snapshot, decoderMode ->
         snapshot.copy(playerVideoDecoderMode = decoderMode)
+    }.combine(preferencesRepository.playerEnginePreference) { snapshot, enginePref ->
+        snapshot.copy(playerEnginePreference = enginePref)
     }.combine(preferencesRepository.playerPlaybackBufferMode) { snapshot, bufferMode ->
         snapshot.copy(playerPlaybackBufferMode = bufferMode)
     }.combine(preferencesRepository.playerAudioOutputPreference) { snapshot, audioOutputPreference ->

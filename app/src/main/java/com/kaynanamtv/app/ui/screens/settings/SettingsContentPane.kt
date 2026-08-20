@@ -65,6 +65,7 @@ internal fun SettingsContentPane(
                 timeshiftBackendLabel = screenLabels.timeshiftBackendLabel,
                 audioDecoderModeLabel = screenLabels.audioDecoderModeLabel,
                 videoDecoderModeLabel = screenLabels.videoDecoderModeLabel,
+                playerEnginePreferenceLabel = screenLabels.playerEnginePreferenceLabel,
                 playbackBufferModeLabel = screenLabels.playbackBufferModeLabel,
                 audioOutputPreferenceLabel = screenLabels.audioOutputPreferenceLabel,
                 externalPlaybackModeLabel = screenLabels.externalPlaybackModeLabel,

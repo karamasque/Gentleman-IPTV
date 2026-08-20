@@ -46,6 +46,7 @@ internal class SettingsProviderActions(
         scope.launch {
             // Stop any ongoing playback before switching active provider
             runCatching { com.kaynanamtv.player.Media3PlayerEngine.stopAllActivePlayback() }
+            runCatching { com.kaynanamtv.player.VlcPlayerEngine.stopAllActivePlayback() }
 
             // Validate the provider exists before writing any preferences.
             val provider = providerRepository.getProvider(providerId)
@@ -486,6 +487,7 @@ internal class SettingsProviderActions(
         scope.launch {
             // Immediately stop any active playback across all engines before deleting provider
             runCatching { com.kaynanamtv.player.Media3PlayerEngine.stopAllActivePlayback() }
+            runCatching { com.kaynanamtv.player.VlcPlayerEngine.stopAllActivePlayback() }
 
             uiState.update {
                 it.copy(

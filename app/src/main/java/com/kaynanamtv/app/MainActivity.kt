@@ -172,7 +172,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         lifecycleScope.launch {
-            remoteConfigRepository.checkRemoteConfig()
+            (application as? KaynanamTVApp)?.checkForAppUpdates(force = true)
+            remoteConfigRepository.checkRemoteConfig(force = true)
         }
         setContent {
             val appLanguage by preferencesRepository.appLanguage.collectAsState(initial = "system")
@@ -235,6 +236,10 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         applyImmersiveSystemUi()
+        lifecycleScope.launch {
+            (application as? KaynanamTVApp)?.checkForAppUpdates(force = true)
+            remoteConfigRepository.checkRemoteConfig(force = true)
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

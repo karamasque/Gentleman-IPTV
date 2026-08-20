@@ -12,10 +12,13 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.URI
 import javax.inject.Inject
+import com.kaynanamtv.domain.model.AppUpdateConstants
 import javax.inject.Singleton
 
-private const val GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/karamasque/Gentleman-IPTV/releases/latest"
-private const val GITHUB_RELEASES_LIST_URL = "https://api.github.com/repos/karamasque/Gentleman-IPTV/releases?per_page=20"
+import com.kaynanamtv.domain.repository.RemoteConfigRepository
+
+private const val GITHUB_RELEASES_LATEST_URL = AppUpdateConstants.GITHUB_RELEASES_LATEST_API
+private const val GITHUB_RELEASES_LIST_URL = AppUpdateConstants.GITHUB_RELEASES_LIST_API
 
 data class GitHubReleaseInfo(
     val versionName: String,
@@ -29,7 +32,8 @@ data class GitHubReleaseInfo(
 
 @Singleton
 class GitHubReleaseChecker @Inject constructor(
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val remoteConfigRepository: RemoteConfigRepository
 ) {
     private companion object {
         private const val MAX_RESPONSE_BYTES = 512 * 1024L
@@ -47,6 +51,8 @@ class GitHubReleaseChecker @Inject constructor(
 
             okHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
+                    val fallback = fetchFromRemoteConfigFallback()
+                    if (fallback is Result.Success) return@withContext fallback
                     return@withContext Result.error("Update check failed: HTTP ${response.code}")
                 }
 
@@ -57,19 +63,27 @@ class GitHubReleaseChecker @Inject constructor(
                     Result.Loading -> ""
                 }
                 if (body.isBlank()) {
+                    val fallback = fetchFromRemoteConfigFallback()
+                    if (fallback is Result.Success) return@withContext fallback
                     return@withContext Result.error("Update check failed: empty GitHub release response")
                 }
 
                 val json = selectReleaseJson(body, updateChannel)
-                    ?: return@withContext Result.error(
+                if (json == null) {
+                    val fallback = fetchFromRemoteConfigFallback()
+                    if (fallback is Result.Success) return@withContext fallback
+                    return@withContext Result.error(
                         if (updateChannel == AppUpdateChannel.Beta) {
                             "Update check failed: no beta release found"
                         } else {
                             "Update check failed: latest release response was invalid"
                         }
                     )
+                }
                 val parsedTag = parseTagVersionInfo(json.optString("tag_name"))
                 if (parsedTag.versionName.isBlank()) {
+                    val fallback = fetchFromRemoteConfigFallback()
+                    if (fallback is Result.Success) return@withContext fallback
                     return@withContext Result.error("Update check failed: latest release tag is missing")
                 }
 
@@ -94,9 +108,59 @@ class GitHubReleaseChecker @Inject constructor(
                 )
             }
         } catch (error: IOException) {
+            val fallback = fetchFromRemoteConfigFallback()
+            if (fallback is Result.Success) return@withContext fallback
             Result.error("Update check failed: network error", error)
         } catch (error: Exception) {
+            val fallback = fetchFromRemoteConfigFallback()
+            if (fallback is Result.Success) return@withContext fallback
             Result.error("Update check failed: ${error.message}", error)
+        }
+    }
+
+    private suspend fun fetchFromRemoteConfigFallback(): Result<GitHubReleaseInfo> {
+        return try {
+            when (val remoteResult = remoteConfigRepository.checkRemoteConfig()) {
+                is Result.Success -> {
+                    val config = remoteResult.data
+                    val releaseUrl = config.apkDownloadUrl.takeIf { it.isNotBlank() }
+                        ?: AppUpdateConstants.OFFICIAL_RELEASES_PAGE
+                    Result.success(
+                        GitHubReleaseInfo(
+                            versionName = config.latestVersionName,
+                            versionCode = config.latestVersionCode,
+                            releaseUrl = releaseUrl,
+                            downloadUrl = config.apkDownloadUrl.takeIf { it.isNotBlank() },
+                            downloadSha256 = null,
+                            releaseNotes = config.releaseNotes,
+                            publishedAt = null
+                        )
+                    )
+                }
+                is Result.Error -> {
+                    val cached = remoteConfigRepository.getCachedRemoteConfig()
+                    if (cached != null) {
+                        val releaseUrl = cached.apkDownloadUrl.takeIf { it.isNotBlank() }
+                            ?: AppUpdateConstants.OFFICIAL_RELEASES_PAGE
+                        Result.success(
+                            GitHubReleaseInfo(
+                                versionName = cached.latestVersionName,
+                                versionCode = cached.latestVersionCode,
+                                releaseUrl = releaseUrl,
+                                downloadUrl = cached.apkDownloadUrl.takeIf { it.isNotBlank() },
+                                downloadSha256 = null,
+                                releaseNotes = cached.releaseNotes,
+                                publishedAt = null
+                            )
+                        )
+                    } else {
+                        Result.error("Güncelleme sunucusuna bağlanılamadı")
+                    }
+                }
+                Result.Loading -> Result.error("Güncelleme kontrol ediliyor")
+            }
+        } catch (e: Exception) {
+            Result.error("Güncelleme kontrol hatası: ${e.message}", e)
         }
     }
 
@@ -181,7 +245,9 @@ class GitHubReleaseChecker @Inject constructor(
                     if (name.equals("KaynanamTV.apk", ignoreCase = true) ||
                         name.equals("GentlemanTV.apk", ignoreCase = true) ||
                         name.equals("Gentleman-IPTV.apk", ignoreCase = true) ||
-                        name.equals("KaynanamTV.apk", ignoreCase = true)) {
+                        name.startsWith("KaynanamTV", ignoreCase = true) && name.endsWith(".apk", ignoreCase = true) ||
+                        name.startsWith("Gentleman", ignoreCase = true) && name.endsWith(".apk", ignoreCase = true) ||
+                        name.equals("app-release.apk", ignoreCase = true)) {
                         return releaseAsset
                     }
                     if (fallback == null &&
@@ -195,6 +261,7 @@ class GitHubReleaseChecker @Inject constructor(
                     if (name.equals("KaynanamTV-beta.apk", ignoreCase = true) ||
                         name.equals("GentlemanTV-beta.apk", ignoreCase = true) ||
                         name.equals("Gentleman-IPTV-beta.apk", ignoreCase = true) ||
+                        name.startsWith("KaynanamTV-beta", ignoreCase = true) && name.endsWith(".apk", ignoreCase = true) ||
                         name.equals("KaynanamTV-beta.apk", ignoreCase = true)) {
                         return releaseAsset
                     }
@@ -221,9 +288,11 @@ class GitHubReleaseChecker @Inject constructor(
             )
         }
 
+        val name = normalizedTag.removePrefix("v").removePrefix("V").trim()
+        val codeFromTag = name.substringAfterLast('.').takeWhile { it.isDigit() }.toIntOrNull()
         return ParsedTagVersion(
-            versionName = normalizedTag.removePrefix("v").trim(),
-            versionCode = null
+            versionName = name,
+            versionCode = codeFromTag
         )
     }
 

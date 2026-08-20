@@ -1392,15 +1392,23 @@ private fun PlayerVodInfo(
                         modifier = Modifier
                             .weight(1f)
                             .padding(horizontal = 12.dp)
-                            .focusProperties { down = quickActionsFocusRequester }
+                            .focusProperties { down = playButtonFocusRequester }
                             .semantics { contentDescription = playbackLabel }
                             .onPreviewKeyEvent { event ->
                                 if (duration <= 0L) return@onPreviewKeyEvent false
+                                val native = event.nativeKeyEvent
+                                val repeat = native.repeatCount
+                                val stepMs = when {
+                                    repeat == 0 -> 10_000L
+                                    repeat < 5 -> 15_000L
+                                    repeat < 10 -> 30_000L
+                                    else -> 60_000L
+                                }
                                 when {
-                                    // RIGHT arrow -> seek forward 10s
+                                    // RIGHT arrow -> seek forward
                                     event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight -> {
                                         val currentMs = (sliderValue * duration).toLong()
-                                        val newMs = (currentMs + seekStepMs).coerceIn(0L, duration)
+                                        val newMs = (currentMs + stepMs).coerceIn(0L, duration)
                                         val newValue = newMs.toFloat() / duration.toFloat()
                                         if (!isScrubbing) {
                                             isScrubbing = true
@@ -1410,10 +1418,10 @@ private fun PlayerVodInfo(
                                         latestSeekPreviewPositionChanged(newMs)
                                         true
                                     }
-                                    // LEFT arrow -> seek backward 10s
+                                    // LEFT arrow -> seek backward
                                     event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft -> {
                                         val currentMs = (sliderValue * duration).toLong()
-                                        val newMs = (currentMs - seekStepMs).coerceIn(0L, duration)
+                                        val newMs = (currentMs - stepMs).coerceIn(0L, duration)
                                         val newValue = newMs.toFloat() / duration.toFloat()
                                         if (!isScrubbing) {
                                             isScrubbing = true

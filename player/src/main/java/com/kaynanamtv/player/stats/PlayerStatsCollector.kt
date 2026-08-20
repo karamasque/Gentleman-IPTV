@@ -107,11 +107,9 @@ class PlayerStatsCollector(
      * | `bufferedDurationMs` | Every 500 ms (every 2 ticks) |
      * | Codec / bitrate / dropped frames | Every 1 000 ms (every 4 ticks) |
      */
-    fun start() {
+    fun start(isLive: Boolean = false, isTimeshiftActive: () -> Boolean = { false }) {
         stop()
         pollingJob = scopeProvider().launch(Dispatchers.Main.immediate) {
-            // Initialise to their trigger thresholds so the very first tick emits
-            // buffered and stats updates immediately (consistent with player-start UX).
             var ticksSinceBufferedUpdate = BUFFERED_UPDATE_TICKS
             var ticksSinceStatsUpdate = STATS_UPDATE_TICKS
 
@@ -119,24 +117,25 @@ class PlayerStatsCollector(
                 val player = playerProvider?.invoke()
 
                 if (player != null) {
-                    // --- Tier 1: Position + duration (every tick, READY only) -----
-                    // During BUFFERING the position is stalled and live duration is
-                    // C.TIME_UNSET (-1), making every emit a no-op equality check.
-                    // Skipping avoids wasted CPU on the main thread.
                     if (playbackState.value == PlaybackState.READY) {
-                        currentPosition.value = player.currentPosition
-                        duration.value = player.duration.coerceAtLeast(0L)
+                        val shouldPollPosition = !isLive || isTimeshiftActive()
+                        if (shouldPollPosition) {
+                            currentPosition.value = player.currentPosition
+                            duration.value = player.duration.coerceAtLeast(0L)
+                        }
                     }
 
-                    // --- Tier 2: Buffered duration (every 500 ms) ------------------
+                    // --- Tier 2: Buffered duration (every 1000 ms) ------------------
                     if (ticksSinceBufferedUpdate >= BUFFERED_UPDATE_TICKS) {
                         val buffered = (player.bufferedPosition - player.currentPosition)
                             .coerceAtLeast(0L)
-                        playerStats.value = playerStats.value.copy(bufferedDurationMs = buffered)
+                        if (playerStats.value.bufferedDurationMs != buffered) {
+                            playerStats.value = playerStats.value.copy(bufferedDurationMs = buffered)
+                        }
                         ticksSinceBufferedUpdate = 0
                     }
 
-                    // --- Tier 3: Codec / bitrate / dropped frames (every 1 000 ms) -
+                    // --- Tier 3: Codec / bitrate / dropped frames (every 1 500 ms) -
                     if (ticksSinceStatsUpdate >= STATS_UPDATE_TICKS) {
                         val video = lastVideoFormat
                         val audio = lastAudioFormat
@@ -186,13 +185,13 @@ class PlayerStatsCollector(
     }
 
     private companion object {
-        /** Base polling interval. All other intervals are multiples of this. */
-        private const val POSITION_UPDATE_INTERVAL_MS = 250L
+        /** Base polling interval: 500 ms for smooth UI with low CPU. */
+        private const val POSITION_UPDATE_INTERVAL_MS = 500L
 
-        /** Buffered duration sampled every 2 ticks = 500 ms. */
+        /** Buffered duration sampled every 2 ticks = 1 000 ms. */
         private const val BUFFERED_UPDATE_TICKS = 2
 
-        /** Heavy stats (codec / bitrate / dropped frames) every 4 ticks = 1 000 ms. */
-        private const val STATS_UPDATE_TICKS = 4
+        /** Heavy stats (codec / bitrate / dropped frames) every 3 ticks = 1 500 ms. */
+        private const val STATS_UPDATE_TICKS = 3
     }
 }

@@ -13,6 +13,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.kaynanamtv.data.local.dao.ChannelPreferenceDao
 import com.kaynanamtv.data.local.dao.SearchHistoryDao
@@ -169,6 +170,7 @@ class PreferencesRepository @Inject constructor(
         val PLAYER_DECODER_MODE = stringPreferencesKey("player_decoder_mode")
         val PLAYER_AUDIO_DECODER_MODE = stringPreferencesKey("player_audio_decoder_mode")
         val PLAYER_VIDEO_DECODER_MODE = stringPreferencesKey("player_video_decoder_mode")
+        val PLAYER_ENGINE_PREFERENCE = stringPreferencesKey("player_engine_preference")
         val PLAYER_PLAYBACK_BUFFER_MODE = stringPreferencesKey("player_playback_buffer_mode")
         val PLAYER_LIVE_STREAM_FORMAT_MODE = stringPreferencesKey("player_live_stream_format_mode")
         val PLAYER_VOD_HTTP_PROTOCOL_MODE = stringPreferencesKey("player_vod_http_protocol_mode")
@@ -258,6 +260,7 @@ class PreferencesRepository @Inject constructor(
         val APP_FORCE_UPDATE_RELEASE_NOTES = stringPreferencesKey("app_force_update_release_notes")
         val APP_FORCE_UPDATE_ENABLED = booleanPreferencesKey("app_force_update_enabled")
         val APP_TEST_OVERRIDE_MIN_VERSION_CODE = intPreferencesKey("app_test_override_min_version_code")
+        val DELETED_PROVIDER_IDS = stringSetPreferencesKey("deleted_provider_ids")
     }
 
     private object ParentalSessionKeys {
@@ -301,6 +304,21 @@ class PreferencesRepository @Inject constructor(
 
     val lastActiveProviderId: Flow<Long?> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.LAST_ACTIVE_PROVIDER_ID]
+    }
+
+    val deletedProviderIds: Flow<Set<Long>> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.DELETED_PROVIDER_IDS]?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
+    }
+
+    suspend fun recordDeletedProviderId(id: Long) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[PreferencesKeys.DELETED_PROVIDER_IDS] ?: emptySet()
+            preferences[PreferencesKeys.DELETED_PROVIDER_IDS] = current + id.toString()
+        }
+    }
+
+    suspend fun getDeletedProviderIdsSync(): Set<Long> {
+        return deletedProviderIds.first()
     }
 
     val appColorTheme: Flow<AppColorTheme> = context.dataStore.data.map { preferences ->
@@ -366,6 +384,14 @@ class PreferencesRepository @Inject constructor(
             saved = preferences[PreferencesKeys.PLAYER_VIDEO_DECODER_MODE],
             legacySaved = preferences[PreferencesKeys.PLAYER_DECODER_MODE]
         )
+    }
+
+    val playerEnginePreference: Flow<com.kaynanamtv.domain.model.PlayerEnginePreference> = context.dataStore.data.map { preferences ->
+        when (preferences[PreferencesKeys.PLAYER_ENGINE_PREFERENCE]) {
+            "MEDIA3" -> com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
+            "VLC" -> com.kaynanamtv.domain.model.PlayerEnginePreference.VLC
+            else -> com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO
+        }
     }
 
     val playerPlaybackBufferMode: Flow<PlaybackBufferMode> = context.dataStore.data.map { preferences ->
@@ -1089,6 +1115,12 @@ class PreferencesRepository @Inject constructor(
     suspend fun setPlayerVideoDecoderMode(mode: DecoderMode) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PLAYER_VIDEO_DECODER_MODE] = mode.name
+        }
+    }
+
+    suspend fun setPlayerEnginePreference(preference: com.kaynanamtv.domain.model.PlayerEnginePreference) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYER_ENGINE_PREFERENCE] = preference.name
         }
     }
 

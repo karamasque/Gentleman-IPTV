@@ -2453,7 +2453,7 @@ private fun SourceTypeSelectorPanel(
             if (!isEditing || sourceType == SourceType.FORUM) {
                 SourceTypeCard(
                     title = "Otomatik IPTV",
-                    subtitle = "Forumda paylaşılan aktif M3U listelerini otomatik çekin",
+                    subtitle = "Güncel ve aktif M3U listelerini otomatik tarayın ve ekleyin",
                     selected = sourceType == SourceType.FORUM,
                     enabled = !isEditing,
                     onClick = { onSelect(SourceType.FORUM) }
@@ -2608,7 +2608,7 @@ private fun ForumProviderForm(
             color = TextPrimary
         )
         Text(
-            text = "Forum ve topluluk kaynaklarındaki güncel IPTV listelerini otomatik tarayın ve çalışan hesapları tek tıkla ekleyin.",
+            text = "Güncel kaynaklardaki aktif IPTV listelerini otomatik tarayın ve çalışan hesapları tek tıkla ekleyin.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -3066,39 +3066,149 @@ private fun providerOnboardingStageLabel(message: String): String = when {
 @Composable
 fun ProviderOnboardingProgressDialog(
     message: String,
-    onDismiss: (() -> Unit)?
+    fullCatalogProgress: com.kaynanamtv.domain.sync.FullCatalogOnboardingProgress? = null,
+    onEnterApp: (() -> Unit)? = null,
+    onDismiss: (() -> Unit)? = null
 ) {
-    val stageLabel = providerOnboardingStageLabel(message)
+    val progress = fullCatalogProgress ?: com.kaynanamtv.domain.sync.FullCatalogOnboardingProgress(
+        serverAuthVerified = true,
+        live = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
+            state = if (message.contains("Canlı TV hazır")) com.kaynanamtv.domain.sync.CatalogSectionState.READY else com.kaynanamtv.domain.sync.CatalogSectionState.LOADING
+        ),
+        movies = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
+            state = if (message.contains("Filmler hazır")) com.kaynanamtv.domain.sync.CatalogSectionState.READY else com.kaynanamtv.domain.sync.CatalogSectionState.LOADING
+        ),
+        series = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
+            state = if (message.contains("Diziler hazır")) com.kaynanamtv.domain.sync.CatalogSectionState.READY else com.kaynanamtv.domain.sync.CatalogSectionState.LOADING
+        )
+    )
+
     PremiumDialog(
-        title = "IPTV Ekleniyor",
-        subtitle = "Lütfen bekleyin, işlem devam ediyor.",
+        title = "IPTV Hazırlanıyor",
+        subtitle = "Kataloglarınız hazırlanıyor, bölümler hazır oldukça kullanabilirsiniz.",
         onDismissRequest = { /* non-dismissible */ },
-        widthFraction = 0.36f,
+        widthFraction = 0.42f,
         heightFraction = null,
         content = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                CircularProgressIndicator(color = Primary)
-                StatusPill(
-                    label = stageLabel,
-                    containerColor = PrimaryGlow
+                // Sunucu doğrulandı
+                OnboardingStatusRow(
+                    isVerified = true,
+                    label = "Sunucu doğrulandı",
+                    subLabel = null
                 )
-                LinearProgressIndicator(
-                    color = Primary,
-                    modifier = Modifier.fillMaxWidth()
+
+                // Canlı TV
+                OnboardingStatusRow(
+                    isVerified = progress.live.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY,
+                    isLoading = progress.live.state == com.kaynanamtv.domain.sync.CatalogSectionState.LOADING,
+                    isFailed = progress.live.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED,
+                    label = if (progress.live.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY) {
+                        "Canlı TV hazır (${progress.live.itemsIndexed} kanal)"
+                    } else if (progress.live.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED) {
+                        "Canlı TV aktarılamadı"
+                    } else {
+                        "Canlı TV hazırlanıyor…"
+                    },
+                    subLabel = if (progress.live.fullReadyMs > 0) "${progress.live.fullReadyMs}ms" else null
                 )
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = OnBackground,
-                    textAlign = TextAlign.Center
+
+                // Filmler
+                OnboardingStatusRow(
+                    isVerified = progress.movies.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY,
+                    isLoading = progress.movies.state == com.kaynanamtv.domain.sync.CatalogSectionState.LOADING,
+                    isFailed = progress.movies.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED,
+                    label = if (progress.movies.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY) {
+                        "Filmler hazır (${progress.movies.itemsIndexed} film)"
+                    } else if (progress.movies.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED) {
+                        "Filmler aktarılamadı"
+                    } else {
+                        "Filmler hazırlanıyor…"
+                    },
+                    subLabel = if (progress.movies.fullReadyMs > 0) "${progress.movies.fullReadyMs}ms" else null
+                )
+
+                // Diziler
+                OnboardingStatusRow(
+                    isVerified = progress.series.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY,
+                    isLoading = progress.series.state == com.kaynanamtv.domain.sync.CatalogSectionState.LOADING,
+                    isFailed = progress.series.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED,
+                    label = if (progress.series.state == com.kaynanamtv.domain.sync.CatalogSectionState.READY) {
+                        "Diziler hazır (${progress.series.itemsIndexed} dizi)"
+                    } else if (progress.series.state == com.kaynanamtv.domain.sync.CatalogSectionState.FAILED) {
+                        "Diziler aktarılamadı"
+                    } else {
+                        "Diziler hazırlanıyor…"
+                    },
+                    subLabel = if (progress.series.fullReadyMs > 0) "${progress.series.fullReadyMs}ms" else null
+                )
+
+                if (message.isNotBlank() && !message.contains("hazır")) {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    )
+                }
+            }
+        },
+        footer = {
+            if (progress.isAnyCatalogReady && onEnterApp != null) {
+                PremiumDialogFooterButton(
+                    label = if (progress.isAllCatalogsFinished) "Uygulamaya Geç" else "Hazır Bölümlerle Uygulamaya Geç",
+                    onClick = onEnterApp
                 )
             }
         }
     )
+}
+
+@Composable
+private fun OnboardingStatusRow(
+    isVerified: Boolean,
+    isLoading: Boolean = false,
+    isFailed: Boolean = false,
+    label: String,
+    subLabel: String?
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0x22132032), shape = RoundedCornerShape(10.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            when {
+                isVerified -> Text(text = "✓", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                isLoading -> CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Primary)
+                isFailed -> Text(text = "✕", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
+                else -> Text(text = "•", color = OnSurfaceDim)
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isVerified) Primary else TextPrimary,
+                fontWeight = if (isVerified) FontWeight.Bold else FontWeight.Normal
+            )
+        }
+        subLabel?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelSmall,
+                color = OnSurfaceDim
+            )
+        }
+    }
 }
 
 // ??? Provider error + retry dialog ???????????????????????????????????????????

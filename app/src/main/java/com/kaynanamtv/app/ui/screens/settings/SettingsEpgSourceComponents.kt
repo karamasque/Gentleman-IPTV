@@ -55,11 +55,11 @@ internal fun EpgSourceCard(
                     Text(source.name, style = MaterialTheme.typography.titleSmall, color = Color.White)
                     Text(displayableEpgUrl(source.url), style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim, maxLines = 1)
                     if (source.lastError != null) {
-                        Text("Error: ${source.lastError}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFEF5350))
+                        Text("Hata: ${source.lastError}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFEF5350))
                     }
                     if (source.lastSuccessAt > 0L) {
                         val ago = (System.currentTimeMillis() - source.lastSuccessAt) / 60000
-                        Text("Last synced: ${ago}m ago", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                        Text("Son eşitlenme: ${ago} dk önce", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
                     }
                 }
                 val sourceActionShape = RoundedCornerShape(8.dp)
@@ -75,7 +75,7 @@ internal fun EpgSourceCard(
                         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
                     ) {
                         Text(
-                            if (source.enabled) "ON" else "OFF",
+                            if (source.enabled) "AÇIK" else "KAPALI",
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             style = MaterialTheme.typography.labelSmall,
                             color = if (source.enabled) Color(0xFF66BB6A) else OnSurfaceDim
@@ -122,7 +122,7 @@ internal fun EpgSourceCard(
                             border = epgActionBorder(sourceActionShape),
                             scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
                         ) {
-                            Text("Confirm Delete", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFFEF5350))
+                            Text("Silmeyi Onayla", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFFEF5350))
                         }
                     } else {
                         TvClickableSurface(

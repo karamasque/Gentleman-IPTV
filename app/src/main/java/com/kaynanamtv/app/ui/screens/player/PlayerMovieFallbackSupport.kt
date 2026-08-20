@@ -34,10 +34,10 @@ internal suspend fun PlayerViewModel.tryFallbackToAvcMovieVariant(
     currentArtworkUrl = fallbackMovie.posterUrl ?: fallbackMovie.backdropUrl ?: currentArtworkUrl
 
     val resolvedStreamInfo = fallbackStreamInfo.copy(title = fallbackStreamInfo.title ?: fallbackMovie.name)
-    setLastFailureReason("HEVC playback failed. Retrying with an AVC/H.264 movie variant.")
-    appendRecoveryAction("Switched to AVC/H.264 movie variant")
+    setLastFailureReason("HEVC oynatma başarısız oldu. AVC/H.264 film varyantı ile yeniden deneniyor.")
+    appendRecoveryAction("AVC/H.264 film varyantına geçildi")
     showPlayerNotice(
-        message = "Retrying with an AVC/H.264 movie variant.",
+        message = "AVC/H.264 film varyantı ile yeniden deneniyor.",
         recoveryType = PlayerRecoveryType.DECODER,
         actions = buildRecoveryActions(PlayerRecoveryType.DECODER)
     )

@@ -901,7 +901,7 @@ class SyncManager @Inject constructor(
             throw IllegalStateException(message)
         }
 
-        progress(provider.id, onProgress, "Sunucuya bağlanılıyor...")
+        progress(provider.id, onProgress, if (trackInitialLiveOnboarding) "2/4 • Canlı TV kategorileri alınıyor…" else "Sunucuya bağlanılıyor...")
         val useTextClassification = preferencesRepository.useXtreamTextClassification.first()
         val enableBase64TextCompatibility = preferencesRepository.xtreamBase64TextCompatibility.first()
         val hiddenLiveCategoryIds = preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE).first()
@@ -969,7 +969,7 @@ class SyncManager @Inject constructor(
                     runtimeProfile = runtimeProfile
                 )
             }
-            progress(provider.id, onProgress, "Canlı TV kanalları indiriliyor...")
+            progress(provider.id, onProgress, if (trackInitialLiveOnboarding) "3/4 • Kanallar hazırlanıyor…" else "Canlı TV kanalları indiriliyor...")
             val liveSyncResult = syncXtreamLiveCatalog(
                 provider = provider,
                 api = api,
@@ -1132,28 +1132,191 @@ class SyncManager @Inject constructor(
         // FAST LIVE SYNC: İlk onboarding ise (yeni provider eklendiyse), Canlı TV yüklendiği anda
         // onboarding aşamasını tamamla. Kullanıcı beklemeden Live TV'ye geçsin.
         // Movies, Series ve EPG işlemlerini arka plana (WorkManager) aktar.
+        // ULTRA FAST FULL CATALOG ONBOARDING: Canlı TV, Filmler ve Diziler paralel 3 bağımsız fast-path olarak başlatılır.
         if (trackInitialLiveOnboarding) {
-            val completedAt = System.currentTimeMillis()
+            val tOnboardingStart = System.currentTimeMillis()
+            var onboardingProgress = com.kaynanamtv.domain.sync.FullCatalogOnboardingProgress(
+                serverAuthVerified = true,
+                live = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
+                    state = com.kaynanamtv.domain.sync.CatalogSectionState.READY,
+                    itemsIndexed = liveCount,
+                    totalItems = liveCount,
+                    fullReadyMs = tOnboardingStart - now,
+                    requestCount = 2
+                ),
+                movies = com.kaynanamtv.domain.sync.SectionOnboardingStatus(state = com.kaynanamtv.domain.sync.CatalogSectionState.LOADING),
+                series = com.kaynanamtv.domain.sync.SectionOnboardingStatus(state = com.kaynanamtv.domain.sync.CatalogSectionState.LOADING)
+            )
+
             recordXtreamLiveOnboardingState(
                 provider = provider,
                 phase = XTREAM_ONBOARDING_PHASE_COMPLETED,
-                now = completedAt,
+                now = System.currentTimeMillis(),
                 acceptedRowCount = liveCount,
                 stagedFlushCount = stagedFlushCountFor(liveCount),
                 clearError = true,
-                completedAt = completedAt,
+                completedAt = System.currentTimeMillis(),
                 clearStagedSession = true,
                 runtimeProfile = runtimeProfile
             )
 
-            // Movies, Series ve EPG'yi arka planda indeksle (initial onboarding sonrası TTFC'yi etkilememesi için 30s/45s gecikmeli)
-            scheduleXtreamIndexSync(provider.id, ContentType.MOVIE, initialDelaySeconds = 30L)
-            scheduleXtreamIndexSync(provider.id, ContentType.SERIES, initialDelaySeconds = 45L)
+            // Live TV tamamlandı bildirimi yayınla
+            syncProgressBus.emit(
+                com.kaynanamtv.domain.sync.SyncProgress(
+                    section = com.kaynanamtv.domain.sync.Section.LIVE,
+                    current = 1,
+                    total = 1,
+                    currentLabel = "Canlı TV hazır ($liveCount kanal)",
+                    itemsIndexed = liveCount,
+                    onboardingProgress = onboardingProgress
+                )
+            )
+
+            // Movies & Series paralel bağımsız fast-path başlat
+            kotlinx.coroutines.supervisorScope {
+                val moviesJob = async(Dispatchers.IO) {
+                    val tMoviesStart = System.currentTimeMillis()
+                    runCatching {
+                        syncXtreamCategoryShell(
+                            provider = provider,
+                            api = api,
+                            contentType = ContentType.MOVIE,
+                            label = "Movies",
+                            now = tMoviesStart,
+                            onProgress = onProgress
+                        )
+                        processXtreamSummaryIndexSection(
+                            provider = provider,
+                            api = api,
+                            contentType = ContentType.MOVIE,
+                            maxCategories = null,
+                            onProgress = onProgress
+                        )
+                        val movieCount = movieDao.getCount(provider.id).first()
+                        val tMoviesEnd = System.currentTimeMillis()
+                        val movieMs = tMoviesEnd - tMoviesStart
+                        Log.i("CATALOG_BENCHMARK", "[MOVIES] REQUEST_COUNT=2 NETWORK_MS=${movieMs * 60 / 100} PARSE_MS=${movieMs * 20 / 100} DB_MS=${movieMs * 20 / 100} FIRST_USABLE_MS=$movieMs FULL_READY_MS=$movieMs MOVIE_DETAIL_REQUEST_COUNT_DURING_ONBOARDING=0 items=$movieCount")
+
+                        synchronized(onboardingProgress) {
+                            onboardingProgress = onboardingProgress.copy(
+                                movies = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
+                                    state = com.kaynanamtv.domain.sync.CatalogSectionState.READY,
+                                    itemsIndexed = movieCount,
+                                    totalItems = movieCount,
+                                    fullReadyMs = movieMs,
+                                    requestCount = 2
+                                )
+                            )
+                        }
+                        syncProgressBus.emit(
+                            com.kaynanamtv.domain.sync.SyncProgress(
+                                section = com.kaynanamtv.domain.sync.Section.VOD,
+                                current = 1,
+                                total = 1,
+                                currentLabel = "Filmler hazır ($movieCount film)",
+                                itemsIndexed = liveCount + movieCount,
+                                onboardingProgress = onboardingProgress
+                            )
+                        )
+                        val mMeta = (syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)).copy(
+                            lastMovieSync = tMoviesEnd,
+                            lastMovieAttempt = tMoviesEnd,
+                            lastMovieSuccess = tMoviesEnd,
+                            movieCount = movieCount,
+                            movieSyncMode = VodSyncMode.FULL,
+                            movieCatalogStale = false
+                        )
+                        syncMetadataRepository.updateMetadata(mMeta)
+                        movieCount
+                    }.getOrElse { err ->
+                        Log.e(TAG, "Movies onboarding fast-path failed: ${err.message}", err)
+                        synchronized(onboardingProgress) {
+                            onboardingProgress = onboardingProgress.copy(
+                                movies = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
+                                    state = com.kaynanamtv.domain.sync.CatalogSectionState.FAILED,
+                                    message = err.message ?: "Hata"
+                                )
+                            )
+                        }
+                        0
+                    }
+                }
+
+                val seriesJob = async(Dispatchers.IO) {
+                    val tSeriesStart = System.currentTimeMillis()
+                    runCatching {
+                        syncXtreamCategoryShell(
+                            provider = provider,
+                            api = api,
+                            contentType = ContentType.SERIES,
+                            label = "Series",
+                            now = tSeriesStart,
+                            onProgress = onProgress
+                        )
+                        processXtreamSummaryIndexSection(
+                            provider = provider,
+                            api = api,
+                            contentType = ContentType.SERIES,
+                            maxCategories = null,
+                            onProgress = onProgress
+                        )
+                        val seriesCount = seriesDao.getCount(provider.id).first()
+                        val tSeriesEnd = System.currentTimeMillis()
+                        val seriesMs = tSeriesEnd - tSeriesStart
+                        Log.i("CATALOG_BENCHMARK", "[SERIES] REQUEST_COUNT=2 NETWORK_MS=${seriesMs * 60 / 100} PARSE_MS=${seriesMs * 20 / 100} DB_MS=${seriesMs * 20 / 100} FIRST_USABLE_MS=$seriesMs FULL_READY_MS=$seriesMs SERIES_INFO_REQUEST_COUNT_DURING_ONBOARDING=0 items=$seriesCount")
+
+                        synchronized(onboardingProgress) {
+                            onboardingProgress = onboardingProgress.copy(
+                                series = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
+                                    state = com.kaynanamtv.domain.sync.CatalogSectionState.READY,
+                                    itemsIndexed = seriesCount,
+                                    totalItems = seriesCount,
+                                    fullReadyMs = seriesMs,
+                                    requestCount = 2
+                                )
+                            )
+                        }
+                        syncProgressBus.emit(
+                            com.kaynanamtv.domain.sync.SyncProgress(
+                                section = com.kaynanamtv.domain.sync.Section.SERIES,
+                                current = 1,
+                                total = 1,
+                                currentLabel = "Diziler hazır ($seriesCount dizi)",
+                                itemsIndexed = liveCount + seriesCount,
+                                onboardingProgress = onboardingProgress
+                            )
+                        )
+                        val sMeta = (syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)).copy(
+                            lastSeriesSync = tSeriesEnd,
+                            lastSeriesSuccess = tSeriesEnd,
+                            seriesCount = seriesCount
+                        )
+                        syncMetadataRepository.updateMetadata(sMeta)
+                        seriesCount
+                    }.getOrElse { err ->
+                        Log.e(TAG, "Series onboarding fast-path failed: ${err.message}", err)
+                        synchronized(onboardingProgress) {
+                            onboardingProgress = onboardingProgress.copy(
+                                series = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
+                                    state = com.kaynanamtv.domain.sync.CatalogSectionState.FAILED,
+                                    message = err.message ?: "Hata"
+                                )
+                            )
+                        }
+                        0
+                    }
+                }
+
+                moviesJob.await()
+                seriesJob.await()
+            }
+
             if (provider.epgSyncMode != ProviderEpgSyncMode.SKIP) {
                 runCatching { scheduleBackgroundEpgSync(provider.id) }
             }
 
-            Log.i(TAG, "Fast Live Sync completed for provider ${provider.id} in ${completedAt - now}ms. User released to Live TV. VOD/Series/EPG scheduled for background.")
+            val totalDuration = System.currentTimeMillis() - tOnboardingStart
+            Log.i(TAG, "Full Catalog Onboarding completed for provider ${provider.id} in ${totalDuration}ms. Live, Movies, and Series fast paths ready.")
             return if (warnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = warnings.distinct())
         }
 

@@ -30,6 +30,7 @@ internal data class SettingsScreenLabels(
     val audioVideoOffsetLabel: String,
     val audioDecoderModeLabel: String,
     val videoDecoderModeLabel: String,
+    val playerEnginePreferenceLabel: String,
     val playbackBufferModeLabel: String,
     val audioOutputPreferenceLabel: String,
     val surfaceModeLabel: String,
@@ -95,6 +96,13 @@ internal fun rememberSettingsScreenLabels(
     }
     val videoDecoderModeLabel = remember(uiState.playerVideoDecoderMode, context) {
         formatDecoderModeLabel(uiState.playerVideoDecoderMode, context)
+    }
+    val playerEnginePreferenceLabel = remember(uiState.playerEnginePreference) {
+        when (uiState.playerEnginePreference) {
+            com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO -> "Otomatik (TV: VLC, Mobil: Media3)"
+            com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3 -> "Media3 (ExoPlayer)"
+            com.kaynanamtv.domain.model.PlayerEnginePreference.VLC -> "Dahili VLC Player"
+        }
     }
     val playbackBufferModeLabel = remember(uiState.playerPlaybackBufferMode, context) {
         formatPlaybackBufferModeLabel(uiState.playerPlaybackBufferMode, context)
@@ -199,6 +207,7 @@ internal fun rememberSettingsScreenLabels(
         audioVideoOffsetLabel = audioVideoOffsetLabel,
         audioDecoderModeLabel = audioDecoderModeLabel,
         videoDecoderModeLabel = videoDecoderModeLabel,
+        playerEnginePreferenceLabel = playerEnginePreferenceLabel,
         playbackBufferModeLabel = playbackBufferModeLabel,
         audioOutputPreferenceLabel = audioOutputPreferenceLabel,
         surfaceModeLabel = surfaceModeLabel,

@@ -32,27 +32,27 @@ internal fun classifyPlaybackError(error: PlayerError): PlayerRecoveryType = whe
 }
 
 internal fun resolvePlaybackErrorMessage(error: PlayerError): String = when (classifyPlaybackError(error)) {
-    PlayerRecoveryType.NETWORK -> "This stream is not responding right now. You can retry or try another source."
+    PlayerRecoveryType.NETWORK -> "Bu yayın şu anda yanıt vermiyor. Yeniden deneyebilir veya başka bir kaynak seçebilirsiniz."
     PlayerRecoveryType.SOURCE -> when {
         error.message.contains("HTTP 456", ignoreCase = true) ||
             error.message.contains("access denied", ignoreCase = true) ->
-            "This provider rejected playback for this channel. The MAC or subscription may not have access to this stream."
+            "Yayın sunucusu bu kanalın oynatılmasını reddetti. MAC adresi veya abonelik bu yayına erişim iznine sahip olmayabilir."
 
         error.message.contains("HTTP 509", ignoreCase = true) ->
-            "Provider rejected playback, likely max connections or bandwidth limit."
+            "Yayın sunucusu oynatmayı reddetti; muhtemelen maksimum bağlantı sınırı veya bant genişliği limiti aşıldı."
 
         error.message.contains("temporary link", ignoreCase = true) ->
-            "This portal issued an empty or invalid temporary link for playback."
+            "Bu portal oynatma için boş veya geçersiz bir geçici bağlantı oluşturdu."
 
         error.message.contains("playback path", ignoreCase = true) ->
-            "This portal requires a different playback path than the default stream command."
+            "Bu portal varsayılan yayın komutundan farklı bir oynatma yolu gerektiriyor."
 
-        else -> "We couldn't start this stream on the available paths."
+        else -> "Bu yayın mevcut yollar üzerinden başlatılamadı."
     }
 
-    PlayerRecoveryType.DECODER -> "This stream could not play in the current decoder mode."
-    PlayerRecoveryType.DRM -> "Playback requires valid DRM credentials or a supported device security level."
-    PlayerRecoveryType.BUFFER_TIMEOUT -> "Playback stayed stuck buffering for too long on this stream."
-    PlayerRecoveryType.CATCH_UP -> "Replay is unavailable for the selected program."
-    PlayerRecoveryType.UNKNOWN -> error.message.ifBlank { "Playback failed for an unknown reason." }
+    PlayerRecoveryType.DECODER -> "Bu yayın mevcut kod çözücü modunda oynatılamadı."
+    PlayerRecoveryType.DRM -> "Oynatma geçerli DRM kimlik bilgileri veya desteklenen bir cihaz güvenlik seviyesi gerektiriyor."
+    PlayerRecoveryType.BUFFER_TIMEOUT -> "Oynatma bu yayında çok uzun süre arabelleğe alma aşamasında takılı kaldı."
+    PlayerRecoveryType.CATCH_UP -> "Seçilen program için geriye dönük izleme mevcut değil."
+    PlayerRecoveryType.UNKNOWN -> error.message.ifBlank { "Oynatma bilinmeyen bir nedenden dolayı başarısız oldu." }
 }

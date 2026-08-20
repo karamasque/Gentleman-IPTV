@@ -69,7 +69,8 @@ class ProviderRepositoryImpl @Inject constructor(
     private val transactionRunner: DatabaseTransactionRunner,
     private val recordingAlarmScheduler: RecordingAlarmScheduler,
     private val programReminderAlarmScheduler: ProgramReminderAlarmScheduler,
-    private val jellyfinProvider: JellyfinProvider
+    private val jellyfinProvider: JellyfinProvider,
+    private val database: com.kaynanamtv.data.local.KaynanamTVDatabase? = null
 ) : ProviderRepository {
     private var firestoreListenerRegistration: com.google.firebase.firestore.ListenerRegistration? = null
 
@@ -105,6 +106,8 @@ class ProviderRepositoryImpl @Inject constructor(
                             if (snapshot != null) {
                                 repositoryScope.launch {
                                     try {
+                                        val persistentDeletedIds = preferencesRepository.getDeletedProviderIdsSync()
+                                        val tombstonedIds = persistentDeletedIds + pendingDeletedProviderIds
                                         val remoteList = snapshot.documents.mapNotNull { it.data }
                                         val localEntities = providerDao.getAllSync()
                                         
@@ -113,7 +116,7 @@ class ProviderRepositoryImpl @Inject constructor(
                                             (it["id"] as? Long ?: (it["id"] as? String)?.toLongOrNull())?.toString() 
                                         }
                                         localEntities.forEach { entity ->
-                                            if (entity.id.toString() !in remoteIds && entity.id !in pendingDeletedProviderIds) {
+                                            if (entity.id.toString() !in remoteIds && entity.id !in tombstonedIds) {
                                                 val cleartextPassword = try {
                                                     credentialCrypto.decryptIfNeeded(entity.password)
                                                 } catch (e: Exception) {
@@ -137,13 +140,23 @@ class ProviderRepositoryImpl @Inject constructor(
                                             "$type|$serverUrl|$username|$m3uUrl|$stalkerMacAddress"
                                         }
 
-                                        // Delete duplicates from Firestore immediately
+                                        // Delete duplicates and tombstoned providers from Firestore immediately
                                         val duplicates = remoteList.filter { it !in uniqueRemoteList }
                                         duplicates.forEach { dupData ->
                                             val dupId = (dupData["id"] as? Long ?: (dupData["id"] as? String)?.toLongOrNull())
                                             if (dupId != null) {
                                                 repositoryScope.launch {
                                                     deleteProviderFromFirestore(dupId)
+                                                }
+                                            }
+                                        }
+
+                                        // Purge any remote documents that were deleted locally on this device
+                                        uniqueRemoteList.forEach { providerData ->
+                                            val currentId = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull()) ?: 0L
+                                            if (currentId in tombstonedIds) {
+                                                repositoryScope.launch {
+                                                    deleteProviderFromFirestore(currentId)
                                                 }
                                             }
                                         }
@@ -166,7 +179,7 @@ class ProviderRepositoryImpl @Inject constructor(
                                             )
                                             val currentId = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull()) ?: 0L
                                             
-                                            if (currentId != correctId) {
+                                            if (currentId != correctId && currentId !in tombstonedIds) {
                                                 // Delete old document from Firestore
                                                 repositoryScope.launch {
                                                     deleteProviderFromFirestore(currentId)
@@ -237,7 +250,7 @@ class ProviderRepositoryImpl @Inject constructor(
                                         uniqueRemoteList.forEach { providerData ->
                                             val idStr = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull())?.toString() ?: return@forEach
                                             val idLong = idStr.toLongOrNull()
-                                            if (idStr !in localIds && (idLong == null || idLong !in pendingDeletedProviderIds)) {
+                                            if (idStr !in localIds && (idLong == null || idLong !in tombstonedIds)) {
                                                 val type = ProviderType.valueOf(providerData["type"] as String)
                                                 val provider = Provider(
                                                     id = idStr.toLongOrNull() ?: 0L,
@@ -299,7 +312,7 @@ class ProviderRepositoryImpl @Inject constructor(
                                         
                                         // 3. Delete local providers that are no longer in Firestore (were deleted from another device)
                                         localEntities.forEach { entity ->
-                                            if (entity.id.toString() !in uniqueRemoteIds && entity.id !in pendingDeletedProviderIds) {
+                                            if (entity.id.toString() !in uniqueRemoteIds && entity.id !in tombstonedIds) {
                                                 deleteProvider(entity.id)
                                             }
                                         }
@@ -389,6 +402,7 @@ class ProviderRepositoryImpl @Inject constructor(
         onProgress: ((ProviderDeleteProgress) -> Unit)?
     ): Result<Unit> {
         pendingDeletedProviderIds.add(id)
+        runCatching { preferencesRepository.recordDeletedProviderId(id) }
         return try {
             // Run Firestore delete in a background coroutine so it doesn't block the SQLite deletion if network is slow/offline
             repositoryScope.launch {
@@ -490,6 +504,12 @@ class ProviderRepositoryImpl @Inject constructor(
             runPostDeleteCleanup("provider image cache cleanup $id") {
                 PermanentImageCache.deleteCachedFiles(context, allUrls)
             }
+            runPostDeleteCleanup("vacuum and wal checkpoint $id") {
+                database?.openHelper?.writableDatabase?.let { sqliteDb ->
+                    sqliteDb.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
+                    sqliteDb.execSQL("VACUUM")
+                }
+            }
             completedWeight += FINALIZE_STEP_WEIGHT
             reportProgress("Provider deleted.")
             Result.success(Unit)
@@ -552,7 +572,8 @@ class ProviderRepositoryImpl @Inject constructor(
         UrlSecurityPolicy.validateXtreamServerUrl(resolvedServerUrl)?.let { message ->
             return Result.error(message)
         }
-        onProgress?.invoke("Sunucu doğrulanıyor…")
+        val tAuthStart = System.currentTimeMillis()
+        onProgress?.invoke("1/4 • Sunucu doğrulanıyor…")
         val existingProvider = if (id != null) {
             // Edit path: check that the new normalized identity does not collide with a
             // different provider before we commit the update.
@@ -581,8 +602,10 @@ class ProviderRepositoryImpl @Inject constructor(
         )
         return when (val authResult = provider.authenticate()) {
             is Result.Success -> {
+                val authDuration = System.currentTimeMillis() - tAuthStart
+                Log.i("FAST_ONBOARDING", "[AUTH] completed in ${authDuration}ms")
                 val providerData = if (existingProvider != null) {
-                    onProgress?.invoke("Updating existing provider...")
+                    onProgress?.invoke("1/4 • Sağlayıcı güncelleniyor…")
                     val updated = authResult.data.copy(
                         id = existingProvider.id,
                         name = normalizedName.ifBlank { existingProvider.name },
@@ -622,14 +645,20 @@ class ProviderRepositoryImpl @Inject constructor(
                     newData.copy(id = newId).copy(password = "")
                 }
 
+                val tSyncStart = System.currentTimeMillis()
+                val syncRes = syncManager.sync(
+                    providerData.id,
+                    force = true,
+                    onProgress = onProgress,
+                    trackInitialLiveOnboarding = true
+                )
+                val totalSyncDuration = System.currentTimeMillis() - tSyncStart
+                Log.i("FAST_ONBOARDING", "[TOTAL_TTFC] auth=${authDuration}ms sync=${totalSyncDuration}ms total=${authDuration + totalSyncDuration}ms")
+
                 handleInitialOnboardingSync(
                     providerData = providerData,
-                    syncResult = syncManager.sync(
-                        providerData.id,
-                        force = true,
-                        onProgress = onProgress,
-                        trackInitialLiveOnboarding = true
-                    ),
+                    syncResult = syncRes,
+                    onProgress = onProgress,
                     syncFailurePrefix = "Provider login succeeded, but initial sync failed. The provider was saved and can be retried from Settings"
                 )
             }
@@ -722,6 +751,7 @@ class ProviderRepositoryImpl @Inject constructor(
         handleInitialOnboardingSync(
             providerData = providerData,
             syncResult = syncManager.sync(providerData.id, force = true, onProgress = onProgress),
+            onProgress = onProgress,
             syncFailurePrefix = "Playlist saved, but initial sync failed. The provider was saved and can be retried from Settings"
         )
     } catch (e: Exception) {
@@ -741,39 +771,25 @@ class ProviderRepositoryImpl @Inject constructor(
                 ProviderInputSanitizer.normalizeUrl(serverUrl)
             )
             val normalizedUsername = ProviderInputSanitizer.normalizeUsername(username)
-            val normalizedPassword = ProviderInputSanitizer.normalizePassword(password)
             val normalizedName = ProviderInputSanitizer.normalizeProviderName(name)
             ProviderInputSanitizer.validateUrl(normalizedServerUrl)?.let { return Result.error(it) }
-            if (normalizedUsername.isBlank()) return Result.error("Please enter Jellyfin username")
             val providerName = normalizedName.ifBlank {
                 normalizedServerUrl.substringAfter("//").substringBefore("/").ifBlank { "Jellyfin" }
             }
-            val existingProviderEntity = if (id != null) {
-                val collision = providerDao.getByUrlAndUser(normalizedServerUrl, normalizedUsername)
-                if (collision != null && collision.id != id) return Result.error("A Jellyfin provider with this server URL and username already exists.")
-                providerDao.getById(id)
-            } else {
-                providerDao.getByUrlAndUser(normalizedServerUrl, normalizedUsername)
+            onProgress?.invoke("Signing in to Jellyfin...")
+            val authResult = when (val res = jellyfinProvider.authenticate(
+                serverUrl = normalizedServerUrl, username = normalizedUsername, password = password
+            )) {
+                is Result.Success -> res.data
+                is Result.Error -> return Result.error(res.message, res.exception)
+                is Result.Loading -> return Result.error("Unexpected loading state")
             }
-            val existingProvider = existingProviderEntity?.toDomain()
-            val authResult = when {
-                normalizedPassword.isNotBlank() -> {
-                    onProgress?.invoke("Signing in to Jellyfin...")
-                    when (val loginResult = jellyfinProvider.authenticate(normalizedServerUrl, normalizedUsername, normalizedPassword)) {
-                        is Result.Success -> loginResult.data
-                        is Result.Error -> return Result.error(loginResult.message, loginResult.exception)
-                        is Result.Loading -> return Result.error("Unexpected loading state")
-                    }
-                }
-                existingProvider != null -> try { credentialCrypto.decryptIfNeeded(existingProvider.password) }
-                    catch (e: CredentialDecryptionException) { return Result.error(e.message ?: CredentialDecryptionException.MESSAGE, e) }
-                else -> return Result.error("Please enter Jellyfin password")
-            }
+            val existingProvider = if (id != null) providerDao.getById(id)?.toDomain() else null
             val providerData = if (existingProvider != null) {
+                onProgress?.invoke("Updating existing provider...")
                 val updated = existingProvider.copy(
-                    name = providerName.ifBlank { existingProvider.name }, type = ProviderType.JELLYFIN,
-                    serverUrl = normalizedServerUrl, username = normalizedUsername, password = authResult,
-                    m3uUrl = "", epgUrl = "", httpUserAgent = "", httpHeaders = "",
+                    name = providerName, serverUrl = normalizedServerUrl, username = normalizedUsername,
+                    password = authResult, m3uUrl = "", epgUrl = "", httpUserAgent = "", httpHeaders = "",
                     isActive = false, status = ProviderStatus.PARTIAL, lastSyncedAt = 0
                 )
                 providerDao.update(updated.toSecureEntity())
@@ -787,9 +803,12 @@ class ProviderRepositoryImpl @Inject constructor(
                  syncProviderIdToFirestore(newId)
                  provider.copy(id = newId).copy(password = "")
             }
-            handleInitialOnboardingSync(providerData = providerData,
+            handleInitialOnboardingSync(
+                providerData = providerData,
                 syncResult = syncManager.sync(providerData.id, force = false, onProgress = onProgress),
-                syncFailurePrefix = "Jellyfin provider saved, but initial sync failed. The provider was saved and can be retried from Settings")
+                onProgress = onProgress,
+                syncFailurePrefix = "Jellyfin provider saved, but initial sync failed. The provider was saved and can be retried from Settings"
+            )
         } catch (e: Exception) {
             Result.error("Failed to add Jellyfin provider: ${e.message}", e)
         }
@@ -819,9 +838,12 @@ class ProviderRepositoryImpl @Inject constructor(
             val providerData = saveJellyfinProvider(providerName = providerName,
                 serverUrl = normalizedServerUrl, username = quickConnect.userName.ifBlank { providerName },
                 password = quickConnect.accessToken, existingProvider = existingProvider)
-            handleInitialOnboardingSync(providerData = providerData,
+            handleInitialOnboardingSync(
+                providerData = providerData,
                 syncResult = syncManager.sync(providerData.id, force = false, onProgress = onProgress),
-                syncFailurePrefix = "Jellyfin provider saved, but initial sync failed. The provider was saved and can be retried from Settings")
+                onProgress = onProgress,
+                syncFailurePrefix = "Jellyfin provider saved, but initial sync failed. The provider was saved and can be retried from Settings"
+            )
         } catch (e: Exception) {
             Result.error("Failed to add Jellyfin provider: ${e.message}", e)
         }
@@ -1007,6 +1029,7 @@ class ProviderRepositoryImpl @Inject constructor(
                 handleInitialOnboardingSync(
                     providerData = providerData,
                     syncResult = syncManager.sync(providerData.id, force = false, onProgress = onProgress),
+                    onProgress = onProgress,
                     syncFailurePrefix = "Provider login succeeded, but initial sync failed. The provider was saved and can be retried from Settings"
                 )
             }
@@ -1018,6 +1041,7 @@ class ProviderRepositoryImpl @Inject constructor(
     private suspend fun handleInitialOnboardingSync(
         providerData: Provider,
         syncResult: Result<Unit>,
+        onProgress: ((String) -> Unit)? = null,
         syncFailurePrefix: String
     ): Result<Provider> = when (syncResult) {
         is Result.Success -> {
@@ -1049,6 +1073,7 @@ class ProviderRepositoryImpl @Inject constructor(
                     )
                 )
             } else {
+                onProgress?.invoke("4/4 • IPTV aktif ediliyor…")
                 providerDao.setActive(providerData.id)
                 preferencesRepository.setLastActiveProviderId(providerData.id)
                 preferencesRepository.setActiveLiveSource(com.kaynanamtv.domain.model.ActiveLiveSource.ProviderSource(providerData.id))

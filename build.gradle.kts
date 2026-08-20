@@ -13,9 +13,14 @@ plugins {
 
 subprojects {
     tasks.withType<Test>().configureEach {
-        jvmArgs("-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8")
+        defaultCharacterEncoding = "UTF-8"
+        jvmArgs(
+            "-Dfile.encoding=UTF-8",
+            "-Dsun.jnu.encoding=UTF-8",
+            "-Dsun.stdout.encoding=UTF-8",
+            "-Dsun.stderr.encoding=UTF-8"
+        )
         systemProperty("file.encoding", "UTF-8")
         systemProperty("sun.jnu.encoding", "UTF-8")
-        environment("JAVA_TOOL_OPTIONS", "-Dfile.encoding=UTF-8")
     }
 }

@@ -59,6 +59,7 @@ internal data class SettingsPreferenceSnapshot(
     val playerFastRetryOnTransientFailures: Boolean,
     val playerAudioDecoderMode: DecoderMode,
     val playerVideoDecoderMode: DecoderMode,
+    val playerEnginePreference: com.kaynanamtv.domain.model.PlayerEnginePreference,
     val playerPlaybackBufferMode: PlaybackBufferMode,
     val playerAudioOutputPreference: AudioOutputPreference,
     val playerCompatibilityMemoryEnabled: Boolean,

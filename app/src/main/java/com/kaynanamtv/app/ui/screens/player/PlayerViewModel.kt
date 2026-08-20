@@ -115,6 +115,7 @@ class PlayerViewModel @Inject constructor(
     internal val syncManager: SyncManager,
     private val downloadManager: DownloadManager,
     internal val okHttpClient: OkHttpClient,
+    internal val playerEngineFactory: com.kaynanamtv.player.PlayerEngineFactory,
 ) : ViewModel() {
     companion object {
         private const val MAX_PROGRAM_HISTORY_ITEMS = 18
@@ -257,7 +258,7 @@ class PlayerViewModel @Inject constructor(
     internal var playerNoticeHideJob: Job? = null
     internal var mutePersistJob: Job? = null
     internal var zapDebounceJob: Job? = null
-    private var recoveryJob: Job? = null
+    internal var recoveryJob: Job? = null
     internal var numericInputBuffer: String = ""
     internal val triedAlternativeStreams = mutableSetOf<String>()
     internal val failedStreamsThisSession = mutableMapOf<String, Int>()
@@ -320,9 +321,17 @@ class PlayerViewModel @Inject constructor(
         private set
 
     private fun rebuildChannelNumberIndex() {
-        channelNumberIndex = channelList.withIndex().associate { (index, channel) ->
-            resolveChannelNumber(channel, index) to channel
+        val list = channelList
+        if (list.isEmpty()) {
+            channelNumberIndex = emptyMap()
+            return
         }
+        val map = HashMap<Int, com.kaynanamtv.domain.model.Channel>(list.size)
+        for (i in list.indices) {
+            val channel = list[i]
+            map[resolveChannelNumber(channel, i)] = channel
+        }
+        channelNumberIndex = map
     }
 
     internal var currentChannelIndex = -1
@@ -743,6 +752,39 @@ class PlayerViewModel @Inject constructor(
                 }
         }
         viewModelScope.launch {
+            preferencesRepository.playerEnginePreference.collect { pref ->
+                val targetType = playerEngineFactory.resolveEngineType(pref)
+                val currentEngine = activePlayerEngineFlow.value
+                val isCurrentlyVlc = currentEngine is com.kaynanamtv.player.VlcPlayerEngine
+                val isCurrentlyMedia3 = currentEngine is com.kaynanamtv.player.Media3PlayerEngine
+                val needsSwitch = (targetType == com.kaynanamtv.player.PlayerEngineType.VLC && !isCurrentlyVlc) ||
+                                  (targetType == com.kaynanamtv.player.PlayerEngineType.MEDIA3 && !isCurrentlyMedia3)
+
+                if (needsSwitch) {
+                    val wasPlaying = currentEngine.isPlaying.value
+                    val lastPos = currentEngine.currentPosition.value
+                    val lastStream = currentResolvedStreamInfo
+
+                    // Lifecycle order: old engine stop -> surface detach -> release -> new engine prepare/play
+                    currentEngine.stop()
+                    currentEngine.clearRenderBinding()
+                    if (currentEngine !== mainPlayerEngine) {
+                        currentEngine.release()
+                    }
+
+                    val newEngine = playerEngineFactory.createEngine(targetType)
+                    activePlayerEngineFlow.value = newEngine
+
+                    if (lastStream != null && wasPlaying) {
+                        newEngine.prepare(lastStream)
+                        if (lastPos > 0) {
+                            newEngine.seekTo(lastPos)
+                        }
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
             var consecutiveLowBandwidthSeconds = 0
             var noticeShown = false
             activePlayerEngineFlow.flatMapLatest { it.playerStats }.collect { stats ->
@@ -829,10 +871,10 @@ class PlayerViewModel @Inject constructor(
                 videoMode = DecoderMode.SOFTWARE
             )
             setLastFailureReason(error.message)
-            appendRecoveryAction("Switched to software decoder")
+            appendRecoveryAction("Yazılımsal kod çözücüye geçildi")
             playerEngine.play()
             showPlayerNotice(
-                message = "Retrying with software decoding for this stream.",
+                message = "Bu yayın için yazılımsal kod çözücü ile yeniden deneniyor.",
                 recoveryType = PlayerRecoveryType.DECODER,
                 actions = buildRecoveryActions(PlayerRecoveryType.DECODER)
             )
@@ -846,9 +888,9 @@ class PlayerViewModel @Inject constructor(
             val channel = currentChannelFlow.value?.sanitizedForPlayer() ?: return
             val switched = tryAlternateStreamInternal(channel)
             if (switched) {
-                appendRecoveryAction("Trying alternate stream format after decoder error")
+                appendRecoveryAction("Kod çözücü hatasından sonra alternatif yayın formatı deneniyor")
                 showPlayerNotice(
-                    message = "Trying alternate stream format for ${channel.name}.",
+                    message = "${channel.name} için alternatif yayın formatı deneniyor.",
                     recoveryType = PlayerRecoveryType.DECODER,
                     actions = buildRecoveryActions(PlayerRecoveryType.DECODER),
                     isRetryNotice = true
@@ -878,8 +920,7 @@ class PlayerViewModel @Inject constructor(
             if (recoveryType == PlayerRecoveryType.DRM) {
                 if (!isActivePlaybackSession(requestVersion, playbackUrl)) return@launch
                 showPlayerNotice(
-                    message = "This channel requires DRM support that is not available. " +
-                        "Your subscription may not include this content.",
+                    message = "Bu kanal mevcut olmayan DRM desteği gerektiriyor. Aboneliğiniz bu içeriği kapsamayabilir.",
                     recoveryType = PlayerRecoveryType.DRM,
                     actions = buildRecoveryActions(PlayerRecoveryType.DRM)
                 )
@@ -909,9 +950,9 @@ class PlayerViewModel @Inject constructor(
 
                 if (!isActivePlaybackSession(requestVersion, playbackUrl)) return@launch
                 if (switched) {
-                    appendRecoveryAction("Trying alternate catch-up URL")
+                    appendRecoveryAction("Alternatif geriye dönük izleme URL'si deneniyor")
                     showPlayerNotice(
-                        message = "Trying another replay path for ${channel.name}.",
+                        message = "${channel.name} için başka bir tekrar yayın yolu deneniyor.",
                         recoveryType = PlayerRecoveryType.CATCH_UP,
                         actions = buildRecoveryActions(PlayerRecoveryType.CATCH_UP),
                         isRetryNotice = true
@@ -951,9 +992,9 @@ class PlayerViewModel @Inject constructor(
 
             if (!isActivePlaybackSession(requestVersion, playbackUrl)) return@launch
             if (switched) {
-                appendRecoveryAction("Trying alternate stream")
+                appendRecoveryAction("Alternatif yayın deneniyor")
                 showPlayerNotice(
-                    message = "Trying an alternate stream for ${channel.name}.",
+                    message = "${channel.name} için alternatif yayın deneniyor.",
                     recoveryType = recoveryType,
                     actions = buildRecoveryActions(recoveryType),
                     isRetryNotice = true
@@ -966,9 +1007,9 @@ class PlayerViewModel @Inject constructor(
             )
 
             if (fallbackToPreviousChannel("Recovery path exhausted for ${recoveryType.name.lowercase()}")) {
-                appendRecoveryAction("Returned to last channel")
+                appendRecoveryAction("Son kanala geri dönüldü")
                 showPlayerNotice(
-                    message = "Playback failed on this stream. Returned to the last channel.",
+                    message = "Bu yayında oynatma başarısız oldu. Son kanala geri dönüldü.",
                     recoveryType = recoveryType,
                     actions = buildRecoveryActions(recoveryType)
                 )
@@ -1212,68 +1253,17 @@ class PlayerViewModel @Inject constructor(
         internalChannelId: Long,
         providerId: Long
     ): Boolean {
-        if (currentContentType != ContentType.LIVE) return false
-
         val session = livePreviewHandoffManager.consumeFullscreenHandoff(
             channelId = internalChannelId,
             providerId = providerId.takeIf { it > 0L }
-        ) ?: return false
-
-        if (shouldBypassPreviewHandoffForFireTvLiveHls(session.streamInfo)) {
-            android.util.Log.i(
-                "PlayerVM",
-                "Skipping preview handoff for Fire TV live HLS; fullscreen will prepare a fresh session."
-            )
+        )
+        if (session != null) {
             livePreviewHandoffManager.clear(session.engine)
             session.engine.release()
-            return false
         }
-
-        val adoptedEngine = session.engine
-        return runCatching {
-            // Detach the Home preview surface before Player binds its own.
-            adoptedEngine.clearRenderBinding()
-            // Media3 requires a globally unique session ID. Release the main engine's
-            // session before the adopted live engine enables its own replacement.
-            mainPlayerEngine.setMediaSessionEnabled(false)
-            setActivePlayerEngine(adoptedEngine)
-            (adoptedEngine as? Media3PlayerEngine)?.let {
-                it.bypassAudioFocus = false
-                it.enableMediaSession = preferencesRepository.playerMediaSessionEnabled.first()
-                it.constrainResolutionForMultiView = false
-            }
-            applyPlaybackPreferences()
-            if (!isActivePlaybackSession(requestVersion)) {
-                setActivePlayerEngine(mainPlayerEngine)
-                adoptedEngine.release()
-                false
-            } else {
-                currentResolvedPlaybackUrl = session.streamInfo.url
-                currentResolvedStreamInfo = session.streamInfo
-                readySideEffectsRequestVersion = requestVersion
-                probePassedPlaybackKeys.add(
-                    resolvePlaybackProbeCacheKey(
-                        currentStreamUrl = currentStreamUrl,
-                        url = session.streamInfo.url
-                    )
-                )
-                adoptedEngine.resetLiveHandoffGrace()
-                // Keep the already-playing preview session intact. Re-preparing on the
-                // fullscreen transition can renegotiate the stream and strand HLS live
-                // playback in buffering even though preview was already stable.
-                playerEngine.play()
-                startTokenRenewalMonitoring(session.streamInfo.expirationTime)
-                maybeStartLiveTimeshift(session.streamInfo)
-                true
-            }
-        }.getOrElse {
-            livePreviewHandoffManager.clear(adoptedEngine)
-            if (playerEngine === adoptedEngine) {
-                setActivePlayerEngine(mainPlayerEngine)
-            }
-            adoptedEngine.release()
-            false
-        }
+        // Always return false to ensure fullscreen prepares a fresh, clean playback session
+        // on the new surface window without video freezing/stalling.
+        return false
     }
 
     private fun shouldBypassPreviewHandoffForFireTvLiveHls(streamInfo: StreamInfo): Boolean {
@@ -1536,7 +1526,7 @@ class PlayerViewModel @Inject constructor(
                 if (!isActivePlaybackSession(requestVersion, streamUrl)) return@launch
                 if (streamInfo == null) {
                     if (!isActivePlaybackSession(requestVersion, streamUrl)) return@launch
-                    showPlayerNotice(message = "No playable stream URL was available.", recoveryType = PlayerRecoveryType.SOURCE)
+                    showPlayerNotice(message = "Oynatılabilir yayın URL'si bulunamadı.", recoveryType = PlayerRecoveryType.SOURCE)
                     return@launch
                 }
                 currentStreamUrl = playbackLogicalUrl

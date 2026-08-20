@@ -81,6 +81,7 @@ data class SettingsUiState(
     val playerFastRetryOnTransientFailures: Boolean = false,
     val playerAudioDecoderMode: DecoderMode = DecoderMode.AUTO,
     val playerVideoDecoderMode: DecoderMode = DecoderMode.AUTO,
+    val playerEnginePreference: com.kaynanamtv.domain.model.PlayerEnginePreference = com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO,
     val playerPlaybackBufferMode: PlaybackBufferMode = PlaybackBufferMode.AUTO,
     val playerAudioOutputPreference: AudioOutputPreference = AudioOutputPreference.AUTO,
     val playerCompatibilityMemoryEnabled: Boolean = true,

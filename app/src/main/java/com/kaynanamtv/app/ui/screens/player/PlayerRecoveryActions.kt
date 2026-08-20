@@ -75,7 +75,7 @@ internal suspend fun PlayerViewModel.tryRefreshXtreamPlaybackAfterAuthError(
     )
     setLastFailureReason(error.message)
     cooldownLivePreloadForCurrentProvider("auth or provider-limit response")
-    appendRecoveryAction("Retrying provider playback from a fresh live URL")
+    appendRecoveryAction("Yayın sunucusunun yeni canlı URL'sinden yayın tekrar deneniyor")
     delay(PROVIDER_AUTH_RETRY_GRACE_MS)
     if (!isActivePlaybackSession(requestVersion, playbackUrl)) return true
     currentResolvedPlaybackUrl = ""

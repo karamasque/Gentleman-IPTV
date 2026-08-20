@@ -265,6 +265,20 @@ class OkHttpXtreamApiServiceTest {
         assertThat(response.episodes["1"]?.first()?.title).isEqualTo("Pilot")
     }
 
+    @Test
+    fun `streamLiveStreamRows returns zero count on HTTP 304 Not Modified`() = runTest {
+        val service = OkHttpXtreamApiService(
+            client = clientReturning(statusCode = 304, body = ""),
+            json = json
+        )
+        var received = 0
+        val count = service.streamLiveStreamRows("https://example.test/player_api.php?action=get_live_streams") {
+            received++
+        }
+        assertThat(count).isEqualTo(0)
+        assertThat(received).isEqualTo(0)
+    }
+
     private fun clientReturning(statusCode: Int, body: String): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor { chain ->

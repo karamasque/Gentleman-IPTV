@@ -29,11 +29,18 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
-        unitTests.isIncludeAndroidResources = false
+        unitTests.isIncludeAndroidResources = true
         unitTests.all { test ->
-            test.jvmArgs("-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8")
+            test.jvmArgs(
+                "-Dfile.encoding=UTF-8",
+                "-Dsun.jnu.encoding=UTF-8",
+                "-Duser.language=en",
+                "-Duser.country=US"
+            )
             test.systemProperty("file.encoding", "UTF-8")
             test.systemProperty("sun.jnu.encoding", "UTF-8")
+            test.systemProperty("user.language", "en")
+            test.systemProperty("user.country", "US")
         }
     }
 
@@ -139,6 +146,9 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.ui)
 
+    // LibVLC (Dahili VLC Player Motoru)
+    implementation(libs.libvlc)
+
     // OkHttp (for custom data source)
     implementation(libs.okhttp)
 
@@ -156,4 +166,8 @@ dependencies {
     // Test
     testImplementation(libs.junit)
     testImplementation(libs.truth)
+    testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.runner)
+    testImplementation(libs.androidx.test.ext.junit)
 }

@@ -80,10 +80,10 @@ internal fun buildRetryNoticeMessage(
     formatLabel: String,
     status: com.kaynanamtv.player.PlayerRetryStatus
 ): String {
-    val retryLabel = "Retrying $formatLabel ${status.attempt}/${status.maxAttempts}"
+    val retryLabel = "$formatLabel yeniden deneniyor (${status.attempt}/${status.maxAttempts})"
     val delaySeconds = status.delayMs / 1_000L
     return if (delaySeconds >= 1L) {
-        "$retryLabel in ${delaySeconds}s..."
+        "$retryLabel (${delaySeconds} sn)..."
     } else {
         "$retryLabel..."
     }

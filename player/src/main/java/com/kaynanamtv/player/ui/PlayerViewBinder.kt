@@ -38,11 +38,12 @@ class PlayerViewBinder(
         val playerView = renderView as? PlayerView ?: return
         boundResizeMode = resizeMode
         playerView.setShutterBackgroundColor(Color.TRANSPARENT)
-        if (boundPlayerView !== playerView) {
+        val oldPlayerView = boundPlayerView
+        if (oldPlayerView !== playerView) {
             runCatching {
-                PlayerView.switchTargetView(player, boundPlayerView, playerView)
+                PlayerView.switchTargetView(player, oldPlayerView, playerView)
             }.getOrElse {
-                boundPlayerView?.player = null
+                oldPlayerView?.player = null
                 playerView.player = player
             }
             boundPlayerView = playerView
@@ -52,6 +53,13 @@ class PlayerViewBinder(
         playerView.applyResizeMode(resizeMode)
         subtitleStyleController.apply(playerView)
         applyInjectedCues(playerView)
+
+        // Force MediaCodec video surface frame refresh if currently playing or ready
+        if (player.isPlaying || player.playbackState == androidx.media3.common.Player.STATE_READY) {
+            runCatching {
+                player.videoScalingMode = player.videoScalingMode
+            }
+        }
     }
 
     fun attachPlayer(player: androidx.media3.exoplayer.ExoPlayer?) {
@@ -67,11 +75,10 @@ class PlayerViewBinder(
 
     fun release(renderView: View) {
         val playerView = renderView as? PlayerView ?: return
-        if (boundPlayerView !== playerView && playerView.player == null) return
-        playerView.player = null
         if (boundPlayerView === playerView) {
             boundPlayerView = null
         }
+        playerView.player = null
     }
 
     fun clear() {

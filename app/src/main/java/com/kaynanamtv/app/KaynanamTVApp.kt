@@ -1,6 +1,11 @@
 package com.kaynanamtv.app
 
 import android.app.Application
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -8,33 +13,25 @@ import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import com.kaynanamtv.app.device.TvLightweightProfile
 import com.kaynanamtv.app.diagnostics.CrashReportStore
 import com.kaynanamtv.app.diagnostics.RuntimeDiagnosticsManager
+import com.kaynanamtv.app.ui.accessibility.isReducedMotionEnabled
 import com.kaynanamtv.app.update.GitHubReleaseChecker
 import com.kaynanamtv.app.update.isRemoteVersionNewer
-import com.kaynanamtv.app.ui.accessibility.isReducedMotionEnabled
-import com.kaynanamtv.data.remote.jellyfin.JellyfinImageAuthInterceptor
 import com.kaynanamtv.data.preferences.PreferencesRepository
+import com.kaynanamtv.data.remote.jellyfin.JellyfinImageAuthInterceptor
 import com.kaynanamtv.domain.model.Result
+import com.kaynanamtv.player.timeshift.TimeshiftDiskManager
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import okio.Path.Companion.toOkioPath
-
-import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import com.kaynanamtv.data.manager.recording.RecordingReconcileWorker
-import com.kaynanamtv.data.sync.ProviderSyncWorker
-import com.kaynanamtv.data.sync.XtreamIndexWorker
-import com.kaynanamtv.player.timeshift.TimeshiftDiskManager
-import javax.inject.Inject
 import okhttp3.OkHttpClient
+import okio.Path.Companion.toOkioPath
+import javax.inject.Inject
 
 @HiltAndroidApp
 class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
@@ -74,19 +71,17 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         instance = this
         super.onCreate()
+        TvLightweightProfile.initialize(this)
         CrashReportStore.install(this)
         runtimeDiagnosticsManager.start()
+
         applicationScope.launch {
-            // Clean up any timeshift temp directories left behind by crashes, OOM kills, or
-            // force-stops from the previous run. activeSessionDir = null means wipe everything.
             TimeshiftDiskManager(applicationContext).cleanupStaleDirectories(activeSessionDir = null)
         }
         applicationScope.launch {
             refreshCachedAppUpdateIfNeeded(force = true)
         }
-        
-        // Schedule daily data maintenance: EPG pruning, stale-favorite cleanup, and DB compaction checks.
-        // BLD-H02: Require network + device idle so the worker doesn't drain battery.
+
         val gcConstraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .setRequiresBatteryNotLow(true)
@@ -96,7 +91,7 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
         val gcWorkRequest = PeriodicWorkRequestBuilder<com.kaynanamtv.data.sync.SyncWorker>(24, java.util.concurrent.TimeUnit.HOURS)
             .setConstraints(gcConstraints)
             .build()
-            
+
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "DataMaintenanceWorker",
             ExistingPeriodicWorkPolicy.KEEP,
@@ -109,7 +104,7 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
             wm.cancelUniqueWork("xtream-index-worker")
             wm.cancelUniqueWork("xtream-index-launch-stale-check")
         }
-        
+
         applicationScope.launch {
             kotlinx.coroutines.flow.combine(
                 preferencesRepository.backgroundSyncEnabled,
@@ -133,9 +128,13 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
         super.onTerminate()
     }
 
+    suspend fun checkForAppUpdates(force: Boolean = false) {
+        refreshCachedAppUpdateIfNeeded(force)
+    }
+
     private suspend fun refreshCachedAppUpdateIfNeeded(force: Boolean = false) {
         val autoCheckEnabled = preferencesRepository.autoCheckAppUpdates.first()
-        if (!autoCheckEnabled) {
+        if (!autoCheckEnabled && !force) {
             return
         }
 
@@ -149,31 +148,26 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
         preferencesRepository.setLastAppUpdateCheckTimestamp(now)
         when (val result = gitHubReleaseChecker.fetchLatestRelease()) {
             is Result.Success -> {
+                preferencesRepository.setCachedAppUpdateRelease(
+                    versionName = result.data.versionName,
+                    versionCode = result.data.versionCode,
+                    releaseUrl = result.data.releaseUrl,
+                    downloadUrl = result.data.downloadUrl,
+                    downloadSha256 = result.data.downloadSha256,
+                    releaseNotes = result.data.releaseNotes,
+                    publishedAt = result.data.publishedAt
+                )
                 val isNewer = isRemoteVersionNewer(
                     remoteVersionCode = result.data.versionCode,
                     remoteVersionName = result.data.versionName,
                     remotePublishedAt = result.data.publishedAt
                 )
                 if (isNewer) {
-                    preferencesRepository.setCachedAppUpdateRelease(
-                        versionName = result.data.versionName,
-                        versionCode = result.data.versionCode,
-                        releaseUrl = result.data.releaseUrl,
-                        downloadUrl = result.data.downloadUrl,
-                        downloadSha256 = result.data.downloadSha256,
-                        releaseNotes = result.data.releaseNotes,
-                        publishedAt = result.data.publishedAt
-                    )
+                    result.data.versionCode?.let { newCode ->
+                        preferencesRepository.setForceUpdateBlockedState(true, newCode)
+                    }
                 } else {
-                    preferencesRepository.setCachedAppUpdateRelease(
-                        versionName = null,
-                        versionCode = null,
-                        releaseUrl = null,
-                        downloadUrl = null,
-                        downloadSha256 = null,
-                        releaseNotes = "",
-                        publishedAt = null
-                    )
+                    preferencesRepository.setForceUpdateBlockedState(false, null)
                 }
             }
             else -> Unit
@@ -181,6 +175,7 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
+        val tvProfile = TvLightweightProfile
         return ImageLoader.Builder(context)
             .components {
                 add(com.kaynanamtv.app.manager.PermanentCacheInterceptor(context))
@@ -192,19 +187,18 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
             }
             .memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, 0.25) // Conservative TV memory cache increased to 25%
+                    .maxSizePercent(context, tvProfile.maxCoilMemoryCachePercent)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(this.cacheDir.resolve("image_cache").toOkioPath())
-                    .maxSizeBytes(1024L * 1024L * 100L) // 100MB disk cache cap
+                    .maxSizeBytes(if (tvProfile.isEnabled) 50L * 1024L * 1024L else 100L * 1024L * 1024L)
                     .build()
             }
-            // Limit concurrent decoding and fetching to 6 for TV hardware constraints
-            .fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(6))
-            .decoderCoroutineContext(Dispatchers.Default.limitedParallelism(4))
-            .crossfade(!isReducedMotionEnabled(context))
+            .fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(tvProfile.coilFetcherParallelism))
+            .decoderCoroutineContext(Dispatchers.Default.limitedParallelism(tvProfile.coilDecoderParallelism))
+            .crossfade(!tvProfile.reduceAnimations && !isReducedMotionEnabled(context))
             .build()
     }
 }
