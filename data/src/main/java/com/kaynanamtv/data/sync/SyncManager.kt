@@ -1322,91 +1322,104 @@ class SyncManager @Inject constructor(
             return if (warnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = warnings.distinct())
         }
 
-        // Manuel sync / arka plan yenileme için devam akışı
-        syncProgressBus.emit(
-            com.kaynanamtv.domain.sync.SyncProgress(
-                section = com.kaynanamtv.domain.sync.Section.VOD,
-                current = 0,
-                total = 0,
-                currentLabel = "",
-                itemsIndexed = liveCount
-            )
-        )
-
-        val movieCategoryCount = syncXtreamCategoryShell(
-            provider = provider,
-            api = api,
-            contentType = ContentType.MOVIE,
-            label = "Movies",
-            now = now,
-            onProgress = onProgress
-        ).getOrElse { error ->
-            warnings += "Movies categories could not be loaded; movie indexing will retry later."
-            upsertXtreamIndexJob(
-                providerId = provider.id,
-                section = ContentType.MOVIE.name,
-                state = xtreamIndexFailureState(error),
-                now = now,
-                lastAttemptAt = now,
-                lastError = sanitizeThrowableMessage(error)
-            )
-            0
-        }
-        if (movieCategoryCount > 0) {
-            runCatching {
-                processXtreamSummaryIndexSection(
+        // Manuel sync / arka plan yenileme için paralel VOD & Series akışı
+        var movieCategoryCount = 0
+        var seriesCategoryCount = 0
+        kotlinx.coroutines.coroutineScope {
+            val moviesTask = async(Dispatchers.IO) {
+                syncProgressBus.emit(
+                    com.kaynanamtv.domain.sync.SyncProgress(
+                        section = com.kaynanamtv.domain.sync.Section.VOD,
+                        current = 0,
+                        total = 0,
+                        currentLabel = "Filmler senkronize ediliyor...",
+                        itemsIndexed = liveCount
+                    )
+                )
+                val catCount = syncXtreamCategoryShell(
                     provider = provider,
                     api = api,
                     contentType = ContentType.MOVIE,
-                    maxCategories = null,
+                    label = "Movies",
+                    now = now,
                     onProgress = onProgress
-                )
-            }.onFailure { err ->
-                Log.w(TAG, "Foreground movie summary stream failed: ${err.message}; scheduling background retry", err)
-                scheduleXtreamIndexSync(provider.id, ContentType.MOVIE)
+                ).getOrElse { error ->
+                    warnings += "Movies categories could not be loaded; movie indexing will retry later."
+                    upsertXtreamIndexJob(
+                        providerId = provider.id,
+                        section = ContentType.MOVIE.name,
+                        state = xtreamIndexFailureState(error),
+                        now = now,
+                        lastAttemptAt = now,
+                        lastError = sanitizeThrowableMessage(error)
+                    )
+                    0
+                }
+                if (catCount > 0) {
+                    runCatching {
+                        processXtreamSummaryIndexSection(
+                            provider = provider,
+                            api = api,
+                            contentType = ContentType.MOVIE,
+                            maxCategories = null,
+                            onProgress = onProgress
+                        )
+                    }.onFailure { err ->
+                        Log.w(TAG, "Foreground movie summary stream failed: ${err.message}; scheduling background retry", err)
+                        scheduleXtreamIndexSync(provider.id, ContentType.MOVIE)
+                    }
+                }
+                catCount
             }
-        }
-        syncProgressBus.emit(
-            com.kaynanamtv.domain.sync.SyncProgress(
-                section = com.kaynanamtv.domain.sync.Section.SERIES,
-                current = 0,
-                total = 0,
-                currentLabel = "",
-                itemsIndexed = liveCount
-            )
-        )
-        val seriesCategoryCount = syncXtreamCategoryShell(
-            provider = provider,
-            api = api,
-            contentType = ContentType.SERIES,
-            label = "Series",
-            now = now,
-            onProgress = onProgress
-        ).getOrElse { error ->
-            warnings += "Series categories could not be loaded; series indexing will retry later."
-            upsertXtreamIndexJob(
-                providerId = provider.id,
-                section = ContentType.SERIES.name,
-                state = xtreamIndexFailureState(error),
-                now = now,
-                lastAttemptAt = now,
-                lastError = sanitizeThrowableMessage(error)
-            )
-            0
-        }
-        if (seriesCategoryCount > 0) {
-            runCatching {
-                processXtreamSummaryIndexSection(
+
+            val seriesTask = async(Dispatchers.IO) {
+                syncProgressBus.emit(
+                    com.kaynanamtv.domain.sync.SyncProgress(
+                        section = com.kaynanamtv.domain.sync.Section.SERIES,
+                        current = 0,
+                        total = 0,
+                        currentLabel = "Diziler senkronize ediliyor...",
+                        itemsIndexed = liveCount
+                    )
+                )
+                val catCount = syncXtreamCategoryShell(
                     provider = provider,
                     api = api,
                     contentType = ContentType.SERIES,
-                    maxCategories = null,
+                    label = "Series",
+                    now = now,
                     onProgress = onProgress
-                )
-            }.onFailure { err ->
-                Log.w(TAG, "Foreground series summary stream failed: ${err.message}; scheduling background retry", err)
-                scheduleXtreamIndexSync(provider.id, ContentType.SERIES)
+                ).getOrElse { error ->
+                    warnings += "Series categories could not be loaded; series indexing will retry later."
+                    upsertXtreamIndexJob(
+                        providerId = provider.id,
+                        section = ContentType.SERIES.name,
+                        state = xtreamIndexFailureState(error),
+                        now = now,
+                        lastAttemptAt = now,
+                        lastError = sanitizeThrowableMessage(error)
+                    )
+                    0
+                }
+                if (catCount > 0) {
+                    runCatching {
+                        processXtreamSummaryIndexSection(
+                            provider = provider,
+                            api = api,
+                            contentType = ContentType.SERIES,
+                            maxCategories = null,
+                            onProgress = onProgress
+                        )
+                    }.onFailure { err ->
+                        Log.w(TAG, "Foreground series summary stream failed: ${err.message}; scheduling background retry", err)
+                        scheduleXtreamIndexSync(provider.id, ContentType.SERIES)
+                    }
+                }
+                catCount
             }
+
+            movieCategoryCount = moviesTask.await()
+            seriesCategoryCount = seriesTask.await()
         }
 
         if (trackInitialLiveOnboarding) {
@@ -3590,7 +3603,7 @@ class SyncManager @Inject constructor(
                 if (accepted > 0) {
                     restoreMovieWatchProgressPending = true
                 }
-                if (indexedRows / 1000 > prevRows / 1000) {
+                if (indexedRows / 5000 > prevRows / 5000) {
                     upsertXtreamIndexJob(
                         providerId = provider.id,
                         section = contentType.name,
@@ -3613,7 +3626,7 @@ class SyncManager @Inject constructor(
                 )
                 val prevRows = indexedRows
                 indexedRows += accepted
-                if (indexedRows / 1000 > prevRows / 1000) {
+                if (indexedRows / 5000 > prevRows / 5000) {
                     upsertXtreamIndexJob(
                         providerId = provider.id,
                         section = contentType.name,
@@ -3684,25 +3697,18 @@ class SyncManager @Inject constructor(
     ): Int {
         if (movies.isEmpty()) return 0
         val incoming = movies.map { movie -> movie.toEntity().copy(cacheState = "SUMMARY_ONLY", detailHydratedAt = 0L, remoteStaleAt = 0L) }
-        val existingByStreamId = loadMoviesByStreamIds(providerId, incoming.map { it.streamId })
-        val merged = incoming.map { summary ->
-            val existing = existingByStreamId[summary.streamId]
-            mergeMovieSummary(existing, summary)
-        }
         transactionRunner.inTransaction {
-            movieDao.insertAll(merged)
-            val persistedByStreamId = loadMoviesByStreamIds(providerId, merged.map { it.streamId })
+            movieDao.insertAll(incoming)
             xtreamContentIndexDao.upsertAll(
-                merged.map { movie ->
-                    val persisted = persistedByStreamId[movie.streamId] ?: movie
-                    movie.toXtreamIndexRow(providerId, persisted.id, indexedAt)
+                incoming.map { movie ->
+                    movie.toXtreamIndexRow(providerId, movie.id, indexedAt)
                 }
             )
         }
         if (restoreWatchProgress) {
             movieDao.restoreWatchProgress(providerId)
         }
-        return merged.size
+        return incoming.size
     }
 
     private suspend fun upsertXtreamSeriesSummaryBatch(
@@ -3712,22 +3718,15 @@ class SyncManager @Inject constructor(
     ): Int {
         if (series.isEmpty()) return 0
         val incoming = series.map { item -> item.toEntity().copy(cacheState = "SUMMARY_ONLY", detailHydratedAt = 0L, remoteStaleAt = 0L) }
-        val existingBySeriesId = loadSeriesByIds(providerId, incoming.map { it.seriesId })
-        val merged = incoming.map { summary ->
-            val existing = existingBySeriesId[summary.seriesId]
-            mergeSeriesSummary(existing, summary)
-        }
         transactionRunner.inTransaction {
-            seriesDao.insertAll(merged)
-            val persistedBySeriesId = loadSeriesByIds(providerId, merged.map { it.seriesId })
+            seriesDao.insertAll(incoming)
             xtreamContentIndexDao.upsertAll(
-                merged.map { item ->
-                    val persisted = persistedBySeriesId[item.seriesId] ?: item
-                    item.toXtreamIndexRow(providerId, persisted.id, indexedAt)
+                incoming.map { item ->
+                    item.toXtreamIndexRow(providerId, item.id, indexedAt)
                 }
             )
         }
-        return merged.size
+        return incoming.size
     }
 
     private suspend fun loadMoviesByStreamIds(
