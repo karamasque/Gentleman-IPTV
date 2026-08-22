@@ -13,7 +13,8 @@ class PlayerEngineFactory @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val playbackCompatibilityRepository: com.kaynanamtv.domain.repository.PlaybackCompatibilityRepository,
     private val audioCompatibilityMemoryStore: AudioCompatibilityMemoryStore,
-    private val playbackSupportSnapshotStore: PlaybackSupportSnapshotStore
+    private val playbackSupportSnapshotStore: PlaybackSupportSnapshotStore,
+    private val playbackContentionManager: com.kaynanamtv.domain.manager.PlaybackContentionManager? = null
 ) {
 
     companion object {
@@ -42,11 +43,12 @@ class PlayerEngineFactory @Inject constructor(
 
     fun createEngine(type: PlayerEngineType = PlayerEngineType.MEDIA3): PlayerEngine {
         return Media3PlayerEngine(
-            context,
-            okHttpClient,
-            playbackCompatibilityRepository,
-            audioCompatibilityMemoryStore,
-            playbackSupportSnapshotStore
+            context = context,
+            okHttpClient = okHttpClient,
+            playbackCompatibilityRepository = playbackCompatibilityRepository,
+            audioCompatibilityMemoryStore = audioCompatibilityMemoryStore,
+            playbackSupportSnapshotStore = playbackSupportSnapshotStore,
+            playbackContentionManager = playbackContentionManager
         )
     }
 }

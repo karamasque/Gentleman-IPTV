@@ -76,6 +76,7 @@ class PlayerDataSourceFactoryProvider(
                 baseClient.newBuilder()
             }
             builder
+                .addInterceptor(CrossProtocolRedirectHeaderInterceptor(headers))
                 .addInterceptor(StalkerPlaybackRequestLoggingInterceptor)
                 .connectTimeout(profile.connectTimeoutMs, TimeUnit.MILLISECONDS)
                 .readTimeout(profile.readTimeoutMs, TimeUnit.MILLISECONDS)
@@ -90,9 +91,11 @@ class PlayerDataSourceFactoryProvider(
                 }
                 .build()
         }
-        if (forceHttp1) {
-            Log.i(TAG, "data-source streamType=$resolvedStreamType timeout=$profile httpProtocol=HTTP_1_1")
-        }
+        Log.i(
+            TAG,
+            "data-source streamType=$resolvedStreamType timeout=$profile httpProtocol=${if (forceHttp1) "HTTP_1_1" else "DEFAULT"} " +
+                "headers=[${maskHeadersForLog(headers)}] target=${PlaybackLogSanitizer.sanitizeUrl(streamInfo.url)}"
+        )
         val upstreamFactory = OkHttpDataSource.Factory(client).apply {
             if (headers.isNotEmpty()) {
                 setDefaultRequestProperties(headers)
@@ -217,5 +220,58 @@ private object StalkerPlaybackRequestLoggingInterceptor : Interceptor {
             .mapNotNull { part -> part.substringBefore('=', missingDelimiterValue = "").trim().takeIf(String::isNotBlank) }
             .take(12)
             .joinToString("|")
+    }
+}
+
+internal class CrossProtocolRedirectHeaderInterceptor(
+    private val defaultHeaders: Map<String, String>
+) : Interceptor {
+    private companion object {
+        private const val TAG = "PlayerDataSource"
+        private const val MAX_REDIRECTS = 5
+    }
+
+    override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+        var request = chain.request()
+        var response = chain.proceed(request)
+        var redirectCount = 0
+
+        while (response.isRedirect && redirectCount < MAX_REDIRECTS) {
+            val location = response.header("Location") ?: break
+            val redirectUrl = request.url.resolve(location) ?: break
+
+            Log.i(
+                TAG,
+                "playback-redirect from=${PlaybackLogSanitizer.sanitizeUrl(request.url.toString())} " +
+                    "to=${PlaybackLogSanitizer.sanitizeUrl(redirectUrl.toString())} code=${response.code} " +
+                    "headers=[${maskHeadersForLog(defaultHeaders)}]"
+            )
+
+            response.close()
+            redirectCount++
+
+            val requestBuilder = request.newBuilder().url(redirectUrl)
+            defaultHeaders.forEach { (name, value) ->
+                if (request.header(name) == null) {
+                    requestBuilder.header(name, value)
+                }
+            }
+
+            request = requestBuilder.build()
+            response = chain.proceed(request)
+        }
+        return response
+    }
+}
+
+internal fun maskHeadersForLog(headers: Map<String, String>): String {
+    return headers.entries.joinToString(", ") { (k, v) ->
+        val masked = when {
+            k.equals("Authorization", ignoreCase = true) -> "<auth-redacted>"
+            k.equals("Cookie", ignoreCase = true) -> "<cookie-redacted>"
+            k.contains("token", ignoreCase = true) || k.contains("password", ignoreCase = true) || k.contains("secret", ignoreCase = true) -> "<redacted>"
+            else -> v.take(30)
+        }
+        "$k=$masked"
     }
 }

@@ -35,14 +35,20 @@ class XtreamIndexWorker(
     interface XtreamIndexWorkerEntryPoint {
         fun providerDao(): ProviderDao
         fun syncManager(): SyncManager
+        fun playbackContentionManager(): com.kaynanamtv.domain.manager.PlaybackContentionManager
     }
 
     override suspend fun doWork(): Result {
         val requestedProviderId = inputData.getLong(KEY_PROVIDER_ID, INVALID_PROVIDER_ID)
-        if (com.kaynanamtv.data.remote.stalker.StalkerTrafficCoordinator.shouldDeferCatalogFetch(requestedProviderId) ||
+        val entryPoint = EntryPointAccessors.fromApplication(
+            applicationContext,
+            XtreamIndexWorkerEntryPoint::class.java
+        )
+        if (entryPoint.playbackContentionManager().shouldDeferBackgroundWork() ||
+            com.kaynanamtv.data.remote.stalker.StalkerTrafficCoordinator.shouldDeferCatalogFetch(requestedProviderId) ||
             com.kaynanamtv.data.remote.stalker.StalkerTrafficCoordinator.isAnyPlaybackActive()
         ) {
-            Log.w(TAG, "Deferring Xtream index work: playback is currently active")
+            Log.w(TAG, "Deferring Xtream index work: playback is currently active (P0 priority)")
             return Result.retry()
         }
 

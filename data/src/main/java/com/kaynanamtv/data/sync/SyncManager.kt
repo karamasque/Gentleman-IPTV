@@ -198,7 +198,8 @@ class SyncManager @Inject constructor(
     private val transactionRunner: DatabaseTransactionRunner,
     private val preferencesRepository: com.kaynanamtv.data.preferences.PreferencesRepository,
     private val syncProgressBus: SyncProgressBus,
-    private val mediaPrefetcher: com.kaynanamtv.domain.manager.MediaPrefetcher
+    private val mediaPrefetcher: com.kaynanamtv.domain.manager.MediaPrefetcher,
+    private val playbackContentionManager: com.kaynanamtv.domain.manager.PlaybackContentionManager = com.kaynanamtv.data.manager.DefaultPlaybackContentionManager()
 ) {
     private val applicationSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncStateTracker = SyncStateTracker()
@@ -545,6 +546,11 @@ class SyncManager @Inject constructor(
             return com.kaynanamtv.domain.model.Result.success(Unit)
         }
 
+        if (!force && playbackContentionManager.shouldDeferBackgroundWork()) {
+            Log.i(TAG, "Deferring background EPG sync for provider $providerId: playback is active (P0 priority)")
+            playbackContentionManager.awaitPlaybackIdle()
+        }
+
         val startedAt = System.currentTimeMillis()
         updateXtreamEpgJobState(
             provider = provider,
@@ -672,6 +678,8 @@ class SyncManager @Inject constructor(
                 }
             publishSyncState(providerId, SyncState.Syncing("Başlatılıyor..."))
 
+            val telemetry = SyncPerfTelemetry(providerId, provider.type.name)
+            val syncStart = System.currentTimeMillis()
             try {
                 val outcome = withContext(Dispatchers.IO) {
                     when (provider.type) {
@@ -684,7 +692,8 @@ class SyncManager @Inject constructor(
                                 XtreamLiveSyncReason.INITIAL_ONBOARDING
                             } else {
                                 XtreamLiveSyncReason.FOREGROUND
-                            }
+                            },
+                            telemetry = telemetry
                         )
                         ProviderType.M3U -> syncM3u(provider, force, onProgress)
                         ProviderType.STALKER_PORTAL -> syncStalker(provider, force, onProgress)
@@ -701,6 +710,8 @@ class SyncManager @Inject constructor(
                 } else {
                     SyncState.Success()
                 })
+                val totalSyncMs = System.currentTimeMillis() - syncStart
+                telemetry.logSummary(totalSyncMs)
                 com.kaynanamtv.domain.model.Result.success(Unit)
             } catch (e: CancellationException) {
                 resetState(providerId)
@@ -897,7 +908,8 @@ class SyncManager @Inject constructor(
         force: Boolean,
         onProgress: ((String) -> Unit)?,
         trackInitialLiveOnboarding: Boolean = false,
-        syncReason: XtreamLiveSyncReason = XtreamLiveSyncReason.FOREGROUND
+        syncReason: XtreamLiveSyncReason = XtreamLiveSyncReason.FOREGROUND,
+        telemetry: SyncPerfTelemetry? = null
     ): SyncOutcome {
         val warnings = mutableListOf<String>()
         UrlSecurityPolicy.validateXtreamServerUrl(provider.serverUrl)?.let { message ->
@@ -908,10 +920,14 @@ class SyncManager @Inject constructor(
         val useTextClassification = preferencesRepository.useXtreamTextClassification.first()
         val enableBase64TextCompatibility = preferencesRepository.xtreamBase64TextCompatibility.first()
         val hiddenLiveCategoryIds = preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE).first()
+        val tAuthStart = System.currentTimeMillis()
         val api = createXtreamSyncProvider(provider, useTextClassification, enableBase64TextCompatibility)
+        telemetry?.recordAuth(System.currentTimeMillis() - tAuthStart)
         val runtimeProfile = CatalogSyncRuntimeProfile.from(applicationContext)
         val now = System.currentTimeMillis()
         var metadata = syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)
+
+        telemetry?.markLiveStart()
 
         if (trackInitialLiveOnboarding) {
             recordXtreamLiveOnboardingState(
@@ -1131,6 +1147,7 @@ class SyncManager @Inject constructor(
             lastAttemptAt = now,
             lastError = null
         )
+        telemetry?.markLiveEnd(System.currentTimeMillis() - now)
 
         // FAST LIVE SYNC: İlk onboarding ise (yeni provider eklendiyse), Canlı TV hazır olduğu anda
         // onboarding aşamasını tamamla ve UI'a hemen kontrolü ver.
@@ -1179,6 +1196,7 @@ class SyncManager @Inject constructor(
             applicationSyncScope.launch(Dispatchers.IO) {
                 val moviesJob = async(Dispatchers.IO) {
                     val tMoviesStart = System.currentTimeMillis()
+                    telemetry?.markMoviesStart()
                     runCatching {
                         syncXtreamCategoryShell(
                             provider = provider,
@@ -1198,6 +1216,7 @@ class SyncManager @Inject constructor(
                         val movieCount = movieDao.getCount(provider.id).first()
                         val tMoviesEnd = System.currentTimeMillis()
                         val movieMs = tMoviesEnd - tMoviesStart
+                        telemetry?.markMoviesEnd(movieMs)
                         Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] MOVIES_DONE items=$movieCount elapsed=${movieMs}ms")
 
                         synchronized(onboardingProgress) {
@@ -1247,6 +1266,7 @@ class SyncManager @Inject constructor(
 
                 val seriesJob = async(Dispatchers.IO) {
                     val tSeriesStart = System.currentTimeMillis()
+                    telemetry?.markSeriesStart()
                     runCatching {
                         syncXtreamCategoryShell(
                             provider = provider,
@@ -1266,6 +1286,7 @@ class SyncManager @Inject constructor(
                         val seriesCount = seriesDao.getCount(provider.id).first()
                         val tSeriesEnd = System.currentTimeMillis()
                         val seriesMs = tSeriesEnd - tSeriesStart
+                        telemetry?.markSeriesEnd(seriesMs)
                         Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] SERIES_DONE items=$seriesCount elapsed=${seriesMs}ms")
 
                         synchronized(onboardingProgress) {
@@ -1310,16 +1331,20 @@ class SyncManager @Inject constructor(
                     }
                 }
 
-                moviesJob.await()
-                seriesJob.await()
+                val movieCount = moviesJob.await()
+                val seriesCount = seriesJob.await()
 
+                if (movieCount > 0 || seriesCount > 0) {
+                    val finishTime = System.currentTimeMillis()
+                    val totalDuration = finishTime - tOnboardingStart
+                    Log.i(TAG, "[ONBOARD_TRACE] ALL_MEDIA_INDEXED totalMs=${totalDuration}ms live=$liveCount movies=$movieCount series=$seriesCount")
+                }
                 if (provider.epgSyncMode != ProviderEpgSyncMode.SKIP) {
                     runCatching { scheduleBackgroundEpgSync(provider.id) }
                 }
             }
 
-            Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] INITIAL_ONBOARDING_RETURNING_SUCCESS provider=${provider.id} in ${System.currentTimeMillis() - tOnboardingStart}ms")
-            return if (warnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = warnings.distinct())
+            return SyncOutcome()
         }
 
         // Manuel sync / arka plan yenileme için paralel VOD & Series akışı
@@ -1327,6 +1352,8 @@ class SyncManager @Inject constructor(
         var seriesCategoryCount = 0
         kotlinx.coroutines.coroutineScope {
             val moviesTask = async(Dispatchers.IO) {
+                val tMoviesStart = System.currentTimeMillis()
+                telemetry?.markMoviesStart()
                 syncProgressBus.emit(
                     com.kaynanamtv.domain.sync.SyncProgress(
                         section = com.kaynanamtv.domain.sync.Section.VOD,
@@ -1369,10 +1396,13 @@ class SyncManager @Inject constructor(
                         scheduleXtreamIndexSync(provider.id, ContentType.MOVIE)
                     }
                 }
+                telemetry?.markMoviesEnd(System.currentTimeMillis() - tMoviesStart)
                 catCount
             }
 
             val seriesTask = async(Dispatchers.IO) {
+                val tSeriesStart = System.currentTimeMillis()
+                telemetry?.markSeriesStart()
                 syncProgressBus.emit(
                     com.kaynanamtv.domain.sync.SyncProgress(
                         section = com.kaynanamtv.domain.sync.Section.SERIES,
@@ -1415,6 +1445,7 @@ class SyncManager @Inject constructor(
                         scheduleXtreamIndexSync(provider.id, ContentType.SERIES)
                     }
                 }
+                telemetry?.markSeriesEnd(System.currentTimeMillis() - tSeriesStart)
                 catCount
             }
 
@@ -1471,6 +1502,7 @@ class SyncManager @Inject constructor(
                 lastAttemptAt = now,
                 lastError = null
             )
+            val tEpgStart = System.currentTimeMillis()
             val epgResult = syncProviderEpg(
                 provider = provider,
                 metadata = metadata,
@@ -1479,6 +1511,7 @@ class SyncManager @Inject constructor(
                 onProgress = onProgress
             )
             val finishedAt = System.currentTimeMillis()
+            telemetry?.recordEpg(finishedAt - tEpgStart)
             updateXtreamEpgJobState(
                 provider = provider,
                 state = when {

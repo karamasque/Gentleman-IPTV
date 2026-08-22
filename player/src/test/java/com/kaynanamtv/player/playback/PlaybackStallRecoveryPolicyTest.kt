@@ -56,4 +56,40 @@ class PlaybackStallRecoveryPolicyTest {
             )
         ).isFalse()
     }
+
+    @Test
+    fun `classifyPlaybackStall identifies behind live window for HLS`() {
+        val category = classifyPlaybackStall(
+            bufferedDurationMs = 0L,
+            lastFrameAgoMs = 0L,
+            lastBytesAgoMs = 0L,
+            playbackState = PlaybackState.BUFFERING,
+            lastError = androidx.media3.exoplayer.source.BehindLiveWindowException()
+        )
+        assertThat(category).isEqualTo(PlaybackStallCategory.HLS_LIVE_WINDOW)
+    }
+
+    @Test
+    fun `classifyPlaybackStall identifies server no bytes starvation`() {
+        val category = classifyPlaybackStall(
+            bufferedDurationMs = 200L,
+            lastFrameAgoMs = 1000L,
+            lastBytesAgoMs = 4000L,
+            playbackState = PlaybackState.BUFFERING,
+            lastError = null
+        )
+        assertThat(category).isEqualTo(PlaybackStallCategory.SERVER_NO_BYTES)
+    }
+
+    @Test
+    fun `classifyPlaybackStall identifies decoder stall when buffer is full but frames not rendering`() {
+        val category = classifyPlaybackStall(
+            bufferedDurationMs = 5000L,
+            lastFrameAgoMs = 7000L,
+            lastBytesAgoMs = 100L,
+            playbackState = PlaybackState.READY,
+            lastError = null
+        )
+        assertThat(category).isEqualTo(PlaybackStallCategory.DECODER_STALL)
+    }
 }

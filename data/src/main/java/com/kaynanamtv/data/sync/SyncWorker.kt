@@ -22,16 +22,19 @@ class SyncWorker(
     interface SyncWorkerEntryPoint {
         fun databaseMaintenanceManager(): DatabaseMaintenanceManager
         fun preferencesRepository(): PreferencesRepository
+        fun playbackContentionManager(): com.kaynanamtv.domain.manager.PlaybackContentionManager
     }
 
     override suspend fun doWork(): Result {
-        if (com.kaynanamtv.data.remote.stalker.StalkerTrafficCoordinator.isAnyPlaybackActive()) {
-            Log.w("SyncWorker", "Deferring data maintenance: playback is currently active")
+        val entryPoint = EntryPointAccessors.fromApplication(applicationContext, SyncWorkerEntryPoint::class.java)
+        if (entryPoint.playbackContentionManager().shouldDeferBackgroundWork() ||
+            com.kaynanamtv.data.remote.stalker.StalkerTrafficCoordinator.isAnyPlaybackActive()
+        ) {
+            Log.w("SyncWorker", "Deferring data maintenance: playback is currently active (P0 priority)")
             return Result.retry()
         }
         Log.d("SyncWorker", "Starting data maintenance...")
         return try {
-            val entryPoint = EntryPointAccessors.fromApplication(applicationContext, SyncWorkerEntryPoint::class.java)
             val report = entryPoint.databaseMaintenanceManager().runDailyMaintenance()
             entryPoint.preferencesRepository().setLastMaintenanceSnapshot(
                 DatabaseMaintenanceSnapshot(

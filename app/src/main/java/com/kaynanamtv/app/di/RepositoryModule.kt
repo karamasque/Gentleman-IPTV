@@ -118,6 +118,9 @@ abstract class RepositoryModule {
     @Binds @Singleton
     abstract fun bindRemoteConfigRepository(impl: RemoteConfigRepositoryImpl): RemoteConfigRepository
 
+    @Binds @Singleton
+    abstract fun bindPlaybackContentionManager(impl: com.kaynanamtv.data.manager.DefaultPlaybackContentionManager): com.kaynanamtv.domain.manager.PlaybackContentionManager
+
     companion object {
         @Provides
         @Singleton

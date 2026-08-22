@@ -30,6 +30,27 @@ internal fun shouldWrapDataSourceReadStats(resolvedStreamType: ResolvedStreamTyp
         resolvedStreamType == ResolvedStreamType.MPEG_TS_LIVE
 
 @UnstableApi
+object PlayerDataSourceReadStatsRegistry {
+    private val activeTrackers = java.util.concurrent.ConcurrentHashMap<String, PlayerDataSourceReadStatsTracker>()
+
+    internal fun register(target: String, tracker: PlayerDataSourceReadStatsTracker) {
+        activeTrackers[target] = tracker
+    }
+
+    internal fun unregister(target: String) {
+        activeTrackers.remove(target)
+    }
+
+    fun lastBytesAgoMs(url: String?, nowMs: Long = SystemClock.elapsedRealtime()): Long {
+        if (url == null) return 0L
+        val sanitized = PlaybackLogSanitizer.sanitizeUrl(url)
+        return activeTrackers[sanitized]?.lastByteReceivedAgoMs(nowMs)
+            ?: activeTrackers.values.minOfOrNull { it.lastByteReceivedAgoMs(nowMs) }
+            ?: 0L
+    }
+}
+
+@UnstableApi
 private class PlayerDataSourceReadStatsDataSource(
     private val upstream: DataSource,
     private val resolvedStreamType: ResolvedStreamType,
@@ -49,6 +70,7 @@ private class PlayerDataSourceReadStatsDataSource(
         target = PlaybackLogSanitizer.sanitizeUrl(dataSpec.uri.toString())
         val length = upstream.open(dataSpec)
         tracker.open(clockMs())
+        PlayerDataSourceReadStatsRegistry.register(target, tracker)
         opened = true
         if (readStatsLoggingEnabled()) {
             Log.d(
@@ -62,8 +84,11 @@ private class PlayerDataSourceReadStatsDataSource(
     @Throws(IOException::class)
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         val bytesRead = upstream.read(buffer, offset, length)
-        if (bytesRead > 0 && readStatsLoggingEnabled()) {
-            tracker.recordRead(bytesRead, clockMs())?.let(::logProgress)
+        if (bytesRead > 0) {
+            val snapshot = tracker.recordRead(bytesRead, clockMs())
+            if (snapshot != null && readStatsLoggingEnabled()) {
+                logProgress(snapshot)
+            }
         }
         return bytesRead
     }
@@ -77,6 +102,7 @@ private class PlayerDataSourceReadStatsDataSource(
         try {
             upstream.close()
         } finally {
+            PlayerDataSourceReadStatsRegistry.unregister(target)
             if (opened && readStatsLoggingEnabled()) {
                 logClose(tracker.snapshot(clockMs()))
             }
@@ -117,17 +143,20 @@ internal class PlayerDataSourceReadStatsTracker(
     private var lastLogAtMs: Long = 0L
     private var lastLogBytes: Long = 0L
     private var totalBytes: Long = 0L
+    private var lastByteAtMs: Long = 0L
 
     fun open(nowMs: Long) {
         openedAtMs = nowMs
         lastLogAtMs = nowMs
         lastLogBytes = 0L
         totalBytes = 0L
+        lastByteAtMs = nowMs
     }
 
     fun recordRead(bytesRead: Int, nowMs: Long): PlayerDataSourceReadStatsSnapshot? {
         if (bytesRead <= 0) return null
 
+        lastByteAtMs = nowMs
         totalBytes += bytesRead.toLong()
         val intervalMs = nowMs - lastLogAtMs
         val deltaBytes = totalBytes - lastLogBytes
@@ -139,6 +168,11 @@ internal class PlayerDataSourceReadStatsTracker(
             lastLogAtMs = nowMs
             lastLogBytes = totalBytes
         }
+    }
+
+    fun lastByteReceivedAgoMs(nowMs: Long): Long {
+        val last = lastByteAtMs
+        return if (last <= 0L) (nowMs - openedAtMs).coerceAtLeast(0L) else (nowMs - last).coerceAtLeast(0L)
     }
 
     fun snapshot(nowMs: Long): PlayerDataSourceReadStatsSnapshot {

@@ -35,14 +35,20 @@ class StalkerIndexWorker(
     interface StalkerIndexWorkerEntryPoint {
         fun providerDao(): ProviderDao
         fun syncManager(): SyncManager
+        fun playbackContentionManager(): com.kaynanamtv.domain.manager.PlaybackContentionManager
     }
 
     override suspend fun doWork(): Result {
         val requestedProviderId = inputData.getLong(KEY_PROVIDER_ID, INVALID_PROVIDER_ID)
-        if (StalkerTrafficCoordinator.shouldDeferCatalogFetch(requestedProviderId) ||
+        val entryPoint = EntryPointAccessors.fromApplication(
+            applicationContext,
+            StalkerIndexWorkerEntryPoint::class.java
+        )
+        if (entryPoint.playbackContentionManager().shouldDeferBackgroundWork() ||
+            StalkerTrafficCoordinator.shouldDeferCatalogFetch(requestedProviderId) ||
             StalkerTrafficCoordinator.isAnyPlaybackActive()
         ) {
-            Log.w(TAG, "Deferring Stalker index work: playback is currently active")
+            Log.w(TAG, "Deferring Stalker index work: playback is currently active (P0 priority)")
             return Result.retry()
         }
 

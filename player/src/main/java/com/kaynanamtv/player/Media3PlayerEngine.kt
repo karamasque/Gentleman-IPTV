@@ -59,9 +59,11 @@ import com.kaynanamtv.player.playback.PlaybackPreparationPlan
 import com.kaynanamtv.player.playback.PlaybackExtensionRendererMode
 import com.kaynanamtv.player.playback.PlaybackRetryContext
 import com.kaynanamtv.player.playback.PlayerDataSourceFactoryProvider
+import com.kaynanamtv.player.playback.PlayerDataSourceReadStatsRegistry
 import com.kaynanamtv.player.playback.PlayerErrorClassifier
 import com.kaynanamtv.player.playback.PlayerMediaSourceFactory
 import com.kaynanamtv.player.playback.PlayerRetryPolicy
+import com.kaynanamtv.player.playback.classifyPlaybackStall
 import com.kaynanamtv.player.playback.PlayerTimeoutProfile
 import com.kaynanamtv.player.playback.PreloadCoordinator
 import com.kaynanamtv.player.playback.ResolvedStreamType
@@ -122,7 +124,8 @@ class Media3PlayerEngine @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val playbackCompatibilityRepository: PlaybackCompatibilityRepository,
     private val audioCompatibilityMemoryStore: AudioCompatibilityMemoryStore,
-    private val playbackSupportSnapshotStore: PlaybackSupportSnapshotStore
+    private val playbackSupportSnapshotStore: PlaybackSupportSnapshotStore,
+    private val playbackContentionManager: com.kaynanamtv.domain.manager.PlaybackContentionManager? = null
 ) : PlayerEngine {
 
     companion object {
@@ -159,7 +162,13 @@ class Media3PlayerEngine @Inject constructor(
 
     init {
         activeInstances.add(this)
+        syncContentionState()
         Log.i(TAG, "[PLAYER_INSTANCE] created id=$instanceId activeCount=${activeInstances.size}")
+    }
+
+    private fun syncContentionState() {
+        val count = getActivePlayingInstanceCount()
+        playbackContentionManager?.setPlaybackActive(count > 0, count)
     }
 
     var constrainResolutionForMultiView: Boolean = false
@@ -525,6 +534,7 @@ class Media3PlayerEngine @Inject constructor(
         statsCollector.stop()
         statsCollector.reset()
         audioFocusController.onPauseOrStop()
+        syncContentionState()
         Log.i(TAG, "[PLAYER_INSTANCE] stopped id=$instanceId activeCount=${activeInstances.size}")
     }
 
@@ -925,6 +935,7 @@ class Media3PlayerEngine @Inject constructor(
         updatePlaybackSupportSnapshot()
         isDisposed = true
         activeInstances.remove(this)
+        syncContentionState()
         Log.i(TAG, "[PLAYER_INSTANCE] released id=$instanceId activeCount=${activeInstances.size}")
         resetEngineState(restartCollectors = false)
     }
@@ -1581,6 +1592,7 @@ class Media3PlayerEngine @Inject constructor(
                 if (_playbackState.value == PlaybackState.READY && _isPlaying.value) {
                     markPlaybackStarted("ready-while-playing")
                 }
+                syncContentionState()
                 syncTimeshiftState()
             }
 
@@ -1598,6 +1610,7 @@ class Media3PlayerEngine @Inject constructor(
                 } else {
                     statsCollector.stop()
                 }
+                syncContentionState()
                 syncTimeshiftState()
             }
 
@@ -1905,6 +1918,31 @@ class Media3PlayerEngine @Inject constructor(
             playbackState = _playbackState.value,
             resolvedStreamType = currentResolvedStreamType,
             recoveryAttempt = nextRecoveryAttempt
+        )
+
+        val lastBytesAgoMs = PlayerDataSourceReadStatsRegistry.lastBytesAgoMs(streamInfo.url)
+        val lastFrameAgo = videoStallDetector.lastVideoFrameAgoMs()
+        val stallCategory = classifyPlaybackStall(
+            bufferedDurationMs = _playerStats.value.bufferedDurationMs,
+            lastFrameAgoMs = lastFrameAgo,
+            lastBytesAgoMs = lastBytesAgoMs,
+            playbackState = _playbackState.value,
+            lastError = null
+        )
+        val backgroundSyncActive = playbackContentionManager?.shouldDeferBackgroundWork() ?: false
+        val recoveryAction = when {
+            liveReconnectionStall -> "LIVE_RECONNECT"
+            currentResolvedStreamType == ResolvedStreamType.HLS -> "HLS_RECOVERY"
+            !videoStallSafeRecoveryPerformed -> "SAFE_REPREPARE"
+            else -> "DECODER_FALLBACK"
+        }
+
+        Log.i(
+            TAG,
+            "[PLAYBACK_STALL_REPORT] streamType=$currentResolvedStreamType playbackState=${_playbackState.value} " +
+                "bufferedDurationMs=${_playerStats.value.bufferedDurationMs} lastBytesAgoMs=$lastBytesAgoMs " +
+                "httpCode=200 category=$stallCategory bandwidth=${_playerStats.value.bandwidthEstimate} " +
+                "videoBitrate=${_playerStats.value.videoBitrate} backgroundSyncActive=$backgroundSyncActive recoveryAction=$recoveryAction"
         )
         Log.w(
             TAG,
@@ -2442,12 +2480,41 @@ class Media3PlayerEngine @Inject constructor(
         val category = PlayerErrorClassifier.classify(error)
         val effectivePlaybackStarted = isEffectivelyPlaybackStarted()
 
+        val lastBytesAgoMs = PlayerDataSourceReadStatsRegistry.lastBytesAgoMs(streamInfo?.url)
+        val stallCategory = classifyPlaybackStall(
+            bufferedDurationMs = _playerStats.value.bufferedDurationMs,
+            lastFrameAgoMs = videoStallDetector.lastVideoFrameAgoMs(),
+            lastBytesAgoMs = lastBytesAgoMs,
+            playbackState = _playbackState.value,
+            lastError = error
+        )
+        val backgroundSyncActive = playbackContentionManager?.shouldDeferBackgroundWork() ?: false
+        Log.i(
+            TAG,
+            "[PLAYBACK_STALL_REPORT] streamType=$currentResolvedStreamType playbackState=${_playbackState.value} " +
+                "bufferedDurationMs=${_playerStats.value.bufferedDurationMs} lastBytesAgoMs=$lastBytesAgoMs " +
+                "httpCode=${error.errorCode} exception=${error.errorCodeName} category=$stallCategory " +
+                "bandwidth=${_playerStats.value.bandwidthEstimate} videoBitrate=${_playerStats.value.videoBitrate} " +
+                "backgroundSyncActive=$backgroundSyncActive recoveryAction=RETRY_POLICY"
+        )
+
         if (streamInfo == null || mediaId == null || retryPolicy == null || retryContext == null) {
             _retryStatus.value = null
             lastSupportErrorMessage = error.message
             updatePlaybackSupportSnapshot()
             _error.tryEmit(PlayerError.fromException(error))
             _playbackState.value = PlaybackState.ERROR
+            return
+        }
+
+        if (
+            category == PlaybackErrorCategory.LIVE_WINDOW &&
+            currentResolvedStreamType == ResolvedStreamType.HLS
+        ) {
+            Log.w(TAG, "live-hls BehindLiveWindowException: seeking to live edge")
+            exoPlayer?.seekToDefaultPosition()
+            exoPlayer?.prepare()
+            exoPlayer?.play()
             return
         }
 

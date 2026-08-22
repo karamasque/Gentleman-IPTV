@@ -332,13 +332,13 @@ class OkHttpXtreamApiService(
             .build()
             .withRequestProfile(effectiveRequestProfile)
         val tRequestStart = System.currentTimeMillis()
-        Log.i("SYNC_TRACE", "[SYNC_TRACE] ${descriptor.action ?: "CATALOG"} bulk START url=${descriptor.hint}")
+        Log.i("SYNC_PERF", "[SYNC_PERF] HTTP_REQ action=${descriptor.action ?: "CATALOG"} url=${descriptor.hint}")
         try {
             val call = clientFor(effectiveProfile).newCall(request)
             executeCancellable(call).use { response ->
                 val tHeadersReceived = System.currentTimeMillis()
                 val ttfbMs = tHeadersReceived - tRequestStart
-                Log.i("SYNC_TRACE", "[SYNC_TRACE] ${descriptor.action ?: "CATALOG"} HEADERS_RECEIVED code=${response.code} TTFB=${ttfbMs}ms")
+                Log.i("SYNC_PERF", "[SYNC_PERF] action=${descriptor.action ?: "CATALOG"} TTFB_MS=$ttfbMs code=${response.code}")
                 if (!response.isSuccessful) {
                     if (response.code == 304) {
                         return@withContext 0
@@ -380,7 +380,7 @@ class OkHttpXtreamApiService(
                 TAG,
                 "Xtream streamed request network failure for ${descriptor.hint} (${request.safeRequestIdentitySummary(effectiveRequestProfile)}): ${XtreamUrlFactory.sanitizeLogMessage(e.message ?: "Network request failed")}"
             )
-            Log.w("SYNC_TRACE", "[SYNC_TRACE] ${descriptor.action ?: "CATALOG"} NETWORK_FAILURE elapsed=${System.currentTimeMillis() - tRequestStart}ms error=${e.message}")
+            Log.w("SYNC_PERF", "[SYNC_PERF] ${descriptor.action ?: "CATALOG"} NETWORK_FAILURE elapsed=${System.currentTimeMillis() - tRequestStart}ms error=${e.message}")
             throw XtreamNetworkException(XtreamUrlFactory.sanitizeLogMessage(e.message ?: "Network request failed"), e)
         }
     }
@@ -542,10 +542,7 @@ class OkHttpXtreamApiService(
                         }
                         if (emittedCount == 0) {
                             val tFirstItem = System.currentTimeMillis()
-                            Log.i("SYNC_TRACE", "[SYNC_TRACE] ${descriptor.action ?: "CATALOG"} firstItem=${tFirstItem - tRequestStart}ms (postTTFB=${tFirstItem - tHeadersReceived}ms)")
-                        } else if (emittedCount == 499) {
-                            val t500 = System.currentTimeMillis()
-                            Log.i("SYNC_TRACE", "[SYNC_TRACE] ${descriptor.action ?: "CATALOG"} first500Items=${t500 - tRequestStart}ms (postTTFB=${t500 - tHeadersReceived}ms)")
+                            Log.i("SYNC_PERF", "[SYNC_PERF] action=${descriptor.action ?: "CATALOG"} firstItemMs=${tFirstItem - tRequestStart} postTTFBMs=${tFirstItem - tHeadersReceived}")
                         }
                         onItem(item)
                         emittedCount++
@@ -555,7 +552,7 @@ class OkHttpXtreamApiService(
                     val totalBytes = boundedStream.totalBytesRead
                     val downloadDurationMs = tBodyComplete - tHeadersReceived
                     val kbPerSec = if (downloadDurationMs > 0) (totalBytes * 1000L / downloadDurationMs / 1024L) else 0L
-                    Log.i("SYNC_TRACE", "[SYNC_TRACE] ${descriptor.action ?: "CATALOG"} BODY_COMPLETE totalElapsed=${tBodyComplete - tRequestStart}ms bodyDownloadMs=${downloadDurationMs}ms bytes=${totalBytes} items=${emittedCount} avgRate=${kbPerSec}KB/s")
+                    Log.i("SYNC_PERF", "[SYNC_PERF] action=${descriptor.action ?: "CATALOG"} DOWNLOAD_MS=$downloadDurationMs TOTAL_MS=${tBodyComplete - tRequestStart} bytes=$totalBytes items=$emittedCount avgRate=${kbPerSec}KB/s")
                     emittedCount
                 }
                 JsonToken.NULL -> {

@@ -105,6 +105,7 @@ class ProviderSyncWorker(
         fun xtreamIndexJobDao(): XtreamIndexJobDao
         fun xtreamLiveOnboardingDao(): XtreamLiveOnboardingDao
         fun preferencesRepository(): com.kaynanamtv.data.preferences.PreferencesRepository
+        fun playbackContentionManager(): com.kaynanamtv.domain.manager.PlaybackContentionManager
     }
 
     override suspend fun doWork(): Result {
@@ -113,6 +114,10 @@ class ProviderSyncWorker(
                 applicationContext,
                 ProviderSyncWorkerEntryPoint::class.java
             )
+            if (entryPoint.playbackContentionManager().shouldDeferBackgroundWork()) {
+                Log.d(TAG, "Deferring background sync worker: playback is currently active (P0 priority)")
+                return Result.retry()
+            }
             val requestedProviderId = inputData.getLong(KEY_PROVIDER_ID, INVALID_PROVIDER_ID)
             val providers = if (requestedProviderId != INVALID_PROVIDER_ID) {
                 entryPoint.providerDao().getById(requestedProviderId)?.let(::listOf).orEmpty()
@@ -125,7 +130,8 @@ class ProviderSyncWorker(
 
             var sawRetryableFailure = false
             providers.forEach { provider ->
-                if (StalkerTrafficCoordinator.shouldDeferCatalogFetch(provider.id) ||
+                if (entryPoint.playbackContentionManager().shouldDeferBackgroundWork() ||
+                    StalkerTrafficCoordinator.shouldDeferCatalogFetch(provider.id) ||
                     StalkerTrafficCoordinator.isAnyPlaybackActive()
                 ) {
                     Log.d(TAG, "Deferring background sync worker for provider ${provider.id} due to active playback")

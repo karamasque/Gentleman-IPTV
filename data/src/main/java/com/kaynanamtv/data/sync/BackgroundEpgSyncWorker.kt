@@ -28,6 +28,7 @@ class BackgroundEpgSyncWorker(
     @InstallIn(SingletonComponent::class)
     interface BackgroundEpgSyncWorkerEntryPoint {
         fun syncManager(): SyncManager
+        fun playbackContentionManager(): com.kaynanamtv.domain.manager.PlaybackContentionManager
     }
 
     override suspend fun doWork(): Result {
@@ -36,11 +37,17 @@ class BackgroundEpgSyncWorker(
             return Result.failure()
         }
 
+        val entryPoint = EntryPointAccessors.fromApplication(
+            applicationContext,
+            BackgroundEpgSyncWorkerEntryPoint::class.java
+        )
+
         // Defer the run when playback is active or device is under memory pressure.
-        if (com.kaynanamtv.data.remote.stalker.StalkerTrafficCoordinator.shouldDeferCatalogFetch(providerId) ||
+        if (entryPoint.playbackContentionManager().shouldDeferBackgroundWork() ||
+            com.kaynanamtv.data.remote.stalker.StalkerTrafficCoordinator.shouldDeferCatalogFetch(providerId) ||
             com.kaynanamtv.data.remote.stalker.StalkerTrafficCoordinator.isAnyPlaybackActive()
         ) {
-            Log.w(TAG, "Deferring background EPG sync for provider $providerId: playback is currently active")
+            Log.w(TAG, "Deferring background EPG sync for provider $providerId: playback is currently active (P0 priority)")
             return Result.retry()
         }
 

@@ -154,43 +154,58 @@ internal class SyncCatalogStore(
 
     suspend fun applyStagedLiveCatalog(providerId: Long, sessionId: Long, categories: List<CategoryEntity>?) {
         val t0 = System.currentTimeMillis()
-        Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE DB_FINALIZE_START providerId=$providerId sessionId=$sessionId")
+        Log.i("SYNC_PERF", "[SYNC_PERF] LIVE DB_FINALIZE_START providerId=$providerId sessionId=$sessionId")
         try {
+            var ftsMs = 0L
             transactionRunner.inTransaction {
                 categories?.let { stageCategories(providerId, sessionId, it) }
                 categories?.let { applyCategories(providerId, sessionId, "LIVE") }
                 applyChannels(providerId, sessionId)
+                val tFts = System.currentTimeMillis()
                 catalogSyncDao.rebuildChannelFts()
+                ftsMs = System.currentTimeMillis() - tFts
             }
             val dur = System.currentTimeMillis() - t0
-            Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE DB_FINALIZE_DONE duration=${dur}ms")
+            Log.i("SYNC_PERF", "[SYNC_PERF] LIVE_DB_MS=$dur FTS_MS=$ftsMs")
         } finally {
             clearSession(providerId, sessionId)
         }
     }
 
     suspend fun applyStagedMovieCatalog(providerId: Long, sessionId: Long, categories: List<CategoryEntity>?) {
+        val t0 = System.currentTimeMillis()
         try {
+            var ftsMs = 0L
             transactionRunner.inTransaction {
                 categories?.let { stageCategories(providerId, sessionId, it) }
                 categories?.let { applyCategories(providerId, sessionId, "MOVIE") }
                 applyMovies(providerId, sessionId)
+                val tFts = System.currentTimeMillis()
                 catalogSyncDao.rebuildMovieFts()
+                ftsMs = System.currentTimeMillis() - tFts
             }
             movieDao.restoreWatchProgress(providerId)
+            val dur = System.currentTimeMillis() - t0
+            Log.i("SYNC_PERF", "[SYNC_PERF] MOVIES_DB_MS=$dur FTS_MS=$ftsMs")
         } finally {
             clearSession(providerId, sessionId)
         }
     }
 
     suspend fun applyStagedSeriesCatalog(providerId: Long, sessionId: Long, categories: List<CategoryEntity>?) {
+        val t0 = System.currentTimeMillis()
         try {
+            var ftsMs = 0L
             transactionRunner.inTransaction {
                 categories?.let { stageCategories(providerId, sessionId, it) }
                 categories?.let { applyCategories(providerId, sessionId, "SERIES") }
                 applySeries(providerId, sessionId)
+                val tFts = System.currentTimeMillis()
                 catalogSyncDao.rebuildSeriesFts()
+                ftsMs = System.currentTimeMillis() - tFts
             }
+            val dur = System.currentTimeMillis() - t0
+            Log.i("SYNC_PERF", "[SYNC_PERF] SERIES_DB_MS=$dur FTS_MS=$ftsMs")
         } finally {
             clearSession(providerId, sessionId)
         }
