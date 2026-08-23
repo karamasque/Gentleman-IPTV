@@ -83,6 +83,7 @@ class PlayerViewBinder(
 
     fun clear() {
         boundPlayerView?.player = null
+        boundPlayerView = null
     }
 
     fun reapplyStyle() {

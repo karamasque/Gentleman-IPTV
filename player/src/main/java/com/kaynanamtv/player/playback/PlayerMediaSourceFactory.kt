@@ -41,7 +41,6 @@ private val TS_SUBTITLE_FORMATS: List<Format> = listOf(
 
 internal fun liveMpegTsExtractorsFactory(): DefaultExtractorsFactory =
     DefaultExtractorsFactory()
-        .setTsExtractorMode(TsExtractor.MODE_SINGLE_PMT)
         .setTsExtractorFlags(
             DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
                 or DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
@@ -80,7 +79,6 @@ class PlayerMediaSourceFactory(
                 RtspMediaSource.Factory().createMediaSource(mediaItem)
             resolvedStreamType == ResolvedStreamType.HLS -> HlsMediaSource.Factory(dataSourceFactory)
                 .setExtractorFactory(androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory(tsPayloadReaderFlags, true))
-                .setAllowChunklessPreparation(true)
                 .setLoadErrorHandlingPolicy(retryPolicy)
                 .createMediaSource(mediaItem)
 

@@ -78,6 +78,8 @@ class PlayerDataSourceFactoryProvider(
             builder
                 .connectionPool(baseClient.connectionPool)
                 .dispatcher(baseClient.dispatcher)
+                .followRedirects(true)
+                .followSslRedirects(true)
                 .addInterceptor(CrossProtocolRedirectHeaderInterceptor(headers))
                 .addInterceptor(StalkerPlaybackRequestLoggingInterceptor)
                 .connectTimeout(profile.connectTimeoutMs, TimeUnit.MILLISECONDS)

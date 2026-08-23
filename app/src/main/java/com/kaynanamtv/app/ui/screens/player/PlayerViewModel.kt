@@ -1244,7 +1244,7 @@ class PlayerViewModel @Inject constructor(
     internal suspend fun preparePlayer(
         streamInfo: com.kaynanamtv.domain.model.StreamInfo,
         requestVersion: Long,
-        probeBeforePlayback: Boolean = true,
+        probeBeforePlayback: Boolean = false,
         showFailureNotice: Boolean = true
     ): Boolean {
         if (!isActivePlaybackSession(requestVersion)) return false
