@@ -386,7 +386,8 @@ class SeriesRepositoryImpl @Inject constructor(
             return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
         }
 
-        if (provider.type == ProviderType.XTREAM_CODES && seriesEntity.hasFreshXtreamDetails()) {
+        val persistedEpisodes = episodeDao.getBySeriesSync(seriesEntity.id)
+        if (provider.type == ProviderType.XTREAM_CODES && seriesEntity.hasFreshXtreamDetails() && persistedEpisodes.isNotEmpty()) {
             return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
         }
 
