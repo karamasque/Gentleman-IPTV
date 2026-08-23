@@ -22,12 +22,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
 
-      // Normal user can register with standard initial trial entitlement
+      // Normal user can register with standard FREE plan
       allow create: if isOwner(userId) &&
         request.resource.data.role == 'USER' &&
         request.resource.data.isAdmin == false &&
-        request.resource.data.premiumPlan in ['FREE', 'TRIAL'] &&
-        request.resource.data.trialUsed == true;
+        request.resource.data.premiumPlan in ['FREE', 'TRIAL'];
 
       // Normal user can ONLY update profile/settings, NEVER entitlement or admin fields
       allow update: if (
@@ -49,6 +48,11 @@ service cloud.firestore {
       ) || isAdmin();
 
       allow delete: if isAdmin();
+
+      // ── User IPTV Providers (Cloud Sync) ───────────────────────────
+      match /providers/{providerId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
 
     // ── Payment Requests ──────────────────────────────────────────────

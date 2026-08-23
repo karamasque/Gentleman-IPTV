@@ -51,6 +51,7 @@ class ProviderSetupViewModelTest {
     private val providerQrPairingManager: ProviderQrPairingManager = mock()
     private val preferencesRepository: PreferencesRepository = mock()
     private val syncProgressBus: SyncProgressBus = SyncProgressBus()
+    private val entitlementManager: com.kaynanamtv.domain.manager.EntitlementManager = mock()
     private val testDispatcher = StandardTestDispatcher()
 
     private fun createViewModel() = ProviderSetupViewModel(
@@ -61,7 +62,8 @@ class ProviderSetupViewModelTest {
         driveBackupSyncManager = driveBackupSyncManager,
         providerQrPairingManager = providerQrPairingManager,
         preferencesRepository = preferencesRepository,
-        syncProgressBus = syncProgressBus
+        syncProgressBus = syncProgressBus,
+        entitlementManager = entitlementManager
     )
 
     @Before
@@ -74,6 +76,7 @@ class ProviderSetupViewModelTest {
         whenever(providerQrPairingManager.state).thenReturn(MutableStateFlow(ProviderQrPairingState()))
         whenever(preferencesRepository.forumUsername).thenReturn(flowOf(""))
         whenever(preferencesRepository.forumPassword).thenReturn(flowOf(""))
+        whenever(entitlementManager.isPremiumFlow).thenReturn(flowOf(false))
     }
 
 

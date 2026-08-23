@@ -48,7 +48,7 @@ enum class EntitlementStatus {
     EXPIRED;
 
     val isPremiumAccess: Boolean
-        get() = this == TRIAL_ACTIVE || this == YEARLY_ACTIVE || this == LIFETIME_ACTIVE
+        get() = this == YEARLY_ACTIVE || this == LIFETIME_ACTIVE
 }
 
 enum class PaymentRequestStatus {

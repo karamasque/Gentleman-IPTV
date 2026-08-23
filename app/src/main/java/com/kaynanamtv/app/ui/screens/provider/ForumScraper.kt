@@ -286,9 +286,15 @@ object ForumScraper {
         pass: String = "",
         depthVal: String = "Son 1 Sayfa",
         onlyActive: Boolean = true,
+        entitlementManager: com.kaynanamtv.domain.manager.EntitlementManager? = null,
         progressCallback: (Float, String) -> Unit
     ): Map<String, Any> = withContext(Dispatchers.IO) {
         val result = HashMap<String, Any>()
+        if (entitlementManager != null && !entitlementManager.canUse(com.kaynanamtv.domain.model.Feature.AUTO_IPTV)) {
+            result["success"] = false
+            result["message"] = "Otomatik IPTV tarama ve doğrulama özelliği Premium üyelere özeldir."
+            return@withContext result
+        }
         val effectiveUser = user.takeIf { it.isNotBlank() } ?: getInternalUser()
         val effectivePass = pass.takeIf { it.isNotBlank() } ?: getInternalPass()
 

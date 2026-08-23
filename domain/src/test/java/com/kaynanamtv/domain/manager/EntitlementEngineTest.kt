@@ -57,29 +57,44 @@ class EntitlementEngineTest {
     }
 
     @Test
-    fun trialPlan_unexpired_returnsTrialActive() {
+    fun legacyTrialPlan_returnsFree() {
         val session = baseSession.copy(
             premiumPlan = PremiumPlan.TRIAL,
             trialUsed = true,
             trialStartedAt = 1000L,
-            trialExpiresAt = 1000L + EntitlementEngine.TRIAL_DURATION_MS
+            trialExpiresAt = 999999999L
         )
-        val status = EntitlementEngine.evaluate(session, trustedServerTimeMs = 1000L + 10000L)
-        assertEquals(EntitlementStatus.TRIAL_ACTIVE, status)
-        assertTrue(status.isPremiumAccess)
+        val status = EntitlementEngine.evaluate(session, trustedServerTimeMs = 2000L)
+        assertEquals(EntitlementStatus.FREE, status)
+        assertFalse(status.isPremiumAccess)
     }
 
     @Test
-    fun trialPlan_expired_returnsFree() {
-        val session = baseSession.copy(
-            premiumPlan = PremiumPlan.TRIAL,
-            trialUsed = true,
-            trialStartedAt = 1000L,
-            trialExpiresAt = 1000L + EntitlementEngine.TRIAL_DURATION_MS
-        )
-        val status = EntitlementEngine.evaluate(session, trustedServerTimeMs = 1000L + EntitlementEngine.TRIAL_DURATION_MS + 1000L)
+    fun freePlan_returnsFree() {
+        val session = baseSession.copy(premiumPlan = PremiumPlan.FREE)
+        val status = EntitlementEngine.evaluate(session, trustedServerTimeMs = 2000L)
         assertEquals(EntitlementStatus.FREE, status)
         assertFalse(status.isPremiumAccess)
+    }
+
+    @Test
+    fun featureEntitlement_freeUser_locksPremiumFeatures() {
+        com.kaynanamtv.domain.model.Feature.values().forEach { feature ->
+            assertFalse(
+                "Feature $feature should be locked for Free users",
+                EntitlementManager.canUseFeature(feature, isPremium = false)
+            )
+        }
+    }
+
+    @Test
+    fun featureEntitlement_premiumUser_unlocksAllFeatures() {
+        com.kaynanamtv.domain.model.Feature.values().forEach { feature ->
+            assertTrue(
+                "Feature $feature should be unlocked for Premium users",
+                EntitlementManager.canUseFeature(feature, isPremium = true)
+            )
+        }
     }
 
     @Test

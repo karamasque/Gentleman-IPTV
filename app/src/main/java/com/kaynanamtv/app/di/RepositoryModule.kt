@@ -121,6 +121,9 @@ abstract class RepositoryModule {
     @Binds @Singleton
     abstract fun bindPlaybackContentionManager(impl: com.kaynanamtv.data.manager.DefaultPlaybackContentionManager): com.kaynanamtv.domain.manager.PlaybackContentionManager
 
+    @Binds @Singleton
+    abstract fun bindEntitlementManager(impl: com.kaynanamtv.data.manager.DefaultEntitlementManager): com.kaynanamtv.domain.manager.EntitlementManager
+
     companion object {
         @Provides
         @Singleton

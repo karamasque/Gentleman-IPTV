@@ -106,6 +106,7 @@ class ProviderSyncWorker(
         fun xtreamLiveOnboardingDao(): XtreamLiveOnboardingDao
         fun preferencesRepository(): com.kaynanamtv.data.preferences.PreferencesRepository
         fun playbackContentionManager(): com.kaynanamtv.domain.manager.PlaybackContentionManager
+        fun entitlementManager(): com.kaynanamtv.domain.manager.EntitlementManager
     }
 
     override suspend fun doWork(): Result {
@@ -114,6 +115,10 @@ class ProviderSyncWorker(
                 applicationContext,
                 ProviderSyncWorkerEntryPoint::class.java
             )
+            if (!entryPoint.entitlementManager().canUse(com.kaynanamtv.domain.model.Feature.BACKGROUND_PLAYLIST_UPDATE)) {
+                Log.d(TAG, "Skipping periodic background sync worker: BACKGROUND_PLAYLIST_UPDATE requires Premium entitlement")
+                return Result.success()
+            }
             if (entryPoint.playbackContentionManager().shouldDeferBackgroundWork()) {
                 Log.d(TAG, "Deferring background sync worker: playback is currently active (P0 priority)")
                 return Result.retry()

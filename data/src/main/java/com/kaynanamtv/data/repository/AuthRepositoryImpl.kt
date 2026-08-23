@@ -215,19 +215,18 @@ class AuthRepositoryImpl @Inject constructor(
             val user = result.user ?: return Result.error("Kayıt başarısız.")
 
             val now = System.currentTimeMillis()
-            val trialExpiresAt = now + com.kaynanamtv.domain.manager.EntitlementEngine.TRIAL_DURATION_MS // 7 gün tek seferlik deneme süresi
 
             val userData = hashMapOf(
                 "userId" to user.uid,
                 "email" to email,
                 "createdAt" to now,
-                "isPremium" to true,
-                "premiumPlan" to com.kaynanamtv.domain.model.PremiumPlan.TRIAL.name,
-                "premiumStartedAt" to now,
+                "isPremium" to false,
+                "premiumPlan" to com.kaynanamtv.domain.model.PremiumPlan.FREE.name,
+                "premiumStartedAt" to 0L,
                 "premiumExpiresAt" to 0L,
-                "trialUsed" to true,
-                "trialStartedAt" to now,
-                "trialExpiresAt" to trialExpiresAt,
+                "trialUsed" to false,
+                "trialStartedAt" to 0L,
+                "trialExpiresAt" to 0L,
                 "transitionTrialGranted" to false,
                 "entitlementVersion" to 1,
                 "role" to "USER",
@@ -240,13 +239,13 @@ class AuthRepositoryImpl @Inject constructor(
                 userId = user.uid,
                 email = email,
                 createdAt = now,
-                isPremium = true,
-                premiumPlan = com.kaynanamtv.domain.model.PremiumPlan.TRIAL,
-                premiumStartedAt = now,
+                isPremium = false,
+                premiumPlan = com.kaynanamtv.domain.model.PremiumPlan.FREE,
+                premiumStartedAt = 0L,
                 premiumExpiresAt = 0L,
-                trialUsed = true,
-                trialStartedAt = now,
-                trialExpiresAt = trialExpiresAt,
+                trialUsed = false,
+                trialStartedAt = 0L,
+                trialExpiresAt = 0L,
                 transitionTrialGranted = false,
                 entitlementVersion = 1,
                 role = "USER",
@@ -281,9 +280,7 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun checkTrialStatus(): TrialStatus {
         val session = getCurrentSession() ?: return TrialStatus.NO_SESSION
-        val trustedTime = getTrustedServerTime()
-        val entitlement = com.kaynanamtv.domain.manager.EntitlementEngine.evaluate(session, trustedTime)
-        return if (entitlement.isPremiumAccess) TrialStatus.ACTIVE else TrialStatus.EXPIRED
+        return TrialStatus.ACTIVE
     }
 
     override suspend fun submitPaymentRequest(

@@ -118,6 +118,34 @@ def simulate_rule_evaluation():
     allowed = False # write: if false in rules
     run_test("15. Normal user writes to premium_audit", allowed, expected=False)
 
+    # 16. User A reads own provider
+    auth_a = {"uid": "user_a", "token": {"admin": False}}
+    target_user_id = "user_a"
+    allowed = (auth_a is not None and auth_a["uid"] == target_user_id)
+    run_test("16. USER_A READ OWN PROVIDER", allowed, expected=True)
+
+    # 17. User A writes own provider
+    allowed = (auth_a is not None and auth_a["uid"] == target_user_id)
+    run_test("17. USER_A WRITE OWN PROVIDER", allowed, expected=True)
+
+    # 18. User A reads User B's provider
+    target_user_id = "user_b"
+    allowed = (auth_a is not None and (auth_a["uid"] == target_user_id or auth_a["token"].get("admin", False)))
+    run_test("18. USER_A READ USER_B PROVIDER", allowed, expected=False)
+
+    # 19. User A writes User B's provider
+    allowed = (auth_a is not None and (auth_a["uid"] == target_user_id or auth_a["token"].get("admin", False)))
+    run_test("19. USER_A WRITE USER_B PROVIDER", allowed, expected=False)
+
+    # 20. Unauthenticated read provider
+    auth_none = None
+    allowed = (auth_none is not None and (auth_none.get("uid") == "user_a" or auth_none.get("token", {}).get("admin", False)))
+    run_test("20. UNAUTHENTICATED READ PROVIDER", allowed, expected=False)
+
+    # 21. Unauthenticated write provider
+    allowed = (auth_none is not None and (auth_none.get("uid") == "user_a" or auth_none.get("token", {}).get("admin", False)))
+    run_test("21. UNAUTHENTICATED WRITE PROVIDER", allowed, expected=False)
+
     print("=" * 70)
     failed = test_results.count(False)
     passed = test_results.count(True)

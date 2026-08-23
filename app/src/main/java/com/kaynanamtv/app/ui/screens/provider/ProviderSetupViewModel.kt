@@ -69,8 +69,15 @@ class ProviderSetupViewModel @Inject constructor(
     private val driveBackupSyncManager: DriveBackupSyncManager,
     private val providerQrPairingManager: ProviderQrPairingManager,
     private val preferencesRepository: PreferencesRepository,
-    private val syncProgressBus: com.kaynanamtv.data.sync.SyncProgressBus
+    private val syncProgressBus: com.kaynanamtv.data.sync.SyncProgressBus,
+    val entitlementManager: com.kaynanamtv.domain.manager.EntitlementManager
 ) : ViewModel() {
+
+    val isPremium: StateFlow<Boolean> = entitlementManager.isPremiumFlow.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        false
+    )
 
     val savedForumUser: StateFlow<String> = preferencesRepository.forumUsername.stateIn(
         viewModelScope,

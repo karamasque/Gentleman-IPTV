@@ -6,7 +6,6 @@ import com.kaynanamtv.domain.model.UserSession
 
 object EntitlementEngine {
     const val OFFLINE_GRACE_PERIOD_MS = 72L * 60L * 60L * 1000L // 72 hours
-    const val TRIAL_DURATION_MS = 7L * 24L * 60L * 60L * 1000L // 7 days
 
     fun evaluate(
         session: UserSession?,
@@ -36,11 +35,7 @@ object EntitlementEngine {
             }
         }
 
-        // Trial plan: Valid if trial was used and trialExpiresAt is still in the future
-        if (session.trialUsed && session.trialExpiresAt > trustedServerTimeMs) {
-            return EntitlementStatus.TRIAL_ACTIVE
-        }
-
+        // Legacy TRIAL or FREE users default safely to FREE
         return EntitlementStatus.FREE
     }
 }

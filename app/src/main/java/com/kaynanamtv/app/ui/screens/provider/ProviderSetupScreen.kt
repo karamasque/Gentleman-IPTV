@@ -165,10 +165,12 @@ fun ProviderSetupScreen(
     viewModel: ProviderSetupViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isPremium by viewModel.isPremium.collectAsStateWithLifecycle()
     val knownLocalM3uUrls by viewModel.knownLocalM3uUrls.collectAsStateWithLifecycle()
     val pairingState by viewModel.pairingState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    var showPremiumPaywallForFeature by remember { mutableStateOf<com.kaynanamtv.domain.model.Feature?>(null) }
 
     // ?? Local form state ??????????????????????????????????????????????????????
     var selectedTab by rememberSaveable { mutableStateOf(0) }
@@ -530,6 +532,9 @@ fun ProviderSetupScreen(
                             selectedTab = 0
                             viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.XTREAM)
                         },
+                        isPremium = isPremium,
+                        onShowPaywall = { showPremiumPaywallForFeature = it },
+                        viewModel = viewModel,
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                 }
@@ -600,6 +605,9 @@ fun ProviderSetupScreen(
                             selectedTab = 0
                             viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.XTREAM)
                         },
+                        isPremium = isPremium,
+                        onShowPaywall = { showPremiumPaywallForFeature = it },
+                        viewModel = viewModel,
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     )
                 }
@@ -716,6 +724,15 @@ fun ProviderSetupScreen(
         )
     }
 
+    showPremiumPaywallForFeature?.let { feature ->
+        com.kaynanamtv.app.ui.components.dialogs.PremiumPaywall(
+            feature = feature,
+            onNavigateToMembership = {
+                showPremiumPaywallForFeature = null
+            },
+            onDismiss = { showPremiumPaywallForFeature = null }
+        )
+    }
 }
 
     @Composable
@@ -984,6 +1001,9 @@ private fun ProviderFormContent(
     onSelectGuideSourcePolicy: (GuideSourcePolicy) -> Unit,
     onSelectChannelLogoSourcePolicy: (ChannelLogoSourcePolicy) -> Unit,
     onSelectForumAccount: (host: String, user: String, pass: String) -> Unit,
+    isPremium: Boolean = false,
+    onShowPaywall: (com.kaynanamtv.domain.model.Feature) -> Unit = {},
+    viewModel: ProviderSetupViewModel = hiltViewModel(),
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -1331,7 +1351,12 @@ private fun ProviderFormContent(
 
 
                 SourceType.FORUM -> {
-                    ForumProviderForm(onSelectAccount = onSelectForumAccount)
+                    ForumProviderForm(
+                        onSelectAccount = onSelectForumAccount,
+                        isPremium = isPremium,
+                        onShowPaywall = onShowPaywall,
+                        viewModel = viewModel
+                    )
                 }
             }
         }
@@ -2601,7 +2626,9 @@ private fun SourceTypeTabRow(
 @Composable
 private fun ForumProviderForm(
     onSelectAccount: (host: String, user: String, pass: String) -> Unit,
-    @Suppress("UNUSED_PARAMETER") viewModel: ProviderSetupViewModel = hiltViewModel()
+    isPremium: Boolean,
+    onShowPaywall: (com.kaynanamtv.domain.model.Feature) -> Unit,
+    viewModel: ProviderSetupViewModel = hiltViewModel()
 ) {
 
     var isLoading by remember { mutableStateOf(false) }
@@ -2645,6 +2672,10 @@ private fun ForumProviderForm(
         if (!isLoading) {
             TvButton(
                 onClick = {
+                    if (!isPremium) {
+                        onShowPaywall(com.kaynanamtv.domain.model.Feature.AUTO_IPTV)
+                        return@TvButton
+                    }
                     isLoading = true
                     errorMessage = null
                     accounts = emptyList()
@@ -2653,6 +2684,7 @@ private fun ForumProviderForm(
                         val res = ForumScraper.scrapeAndValidate(
                             depthVal = depth,
                             onlyActive = onlyActive,
+                            entitlementManager = viewModel.entitlementManager,
                             progressCallback = { prog, msg ->
                                 progress = prog
                                 statusText = msg
