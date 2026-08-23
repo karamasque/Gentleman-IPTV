@@ -954,11 +954,16 @@ class Media3PlayerEngine @Inject constructor(
         preloadCoordinator.release()
         statsCollector.stop()
         audioFocusController.release()
-        mediaSession?.release()
-        mediaSession = null
-        viewBinder.clear()
-        exoPlayer?.release()
-        exoPlayer = null
+        if (!restartCollectors) {
+            mediaSession?.release()
+            mediaSession = null
+            viewBinder.clear()
+            exoPlayer?.release()
+            exoPlayer = null
+        } else {
+            exoPlayer?.stop()
+            exoPlayer?.clearMediaItems()
+        }
         lastStreamInfo = null
         lastMediaId = null
         currentRetryPolicy = null
@@ -1128,13 +1133,7 @@ class Media3PlayerEngine @Inject constructor(
             observedVideoFormat = _videoFormat.value,
             qualityReasonOverride = promotedLiveHlsBufferReasonsByMediaId[mediaId]
         )
-        val needsRecreate = activeAudioDecoderMode != preferredAudioDecoderMode ||
-            activeVideoDecoderMode != preferredVideoDecoderMode ||
-            previousAudioDecoderPolicy != nextAudioDecoderPolicy ||
-            previousVideoDecoderPolicy != nextVideoDecoderPolicy ||
-            (exoPlayer == null) ||
-            requestedAudioDecoderMode == DecoderMode.COMPATIBILITY ||
-            requestedVideoDecoderMode == DecoderMode.COMPATIBILITY
+        val needsRecreate = (exoPlayer == null)
         activeAudioDecoderMode = preferredAudioDecoderMode
         activeVideoDecoderMode = preferredVideoDecoderMode
         activeAudioDecoderPolicy = nextAudioDecoderPolicy

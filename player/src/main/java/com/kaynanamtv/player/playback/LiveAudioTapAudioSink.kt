@@ -29,25 +29,29 @@ internal class LiveAudioTapAudioSink(
         presentationTimeUs: Long,
         encodedAccessUnitCount: Int
     ): Boolean {
+        val tap = tapProvider()
+        if (tap == null) {
+            return delegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        }
         val startPosition = buffer.position()
         val copySource = buffer.asReadOnlyBuffer()
         val handled = delegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
-        copyConsumedForTap(copySource, startPosition, buffer.position(), presentationTimeUs)
+        copyConsumedForTap(tap, copySource, startPosition, buffer.position(), presentationTimeUs)
         return handled
     }
 
     private fun copyConsumedForTap(
+        tap: LiveAudioTap,
         buffer: ByteBuffer,
         startPosition: Int,
         endPosition: Int,
         presentationTimeUs: Long
     ) {
-        val tap = tapProvider() ?: return
         if (encoding != C.ENCODING_PCM_16BIT || sampleRate <= 0 || channelCount <= 0 || endPosition <= startPosition) {
             return
         }
         val adjustedPresentationTimeUs = presentationTimeUs + consumedOffsetUs(startPosition)
-        val duplicate = buffer.apply {
+        val duplicate = buffer.duplicate().apply {
             position(startPosition)
             limit(endPosition)
         }
