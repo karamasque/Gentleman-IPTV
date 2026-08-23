@@ -1150,11 +1150,20 @@ class SyncManager @Inject constructor(
         telemetry?.markLiveEnd(System.currentTimeMillis() - now)
 
         // FAST LIVE SYNC: İlk onboarding ise (yeni provider eklendiyse), Canlı TV hazır olduğu anda
-        // onboarding aşamasını tamamla ve UI'a hemen kontrolü ver.
-        // Movies, Series ve EPG işlemlerini applicationSyncScope üzerinde arka plana aktar.
+        // sağlayıcıyı aktif et, onboarding aşamasını tamamla ve UI'a hemen kontrolü ver.
+        // Movies, Series ve EPG işlemlerini applicationSyncScope üzerinde arka planda paralel çalıştır.
         if (trackInitialLiveOnboarding) {
             val tOnboardingStart = System.currentTimeMillis()
             Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] FULL_LIVE_DONE totalLiveMs=${tOnboardingStart - now}ms liveCount=${liveCount}")
+
+            // Provider'ı hemen veritabanında ve ayarlarda aktif yap
+            try {
+                providerDao.setActive(provider.id)
+                preferencesRepository.setLastActiveProviderId(provider.id)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to set provider active immediately: ${e.message}")
+            }
+
             var onboardingProgress = com.kaynanamtv.domain.sync.FullCatalogOnboardingProgress(
                 serverAuthVerified = true,
                 live = com.kaynanamtv.domain.sync.SectionOnboardingStatus(

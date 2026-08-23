@@ -56,29 +56,20 @@ class VideoStallDetector(
         recoverFrameSilentReadyStalls: Boolean = false
     ): Boolean {
         val now = nowMs()
-        val playbackRequested = isPlaying || playWhenReady
         val canEvaluateReadyStall = recoverReadyStalls && playbackState == PlaybackState.READY
-        val canEvaluateBufferingStall = recoverBufferingStalls && playbackState == PlaybackState.BUFFERING
-        if ((!canEvaluateReadyStall && !canEvaluateBufferingStall) || !playbackRequested || !playbackStarted) {
+        val playbackRequested = isPlaying || playWhenReady
+        if (playbackState == PlaybackState.BUFFERING) {
+            // Network buffering must be handled by Media3 player buffer/retry, not decoder stall
+            stalled = false
+            return false
+        }
+        if (!canEvaluateReadyStall || !playbackRequested || !playbackStarted) {
             lastPositionMs = currentPositionMs
             lastPositionCheckMs = now
             stalled = false
             return false
         }
         if (now - startedAtMs < initialGraceMs) return false
-        if (canEvaluateBufferingStall) {
-            val frameSilent = if (lastFrameAtMs <= 0L) {
-                now - startedAtMs >= 25_000L
-            } else {
-                now - lastFrameAtMs >= bufferingStallThresholdMs
-            }
-            if (frameSilent && !stalled) {
-                stalled = true
-                return true
-            }
-            if (!frameSilent) stalled = false
-            return false
-        }
         if (lastFrameAtMs <= 0L) return false
         val frameSilent = now - lastFrameAtMs >= stallThresholdMs
         val requestedButNotAdvancing = playWhenReady && !isPlaying && frameSilent

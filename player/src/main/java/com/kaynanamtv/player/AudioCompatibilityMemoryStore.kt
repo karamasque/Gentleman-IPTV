@@ -7,6 +7,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+import java.util.concurrent.ConcurrentHashMap
+
 data class LearnedAudioCompatibility(
     val mediaId: String,
     val streamType: String,
@@ -20,24 +22,11 @@ data class LearnedAudioCompatibility(
 class AudioCompatibilityMemoryStore @Inject constructor(
     @ApplicationContext context: Context
 ) {
-    private val preferences: SharedPreferences =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    // Session-only in-memory storage: every app restart and fresh session starts hardware-first
+    private val sessionCache = ConcurrentHashMap<String, LearnedAudioCompatibility>()
 
     fun lookup(mediaId: String, streamType: String): LearnedAudioCompatibility? {
-        val encoded = preferences.getString(key(mediaId, streamType), null) ?: return null
-        val parts = encoded.split(FIELD_SEPARATOR)
-        if (parts.size < 4) return null
-        return LearnedAudioCompatibility(
-            mediaId = mediaId,
-            streamType = streamType,
-            audioMimeTypes = parts[0]
-                .split(LIST_SEPARATOR)
-                .map(String::trim)
-                .filter(String::isNotEmpty),
-            decision = parts[1],
-            detail = parts[2].takeIf(String::isNotBlank),
-            updatedAtMs = parts[3].toLongOrNull() ?: 0L
-        )
+        return sessionCache[key(mediaId, streamType)]
     }
 
     fun rememberSoftwareAudioFallback(
@@ -50,31 +39,25 @@ class AudioCompatibilityMemoryStore @Inject constructor(
             .map(String::trim)
             .filter(String::isNotEmpty)
             .distinct()
-        preferences.edit()
-            .putString(
-                key(mediaId, streamType),
-                listOf(
-                    normalizedMimeTypes.joinToString(LIST_SEPARATOR.toString()),
-                    DECISION_SOFTWARE_FFMPEG,
-                    detail.orEmpty().replace(FIELD_SEPARATOR.toString(), " "),
-                    System.currentTimeMillis().toString()
-                ).joinToString(FIELD_SEPARATOR.toString())
-            )
-            .apply()
+        sessionCache[key(mediaId, streamType)] = LearnedAudioCompatibility(
+            mediaId = mediaId,
+            streamType = streamType,
+            audioMimeTypes = normalizedMimeTypes,
+            decision = DECISION_SOFTWARE_FFMPEG,
+            detail = detail,
+            updatedAtMs = System.currentTimeMillis()
+        )
     }
 
     fun clear() {
-        preferences.edit().clear().apply()
+        sessionCache.clear()
     }
 
     private fun key(mediaId: String, streamType: String): String {
-        return "${Build.FINGERPRINT}|${Build.MODEL}|$streamType|$mediaId"
+        return "$streamType|$mediaId"
     }
 
     companion object {
-        private const val PREFS_NAME = "audio_compatibility_memory"
-        private const val FIELD_SEPARATOR = '|'
-        private const val LIST_SEPARATOR = ','
         const val DECISION_SOFTWARE_FFMPEG = "software-ffmpeg"
     }
 }

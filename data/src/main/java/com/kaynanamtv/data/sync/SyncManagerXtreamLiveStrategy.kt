@@ -94,8 +94,7 @@ internal class SyncManagerXtreamLiveStrategy(
             catalogResult = CatalogStrategyResult.EmptyValid("full"),
             categories = null
         )
-        val shouldAttemptFullCatalog = effectiveLiveSyncMethod == EffectiveXtreamLiveSyncMethod.STREAM_ALL &&
-            hiddenLiveCategoryIds.isEmpty()
+        val shouldAttemptFullCatalog = effectiveLiveSyncMethod != EffectiveXtreamLiveSyncMethod.CATEGORY_BY_CATEGORY
         Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE_POLICY_SELECTED=$effectiveLiveSyncMethod shouldAttemptFull=$shouldAttemptFullCatalog hiddenCategories=${hiddenLiveCategoryIds.size}")
         if (shouldAttemptFullCatalog) {
             progress(provider.id, onProgress, "Canlı TV kanalları indiriliyor...")
@@ -293,43 +292,31 @@ internal class SyncManagerXtreamLiveStrategy(
             mappingElapsedMs += measureTimeMillis {
                 mappedChannels = mapRawBatch(rawBatch.asSequence()).toList()
             }
-            lateinit var staged: StagedCatalogSnapshot
-            stagingElapsedMs += measureTimeMillis {
-                staged = stageChannelItems(
-                    provider.id,
-                    mappedChannels,
-                    seenStreamIds,
-                    fallbackCollector,
-                    stagedSessionId
-                )
-            }
-            stagedSessionId = staged.sessionId
-            acceptedCount += staged.acceptedCount
-            flushCount++
 
-            if (isNewProviderOnboarding && flushCount == 1) {
-                // First batch progressive commit: write first batch directly to Room DB so UI has immediate data
-                if (!categories.isNullOrEmpty()) {
+            if (isNewProviderOnboarding) {
+                if (flushCount == 0 && !categories.isNullOrEmpty()) {
                     syncCatalogStore.insertCategoriesDirect(provider.id, categories)
                 }
                 syncCatalogStore.insertChannelsDirect(provider.id, mappedChannels.map { it.toEntity() })
-                partialReadyEmitted = true
+                acceptedCount += mappedChannels.size
+                flushCount++
+
                 val elapsed = System.currentTimeMillis() - tStreamStart
-                Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] LIVE_FIRST_BATCH_DB count=${mappedChannels.size} elapsed=${elapsed}ms")
-                Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] LIVE_PARTIAL_READY count=${acceptedCount} elapsed=${elapsed}ms")
-                Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE FIRST_DB_VISIBLE_MS=${elapsed}ms count=${mappedChannels.size}")
-                Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE PARTIAL_READY_MS=${elapsed}ms")
+                if (flushCount == 1) {
+                    Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] LIVE_FIRST_BATCH_DB count=${mappedChannels.size} elapsed=${elapsed}ms")
+                    Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE FIRST_DB_VISIBLE_MS=${elapsed}ms count=${mappedChannels.size}")
+                }
                 syncProgressBus.emit(
                     SyncProgress(
                         section = Section.LIVE,
                         current = 0,
                         total = 0,
-                        currentLabel = "Canlı TV hazır (${acceptedCount} kanal aktarılıyor…)",
+                        currentLabel = "$acceptedCount kanal hazırlanıyor…",
                         itemsIndexed = acceptedCount,
                         onboardingProgress = com.kaynanamtv.domain.sync.FullCatalogOnboardingProgress(
                             serverAuthVerified = true,
                             live = com.kaynanamtv.domain.sync.SectionOnboardingStatus(
-                                state = com.kaynanamtv.domain.sync.CatalogSectionState.PARTIAL_READY,
+                                state = com.kaynanamtv.domain.sync.CatalogSectionState.LOADING,
                                 itemsIndexed = acceptedCount,
                                 firstUsableMs = elapsed
                             )
@@ -337,6 +324,19 @@ internal class SyncManagerXtreamLiveStrategy(
                     )
                 )
             } else {
+                lateinit var staged: StagedCatalogSnapshot
+                stagingElapsedMs += measureTimeMillis {
+                    staged = stageChannelItems(
+                        provider.id,
+                        mappedChannels,
+                        seenStreamIds,
+                        fallbackCollector,
+                        stagedSessionId
+                    )
+                }
+                stagedSessionId = staged.sessionId
+                acceptedCount += staged.acceptedCount
+                flushCount++
                 syncProgressBus.emit(
                     SyncProgress(
                         section = Section.LIVE,
@@ -348,7 +348,7 @@ internal class SyncManagerXtreamLiveStrategy(
                 )
             }
 
-            Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE flushBatch #${flushCount} itemsInBatch=${mappedChannels.size} totalStaged=${acceptedCount} mapMs=${mappingElapsedMs} stageMs=${stagingElapsedMs}")
+            Log.i("SYNC_TRACE", "[SYNC_TRACE] LIVE flushBatch #${flushCount} itemsInBatch=${mappedChannels.size} totalProcessed=${acceptedCount} mapMs=${mappingElapsedMs} stageMs=${stagingElapsedMs}")
             rawBatch.clear()
             abortIfLowMemory()
         }

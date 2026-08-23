@@ -76,13 +76,14 @@ class PlayerDataSourceFactoryProvider(
                 baseClient.newBuilder()
             }
             builder
+                .connectionPool(baseClient.connectionPool)
+                .dispatcher(baseClient.dispatcher)
                 .addInterceptor(CrossProtocolRedirectHeaderInterceptor(headers))
                 .addInterceptor(StalkerPlaybackRequestLoggingInterceptor)
                 .connectTimeout(profile.connectTimeoutMs, TimeUnit.MILLISECONDS)
                 .readTimeout(profile.readTimeoutMs, TimeUnit.MILLISECONDS)
                 .writeTimeout(profile.writeTimeoutMs, TimeUnit.MILLISECONDS)
-                .dns(PlayerDnsPolicy.healthAwareDns(port = port, healthStore = addressHealthStore))
-                .eventListener(PlayerAddressHealthEventListener(addressHealthStore))
+                .dns(okhttp3.Dns.SYSTEM)
                 .apply {
                     if (forceHttp1) {
                         protocols(listOf(Protocol.HTTP_1_1))

@@ -162,6 +162,7 @@ internal fun registerDerivedStateObservers(
         observeProviderDiagnostics(
             providerRepository = providerRepository,
             syncMetadataRepository = syncMetadataRepository,
+            channelRepository = channelRepository,
             movieRepository = movieRepository,
             seriesRepository = seriesRepository,
             programDao = programDao,

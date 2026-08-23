@@ -12,6 +12,7 @@ import com.kaynanamtv.domain.model.Provider
 import com.kaynanamtv.domain.model.ProviderType
 import com.kaynanamtv.domain.model.VodSyncMode
 import com.kaynanamtv.domain.repository.CategoryRepository
+import com.kaynanamtv.domain.repository.ChannelRepository
 import com.kaynanamtv.domain.repository.MovieRepository
 import com.kaynanamtv.domain.repository.ProviderRepository
 import com.kaynanamtv.domain.repository.SeriesRepository
@@ -29,6 +30,7 @@ import java.util.Locale
 internal fun observeProviderDiagnostics(
     providerRepository: ProviderRepository,
     syncMetadataRepository: SyncMetadataRepository,
+    channelRepository: ChannelRepository,
     movieRepository: MovieRepository,
     seriesRepository: SeriesRepository,
     programDao: ProgramDao,
@@ -43,10 +45,11 @@ internal fun observeProviderDiagnostics(
                     providers.map { provider ->
                         combine(
                             syncMetadataRepository.observeMetadata(provider.id),
+                            channelRepository.getChannelCount(provider.id),
                             movieRepository.getLibraryCount(provider.id),
                             seriesRepository.getLibraryCount(provider.id),
                             programDao.observeCountByProvider(provider.id)
-                        ) { metadata, movieCount, seriesCount, epgCount ->
+                        ) { metadata, liveCount, movieCount, seriesCount, epgCount ->
                             provider.id to ProviderDiagnosticsUiModel(
                                 lastSyncStatus = metadata?.lastSyncStatus ?: "NONE",
                                 lastLiveSync = metadata?.lastLiveSync ?: 0L,
@@ -59,7 +62,7 @@ internal fun observeProviderDiagnostics(
                                 lastSeriesSuccess = metadata?.lastSeriesSuccess ?: 0L,
                                 lastEpgSync = metadata?.lastEpgSync ?: 0L,
                                 lastEpgSuccess = metadata?.lastEpgSuccess ?: 0L,
-                                liveCount = metadata?.liveCount ?: 0,
+                                liveCount = liveCount,
                                 movieCount = movieCount,
                                 seriesCount = seriesCount,
                                 epgCount = epgCount,

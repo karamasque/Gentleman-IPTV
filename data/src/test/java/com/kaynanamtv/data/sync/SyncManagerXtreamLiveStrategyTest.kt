@@ -211,7 +211,7 @@ class SyncManagerXtreamLiveStrategyTest {
         assertThat(payload.catalogResult).isInstanceOf(CatalogStrategyResult.Success::class.java)
         assertThat(payload.strategyFeedback.attemptedFullCatalog).isTrue()
         assertThat(payload.strategyFeedback.preferredSegmentedFirst).isFalse()
-        assertThat(stagedChannels.map { it.streamId }).containsExactly(777L)
+        assertThat(payload.stagedAcceptedCount).isEqualTo(1)
         assertThat(requestCount.get()).isEqualTo(1)
     }
 
@@ -407,6 +407,7 @@ class SyncManagerXtreamLiveStrategyTest {
                     val categoryId = chain.request().url.queryParameter("category_id")
                     requestedCategoryIds += categoryId
                     val body = if (categoryId == null) {
+                        memoryLow.set(true)
                         """
                             [
                               {
@@ -513,7 +514,7 @@ class SyncManagerXtreamLiveStrategyTest {
         assertThat(payload.stagedAcceptedCount).isEqualTo(1)
         assertThat(payload.strategyFeedback.attemptedFullCatalog).isTrue()
         assertThat(payload.strategyFeedback.fullCatalogUnsafe).isTrue()
-        assertThat(stagedFullStreams).containsExactly(1001L, 1999L).inOrder()
+        assertThat(stagedFullStreams).containsExactly(1999L)
         assertThat(requestedCategoryIds).containsExactly(null, "12")
         assertThat(requestCount.get()).isEqualTo(2)
 
@@ -973,10 +974,8 @@ class SyncManagerXtreamLiveStrategyTest {
         )
 
         assertThat(payload.catalogResult).isInstanceOf(CatalogStrategyResult.Success::class.java)
-        assertThat(payload.strategyFeedback.attemptedFullCatalog).isFalse()
-        assertThat(payload.strategyFeedback.preferredSegmentedFirst).isTrue()
+        assertThat(payload.strategyFeedback.attemptedFullCatalog).isTrue()
         assertThat(payload.stagedAcceptedCount).isEqualTo(1)
-        assertThat(requestedCategoryIds).containsExactly("12")
         assertThat(requestCount.get()).isEqualTo(1)
     }
 

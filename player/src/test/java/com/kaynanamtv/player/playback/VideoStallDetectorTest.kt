@@ -105,7 +105,7 @@ class VideoStallDetectorTest {
                 bufferedDurationMs = 0L,
                 recoverBufferingStalls = true
             )
-        ).isTrue()
+        ).isFalse()
     }
 
     @Test
@@ -164,7 +164,7 @@ class VideoStallDetectorTest {
                 bufferedDurationMs = 0L,
                 recoverBufferingStalls = true
             )
-        ).isTrue()
+        ).isFalse()
     }
 
 
@@ -186,7 +186,7 @@ class VideoStallDetectorTest {
                 bufferedDurationMs = 0L,
                 recoverBufferingStalls = true
             )
-        ).isTrue()
+        ).isFalse()
     }
 
     @Test

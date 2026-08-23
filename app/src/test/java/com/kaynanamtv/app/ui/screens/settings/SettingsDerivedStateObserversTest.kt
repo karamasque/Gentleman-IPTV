@@ -21,6 +21,7 @@ import org.mockito.kotlin.whenever
 class SettingsDerivedStateObserversTest {
     private val providerRepository: ProviderRepository = mock()
     private val syncMetadataRepository: SyncMetadataRepository = mock()
+    private val channelRepository: com.kaynanamtv.domain.repository.ChannelRepository = mock()
     private val movieRepository: MovieRepository = mock()
     private val seriesRepository: SeriesRepository = mock()
     private val programDao: ProgramDao = mock()
@@ -45,6 +46,7 @@ class SettingsDerivedStateObserversTest {
                 )
             )
         )
+        whenever(channelRepository.getChannelCount(7L)).thenReturn(flowOf(8_421))
         whenever(movieRepository.getLibraryCount(7L)).thenReturn(flowOf(140_484))
         whenever(seriesRepository.getLibraryCount(7L)).thenReturn(flowOf(32_037))
         whenever(programDao.observeCountByProvider(7L)).thenReturn(flowOf(18_422))
@@ -54,14 +56,17 @@ class SettingsDerivedStateObserversTest {
         val diagnostics = observeProviderDiagnostics(
             providerRepository = providerRepository,
             syncMetadataRepository = syncMetadataRepository,
+            channelRepository = channelRepository,
             movieRepository = movieRepository,
             seriesRepository = seriesRepository,
             programDao = programDao,
             application = application
         ).first()
 
+        assertThat(diagnostics.getValue(7L).liveCount).isEqualTo(8_421)
         assertThat(diagnostics.getValue(7L).movieCount).isEqualTo(140_484)
         assertThat(diagnostics.getValue(7L).seriesCount).isEqualTo(32_037)
+        assertThat(diagnostics.getValue(7L).epgCount).isEqualTo(18_422)
         assertThat(diagnostics.getValue(7L).movieCatalogStale).isTrue()
     }
 }
