@@ -15,9 +15,8 @@ fun PlayerViewModel.seekForward(deltaMs: Long = 10_000L) {
         val duration = playerEngine.duration.value
         if (duration <= 0L) return
         val currentPos = playerEngine.currentPosition.value
-        val basePos = if (_seekPreview.value.visible) _seekPreview.value.positionMs else currentPos
-        val targetPos = (basePos + deltaMs).coerceIn(0L, duration)
-        updateSeekPreview(targetPos)
+        val targetPos = (currentPos + deltaMs).coerceIn(0L, duration)
+        seekTo(targetPos)
     } else {
         playerEngine.seekForward()
     }
@@ -29,9 +28,8 @@ fun PlayerViewModel.seekBackward(deltaMs: Long = 10_000L) {
         val duration = playerEngine.duration.value
         if (duration <= 0L) return
         val currentPos = playerEngine.currentPosition.value
-        val basePos = if (_seekPreview.value.visible) _seekPreview.value.positionMs else currentPos
-        val targetPos = (basePos - deltaMs).coerceIn(0L, duration)
-        updateSeekPreview(targetPos)
+        val targetPos = (currentPos - deltaMs).coerceIn(0L, duration)
+        seekTo(targetPos)
     } else {
         playerEngine.seekBackward()
     }

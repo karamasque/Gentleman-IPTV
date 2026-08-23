@@ -60,8 +60,8 @@ android {
         applicationId = "com.kaynanamtv.app"
         minSdk = 25
         targetSdk = 36
-        versionCode = 94
-        versionName = "1.0.94"
+        versionCode = 95
+        versionName = "1.0.95"
         multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "OFFICIAL_APPLICATION_ID", "\"com.kaynanamtv.app\"")

@@ -1060,16 +1060,14 @@ private fun PlayerLiveInfo(
                 .focusProperties { down = quickActionsFocusRequester }
         )
 
-        // 2. Canlıya Dön — only when timeshift active
-        if (showTimeshiftControls) {
-            TvLiveControlButton(
-                icon = Icons.Default.FiberManualRecord,
-                label = stringResource(R.string.player_jump_to_live),
-                onClick = onSeekToLiveEdge,
-                accentColor = if (liveState == TvLiveState.LIVE_EDGE) Color.Red else Color.White,
-                modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-            )
-        }
+        // 2. Canlıya Dön — always present in Live TV
+        TvLiveControlButton(
+            icon = Icons.Default.FiberManualRecord,
+            label = stringResource(R.string.player_jump_to_live),
+            onClick = onSeekToLiveEdge,
+            accentColor = if (liveState == TvLiveState.LIVE_EDGE) Color.Red else Color(0xFFFFB347),
+            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+        )
 
         // 3. Altyazı
         TvLiveControlButton(
@@ -1368,176 +1366,101 @@ private fun PlayerVodInfo(
                 }
             }
 
-            // Buttons Layer Row (Playback on left, Quick Settings on right)
+            // TV-First VOD Control Buttons Row
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left Side: Playback controls
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Previous / Rewind
-                    CapsuleIconButton(
-                        icon = Icons.Default.SkipPrevious,
-                        contentDescription = stringResource(R.string.player_rewind),
-                        onClick = onSeekBackward,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
+                // 1. -10 sn Rewind
+                TvLiveControlButton(
+                    icon = Icons.Default.Replay,
+                    label = "-10 sn",
+                    onClick = onSeekBackward,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
 
-                    // Play/Pause (Capsule)
-                    CapsulePlayPauseButton(
-                        isPlaying = isPlaying,
-                        onClick = onTogglePlayPause,
-                        playButtonFocusRequester = playButtonFocusRequester,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
+                // 2. Play / Pause (Primary)
+                TvLiveControlButton(
+                    icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    label = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
+                    onClick = onTogglePlayPause,
+                    isPrimary = true,
+                    modifier = Modifier
+                        .focusRequester(playButtonFocusRequester)
+                        .focusProperties { down = quickActionsFocusRequester }
+                )
 
-                    // Stop / Seek to start
-                    CapsuleIconButton(
-                        icon = Icons.Default.Stop,
-                        contentDescription = "Stop",
-                        onClick = { latestSeekCallback(0L) },
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
+                // 3. +10 sn Forward
+                TvLiveControlButton(
+                    icon = Icons.Default.Replay,
+                    label = "+10 sn",
+                    onClick = onSeekForward,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
 
-                    // Next / Forward
-                    CapsuleIconButton(
-                        icon = Icons.Default.SkipNext,
-                        contentDescription = stringResource(R.string.player_forward),
-                        onClick = onSeekForward,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
+                // 4. Altyazı
+                TvLiveControlButton(
+                    icon = Icons.Default.Subtitles,
+                    label = stringResource(R.string.player_subs),
+                    onClick = onOpenSubtitleTracks,
+                    badgeActive = subtitleTrackCount > 0,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
 
-                    // Volume / Mute
-                    CapsuleIconButton(
-                        icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                        contentDescription = stringResource(if (isMuted) R.string.player_unmute else R.string.player_mute),
-                        onClick = onToggleMute,
-                        focusedColor = if (isMuted) Color(0xFFFF6B6B) else Primary,
+                // 5. Ses (Audio Tracks & Mute Indicator)
+                TvLiveControlButton(
+                    icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    label = if (isMuted) stringResource(R.string.player_muted_badge) else stringResource(R.string.player_audio),
+                    onClick = onOpenAudioTracks,
+                    accentColor = if (isMuted) Color(0xFFFF6B6B) else Color.White,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 6. Görüntü Kalitesi
+                TvLiveControlButton(
+                    icon = Icons.Default.HighQuality,
+                    label = stringResource(R.string.player_video_quality),
+                    onClick = onOpenVideoTracks,
+                    badgeActive = videoQualityCount > 1,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 7. Oynatma Hızı
+                TvLiveControlButton(
+                    icon = Icons.Default.Speed,
+                    label = formatPlaybackSpeedLabel(playbackSpeed),
+                    onClick = onOpenPlaybackSpeed,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 8. Bölümler (Dizi ise)
+                if (showEpisodesAction) {
+                    TvLiveControlButton(
+                        icon = Icons.Default.Tv,
+                        label = stringResource(R.string.player_episodes),
+                        onClick = onOpenEpisodes,
+                        accentColor = AppColors.NeonCyan,
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
                 }
 
-                // Right Side: Settings & Extras
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.horizontalScroll(rememberScrollState())
-                ) {
-                    // External Player
-                    if (showExternalPlayerAction) {
-                        QuickActionButton(
-                            icon = "harici",
-                            label = stringResource(R.string.player_open_in_external_player),
-                            onClick = onOpenExternalPlayer,
-                            compact = true,
-                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                        )
-                    }
+                // 9. En-Boy Oranı
+                TvLiveControlButton(
+                    icon = Icons.Default.AspectRatio,
+                    label = aspectRatioLabel,
+                    onClick = onToggleAspectRatio,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
 
-                    // Audio Tracks
-                    QuickActionButton(
-                        icon = "ses",
-                        label = stringResource(R.string.player_audio),
-                        onClick = onOpenAudioTracks,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Subtitles
-                    QuickActionButton(
-                        icon = "altyazı",
-                        label = stringResource(R.string.player_subs),
-                        onClick = onOpenSubtitleTracks,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Video Quality
-                    QuickActionButton(
-                        icon = "kalite",
-                        label = stringResource(R.string.player_video_quality),
-                        onClick = onOpenVideoTracks,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Episodes (for Series)
-                    if (showEpisodesAction) {
-                        QuickActionButton(
-                            icon = "bölümler",
-                            label = stringResource(R.string.player_episodes),
-                            onClick = onOpenEpisodes,
-                            compact = true,
-                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                        )
-                    }
-
-                    // Playback Speed
-                    QuickActionButton(
-                        icon = "hız",
-                        label = formatPlaybackSpeedLabel(playbackSpeed),
-                        onClick = onOpenPlaybackSpeed,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Audio-Video Sync
-                    if (audioVideoSyncEnabled && !isCastConnected) {
-                        QuickActionButton(
-                            icon = "a/v",
-                            label = stringResource(R.string.player_av_sync_short),
-                            onClick = onOpenAudioVideoSync,
-                            compact = true,
-                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                        )
-                    }
-
-                    // Sleep Timer
-                    QuickActionButton(
-                        icon = "süre",
-                        label = stringResource(R.string.player_stop_playback_after),
-                        onClick = onOpenStopPlaybackTimer,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Idle Standby
-                    QuickActionButton(
-                        icon = "c-up",
-                        label = stringResource(R.string.player_idle_standby_after),
-                        onClick = onOpenIdleStandbyTimer,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Chromecast / Screen Cast (Ekran Paylaşımı)
-                    QuickActionButton(
-                        icon = "yansıt",
-                        label = if (isCastConnected) stringResource(R.string.player_stop_casting) else stringResource(R.string.player_cast),
-                        onClick = if (isCastConnected) onStopCasting else onCast,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // PiP
-                    QuickActionButton(
-                        icon = "pip",
-                        label = stringResource(R.string.player_picture_in_picture),
-                        onClick = onEnterPictureInPicture,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Aspect Ratio
-                    QuickActionButton(
-                        icon = "en-boy",
-                        label = aspectRatioLabel,
-                        onClick = onToggleAspectRatio,
-                        compact = true,
+                // 10. Harici Oynatıcı (opsiyonel)
+                if (showExternalPlayerAction) {
+                    TvLiveControlButton(
+                        icon = Icons.Default.Cast,
+                        label = stringResource(R.string.player_open_in_external_player),
+                        onClick = onOpenExternalPlayer,
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
                 }
