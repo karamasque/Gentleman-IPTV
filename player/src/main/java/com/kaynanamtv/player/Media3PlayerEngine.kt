@@ -143,8 +143,10 @@ class Media3PlayerEngine @Inject constructor(
         private val activeInstances = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Media3PlayerEngine, Boolean>())
 
         fun getActivePlayingInstanceCount(): Int {
-            return activeInstances.count {
-                it.isPlaying.value || it.exoPlayer?.playWhenReady == true || it.playbackState.value != PlaybackState.IDLE
+            return activeInstances.count { engine ->
+                runCatching {
+                    engine.isPlaying.value || engine.exoPlayer?.playWhenReady == true || engine.playbackState.value != PlaybackState.IDLE
+                }.getOrDefault(false)
             }
         }
 
@@ -159,12 +161,6 @@ class Media3PlayerEngine @Inject constructor(
     }
 
     val instanceId: Long = nextInstanceId.getAndIncrement()
-
-    init {
-        activeInstances.add(this)
-        syncContentionState()
-        Log.i(TAG, "[PLAYER_INSTANCE] created id=$instanceId activeCount=${activeInstances.size}")
-    }
 
     private fun syncContentionState() {
         val count = getActivePlayingInstanceCount()
@@ -185,13 +181,15 @@ class Media3PlayerEngine @Inject constructor(
             if (value) {
                 exoPlayer?.let { player ->
                     if (mediaSession == null) {
-                        mediaSession = MediaSession.Builder(context, player)
-                            .setId(mediaSessionId)
-                            .build()
+                        mediaSession = runCatching {
+                            MediaSession.Builder(context, player)
+                                .setId(mediaSessionId)
+                                .build()
+                        }.getOrNull()
                     }
                 }
             } else {
-                mediaSession?.release()
+                runCatching { mediaSession?.release() }
                 mediaSession = null
             }
         }
@@ -372,6 +370,9 @@ class Media3PlayerEngine @Inject constructor(
     )
 
     init {
+        activeInstances.add(this)
+        syncContentionState()
+        Log.i(TAG, "[PLAYER_INSTANCE] created id=$instanceId activeCount=${activeInstances.size}")
         startEngineCollectors()
     }
 
@@ -1237,9 +1238,11 @@ class Media3PlayerEngine @Inject constructor(
             audioFocusController.reapplyVolume()
             viewBinder.attachPlayer(player)
             if (enableMediaSession) {
-                mediaSession = MediaSession.Builder(context, player)
-                    .setId(mediaSessionId)
-                    .build()
+                mediaSession = runCatching {
+                    MediaSession.Builder(context, player)
+                        .setId(mediaSessionId)
+                        .build()
+                }.getOrNull()
             }
         }
     }
