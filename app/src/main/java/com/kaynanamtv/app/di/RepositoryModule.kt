@@ -124,6 +124,9 @@ abstract class RepositoryModule {
     @Binds @Singleton
     abstract fun bindEntitlementManager(impl: com.kaynanamtv.data.manager.DefaultEntitlementManager): com.kaynanamtv.domain.manager.EntitlementManager
 
+    @Binds @Singleton
+    abstract fun bindTraktRepository(impl: com.kaynanamtv.data.remote.trakt.TraktRepositoryImpl): TraktRepository
+
     companion object {
         @Provides
         @Singleton

@@ -20,18 +20,28 @@ internal fun PlayerViewModel.finalizePreparedPlaybackContext(
     archiveEndMs: Long?,
     archiveTitle: String?
 ) {
-    if (shouldReloadPlaylist) {
-        currentCategoryId = categoryId
-        activeCategoryIdFlow.value = categoryId
-        isVirtualCategory = isVirtual
-        loadPlaylist(categoryId, providerId, isVirtual, internalChannelId)
-    } else {
-        if (channelList.isNotEmpty() && internalChannelId != -1L) {
-            currentChannelIndex = channelList.indexOfFirst { it.id == internalChannelId }
-            if (currentChannelIndex == -1) {
-                currentChannelIndex = channelList.indexOfFirst { it.streamUrl == streamUrl }
+    if (currentContentType == ContentType.LIVE) {
+        if (shouldReloadPlaylist) {
+            currentCategoryId = categoryId
+            activeCategoryIdFlow.value = categoryId
+            isVirtualCategory = isVirtual
+            loadPlaylist(categoryId, providerId, isVirtual, internalChannelId)
+        } else {
+            if (channelList.isNotEmpty() && internalChannelId != -1L) {
+                currentChannelIndex = channelList.indexOfFirst { it.id == internalChannelId }
+                if (currentChannelIndex == -1) {
+                    currentChannelIndex = channelList.indexOfFirst { it.streamUrl == streamUrl }
+                }
             }
         }
+    } else {
+        playlistJob?.cancel()
+        playlistJob = null
+        channelList = emptyList()
+        currentChannelFlowList.value = emptyList()
+        currentChannelFlow.value = null
+        currentChannelIndex = -1
+        previousChannelIndex = -1
     }
 
     if (currentContentType == ContentType.LIVE && hasArchiveRequest) {
@@ -79,16 +89,16 @@ internal fun PlayerViewModel.finalizePreparedPlaybackContext(
             epgChannelId = epgChannelId,
             internalChannelId = internalChannelId
         )
+        observeRecentChannels()
+        observeLastVisitedCategory()
     } else {
         requestEpg(providerId = -1L, epgChannelId = null)
         currentChannelFlow.value = null
     }
-    observeRecentChannels()
-    observeLastVisitedCategory()
 
     aspectRatioJob?.cancel()
     _aspectRatio.value = AspectRatio.FIT
-    if (shouldResolveChannelPlaybackContext(currentContentType.name, internalChannelId)) {
+    if (currentContentType == ContentType.LIVE && shouldResolveChannelPlaybackContext(currentContentType.name, internalChannelId)) {
         aspectRatioJob = viewModelScope.launch {
             preferencesRepository.getAspectRatioForChannel(internalChannelId).collect { savedRatio ->
                 _aspectRatio.value = try {
@@ -101,7 +111,7 @@ internal fun PlayerViewModel.finalizePreparedPlaybackContext(
 
         viewModelScope.launch {
             val channel = channelRepository.getChannel(internalChannelId)
-            if (!isActivePlaybackSession(requestVersion, streamUrl)) return@launch
+            if (!isActivePlaybackSession(requestVersion, streamUrl) || currentContentType != ContentType.LIVE) return@launch
             currentChannelFlow.value = channel
             refreshCurrentChannelRecording()
             if (channel != null) {

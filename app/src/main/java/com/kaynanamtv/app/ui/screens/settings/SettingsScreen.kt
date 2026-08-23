@@ -66,6 +66,7 @@ fun SettingsScreen(
     onLogout: () -> Unit = {},
     currentRoute: String,
     initialBackupImportUri: String? = null,
+    initialSection: Int? = null,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -240,6 +241,12 @@ fun SettingsScreen(
             dialogState.selectedRecordingId == null -> uiState.recordingItems.firstOrNull()?.id
             uiState.recordingItems.any { item -> item.id == dialogState.selectedRecordingId } -> dialogState.selectedRecordingId
             else -> uiState.recordingItems.firstOrNull()?.id
+        }
+    }
+
+    LaunchedEffect(initialSection) {
+        if (initialSection != null && initialSection >= 0) {
+            dialogState.selectedCategory = initialSection
         }
     }
 

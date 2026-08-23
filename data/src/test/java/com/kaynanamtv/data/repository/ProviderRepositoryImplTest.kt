@@ -86,6 +86,7 @@ class ProviderRepositoryImplTest {
         stalkerApiService = stalkerApiService,
         xtreamApiService = xtreamApiService,
         credentialCrypto = credentialCrypto,
+        accountE2eeCrypto = com.kaynanamtv.data.security.AccountE2eeCrypto(),
         preferencesRepository = preferencesRepository,
         syncManager = syncManager,
         syncMetadataRepository = syncMetadataRepository,

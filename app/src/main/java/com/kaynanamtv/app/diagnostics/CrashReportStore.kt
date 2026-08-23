@@ -32,8 +32,9 @@ object CrashReportStore {
     private val writingCrash = AtomicBoolean(false)
     private val formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
     private val urlPattern = Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE)
+    private val macPattern = Regex("""(?i)\b([0-9a-f]{2}[:-]){5}([0-9a-f]{2})\b""")
     private val sensitiveParamPattern = Regex(
-        """(?i)(password|passwd|pwd|username|user|token|auth|key|apikey|api_key|signature|sig)=([^&\s]+)"""
+        """(?i)(password|passwd|pwd|username|user|token|auth|key|apikey|api_key|signature|sig|mac|mac_address|device_id|serial_number|bearer)=([^&\s"'<>]+)"""
     )
 
     fun install(application: Application) {
@@ -54,6 +55,31 @@ object CrashReportStore {
                     android.os.Process.killProcess(android.os.Process.myPid())
                     kotlin.system.exitProcess(10)
                 }
+        }
+    }
+
+    fun recordNonFatal(
+        context: Context,
+        tag: String,
+        throwable: Throwable,
+        metadata: Map<String, String> = emptyMap()
+    ) {
+        runCatching {
+            val file = File(context.filesDir, "$CRASH_DIR/$PLAYBACK_SUPPORT_FILE_NAME").also {
+                it.parentFile?.mkdirs()
+            }
+            val report = buildString {
+                appendLine("Non-Fatal Diagnostic [$tag]")
+                appendLine("Timestamp: ${OffsetDateTime.now().format(formatter)}")
+                appendLine("Exception: ${throwable.javaClass.name}")
+                throwable.message?.let { appendLine("Message: ${sanitize(it)}") }
+                metadata.forEach { (k, v) ->
+                    appendLine("$k: ${sanitize(v)}")
+                }
+                appendLine("Stacktrace:")
+                appendLine(sanitize(throwable.stackTraceString()))
+            }
+            file.writeText(report.take(MAX_REPORT_CHARS / 2), Charsets.UTF_8)
         }
     }
 
@@ -92,6 +118,7 @@ object CrashReportStore {
     }
 
     private fun buildReport(context: Context, thread: Thread, throwable: Throwable): String {
+        val isTv = context.packageManager.hasSystemFeature("android.software.leanback")
         return buildString {
             appendLine("KaynanamTV Crash Report")
             appendLine("========================")
@@ -99,6 +126,7 @@ object CrashReportStore {
             appendLine("App Version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             appendLine("Build Type: ${BuildConfig.BUILD_TYPE}")
             appendLine("Package: ${BuildConfig.APPLICATION_ID}")
+            appendLine("Device Form: ${if (isTv) "Android TV" else "Mobile / Tablet"}")
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
             appendLine("Hardware: ${Build.HARDWARE}")
             appendLine("Android SDK: ${Build.VERSION.SDK_INT}")
@@ -138,8 +166,9 @@ object CrashReportStore {
         return writer.toString()
     }
 
-    private fun sanitize(value: String): String {
-        val withoutSensitiveParams = sensitiveParamPattern.replace(value) { match ->
+    fun sanitize(value: String): String {
+        val withoutMacs = macPattern.replace(value, "XX:XX:XX:XX:XX:XX")
+        val withoutSensitiveParams = sensitiveParamPattern.replace(withoutMacs) { match ->
             "${match.groupValues[1]}=<redacted>"
         }
         return urlPattern.replace(withoutSensitiveParams) { match ->

@@ -261,6 +261,7 @@ class PreferencesRepository @Inject constructor(
         val APP_FORCE_UPDATE_ENABLED = booleanPreferencesKey("app_force_update_enabled")
         val APP_TEST_OVERRIDE_MIN_VERSION_CODE = intPreferencesKey("app_test_override_min_version_code")
         val DELETED_PROVIDER_IDS = stringSetPreferencesKey("deleted_provider_ids")
+        val TRAKT_ACCESS_TOKEN = stringPreferencesKey("trakt_access_token")
     }
 
     private object ParentalSessionKeys {
@@ -2591,6 +2592,20 @@ class PreferencesRepository @Inject constructor(
     suspend fun setHasSeen1066TransitionNotice(seen: Boolean) {
         context.dataStore.edit {
             it[booleanPreferencesKey("has_seen_1066_transition_notice")] = seen
+        }
+    }
+
+    val traktAccessToken: kotlinx.coroutines.flow.Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.TRAKT_ACCESS_TOKEN]
+    }
+
+    suspend fun setTraktAccessToken(token: String?) {
+        context.dataStore.edit { preferences ->
+            if (token == null) {
+                preferences.remove(PreferencesKeys.TRAKT_ACCESS_TOKEN)
+            } else {
+                preferences[PreferencesKeys.TRAKT_ACCESS_TOKEN] = token
+            }
         }
     }
 

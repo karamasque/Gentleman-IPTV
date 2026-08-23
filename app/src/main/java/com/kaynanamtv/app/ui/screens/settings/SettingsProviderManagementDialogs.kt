@@ -176,9 +176,9 @@ internal fun SettingsProviderManagementDialogs(
                 PremiumDialogFooterButton(
                     label = "Sil",
                     onClick = {
-                        viewModel.deleteProvider(pendingDeleteProviderId,
-                            onSuccess = { providerState.pendingDeleteProviderId = null }
-                        )
+                        val idToDelete = pendingDeleteProviderId
+                        providerState.pendingDeleteProviderId = null
+                        viewModel.deleteProvider(idToDelete)
                     },
                     enabled = !uiState.isDeletingProvider,
                     destructive = true

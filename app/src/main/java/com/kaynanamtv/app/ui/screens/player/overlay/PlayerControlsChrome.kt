@@ -62,10 +62,12 @@ import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.ViewSidebar
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.draw.scale
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -200,6 +202,7 @@ fun PlayerControlsOverlay(
     onSeekPreviewPositionChanged: (Long?) -> Unit = {},
     clockLabelOverride: String? = null,
     onUserInteraction: () -> Unit = {},
+    onOpenGuide: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -292,7 +295,8 @@ fun PlayerControlsOverlay(
                 seekPreview = seekPreview,
                 onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
                 showExternalPlayerAction = showExternalPlayerAction,
-                onOpenExternalPlayer = onOpenExternalPlayer
+                onOpenExternalPlayer = onOpenExternalPlayer,
+                onOpenGuide = onOpenGuide
             )
         }
     }
@@ -629,6 +633,7 @@ private fun PlayerBottomBar(
     onSeekPreviewPositionChanged: (Long?) -> Unit,
     showExternalPlayerAction: Boolean,
     onOpenExternalPlayer: () -> Unit,
+    onOpenGuide: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isVod = contentType != "LIVE" || isCatchUpPlayback
@@ -733,7 +738,9 @@ private fun PlayerBottomBar(
                         onSeekToPosition = onSeekToPosition,
                         onSetScrubbingMode = onSetScrubbingMode,
                         showExternalPlayerAction = showExternalPlayerAction,
-                        onOpenExternalPlayer = onOpenExternalPlayer
+                        onOpenExternalPlayer = onOpenExternalPlayer,
+                        isCatchUpPlayback = isCatchUpPlayback,
+                        onOpenGuide = onOpenGuide
                     )
                 } else {
                     PlayerVodInfo(
@@ -832,378 +839,281 @@ private fun PlayerLiveInfo(
     onSetScrubbingMode: (Boolean) -> Unit,
     showExternalPlayerAction: Boolean,
     onOpenExternalPlayer: () -> Unit,
+    isCatchUpPlayback: Boolean = false,
+    onOpenGuide: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val showTimeshiftControls = timeshiftUiState.available && !isCastConnected
     val appTimeFormat = LocalAppTimeFormat.current
     val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
 
-    Spacer(modifier = Modifier.height(16.dp))
+    // ── Live state: LIVE_EDGE | TIMESHIFT | ARCHIVE ────────────────
+    val liveState = when {
+        isCatchUpPlayback -> TvLiveState.ARCHIVE
+        showTimeshiftControls && timeshiftUiState.bufferedBehindLiveMs >= 2_000L -> TvLiveState.TIMESHIFT
+        else -> TvLiveState.LIVE_EDGE
+    }
 
-    // Unified Live TV Playback Bar Container
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        colors = SurfaceDefaults.colors(containerColor = Color(0xFF0D1426).copy(alpha = 0.65f)),
-        border = Border(
-            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.12f)),
-            shape = RoundedCornerShape(18.dp)
-        ),
-        modifier = modifier.fillMaxWidth()
+    // Pulsing dot for LIVE edge badge
+    var liveDotVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(liveState) {
+        if (liveState == TvLiveState.LIVE_EDGE) {
+            while (true) { delay(700L); liveDotVisible = !liveDotVisible }
+        } else {
+            liveDotVisible = true
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    // ── Row 1: Live state badge ────────────────────────────────────
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        when (liveState) {
+            TvLiveState.LIVE_EDGE -> {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(
+                            color = Color.Red.copy(alpha = if (liveDotVisible) 0.95f else 0.22f),
+                            shape = RoundedCornerShape(99.dp)
+                        )
+                )
+                Text(
+                    text = "CANLI",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.Red
+                )
+            }
+            TvLiveState.TIMESHIFT -> {
+                val offsetMin = (timeshiftUiState.bufferedBehindLiveMs / 60_000L).coerceAtLeast(1L)
+                Text(
+                    text = "\u21B6  -${offsetMin} dk",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFFB347)
+                )
+            }
+            TvLiveState.ARCHIVE -> {
+                Text(
+                    text = "AR\u015E\u0130V",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = AppColors.NeonCyan
+                )
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    // ── Row 2: Program info + progress bar ────────────────────────
+    val progStart = currentProgram?.startTime ?: 0L
+    val progEnd = currentProgram?.endTime ?: 0L
+    val nowMs = System.currentTimeMillis()
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // EPG / Timeshift Progress Row
-            if (showTimeshiftControls) {
-                val bufferDepthMs = timeshiftUiState.bufferDepthMs.coerceAtLeast(1L)
-                val bufferedBehindLive = timeshiftUiState.bufferedBehindLiveMs
-                val oldestWallMs = timeshiftUiState.engineState.bufferStartMs
-                val oldestLabel = if (oldestWallMs > 0L) {
-                    timeFormat.format(java.util.Date(oldestWallMs))
-                } else if (bufferDepthMs > 1_000L) {
-                    "-${formatTimeshiftDuration(bufferDepthMs)}"
-                } else {
-                    ""
-                }
-
-                var sliderValue by remember(bufferedBehindLive, bufferDepthMs) {
-                    mutableStateOf(1f - (bufferedBehindLive.toFloat() / bufferDepthMs.toFloat()).coerceIn(0f, 1f))
-                }
-                var isScrubbing by remember { mutableStateOf(false) }
-                val latestSeekCallback by rememberUpdatedState(onSeekToPosition)
-                val latestScrubbingCallback by rememberUpdatedState(onSetScrubbingMode)
-
-                LaunchedEffect(bufferedBehindLive, bufferDepthMs, isScrubbing) {
-                    if (!isScrubbing) {
-                        sliderValue = 1f - (bufferedBehindLive.toFloat() / bufferDepthMs.toFloat()).coerceIn(0f, 1f)
-                    }
-                }
-
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = currentProgram?.title ?: stringResource(R.string.player_live_now),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = oldestLabel,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.55f)
-                            )
-                            Text(text = "/", color = Color.White.copy(alpha = 0.3f), style = MaterialTheme.typography.labelSmall)
-                            Text(
-                                text = stringResource(R.string.player_live_now),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (bufferedBehindLive > 1_000L) "-${formatDuration(bufferedBehindLive)}" else stringResource(R.string.player_live_ready),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White
-                        )
-                        Slider(
-                            value = sliderValue,
-                            onValueChange = { newValue ->
-                                val clampedValue = newValue.coerceIn(0f, 1f)
-                                if (!isScrubbing) {
-                                    isScrubbing = true
-                                    latestScrubbingCallback(true)
-                                }
-                                sliderValue = clampedValue
-                            },
-                            onValueChangeFinished = {
-                                val targetPosition = ((1f - sliderValue) * bufferDepthMs.toFloat()).toLong()
-                                latestSeekCallback(targetPosition)
-                                if (isScrubbing) {
-                                    latestScrubbingCallback(false)
-                                    isScrubbing = false
-                                }
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 12.dp)
-                                .focusProperties { down = quickActionsFocusRequester },
-                            colors = SliderDefaults.colors(
-                                activeTrackColor = AppColors.NeonCyan,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.12f)
-                            )
-                        )
-                        Text(
-                            text = "LIVE",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            } else {
-                val start = currentProgram?.startTime ?: 0L
-                val end = currentProgram?.endTime ?: 0L
-                if (start > 0 && end > 0) {
-                    val now = System.currentTimeMillis()
-                    val progress = (now - start).toFloat() / (end - start)
-
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = currentProgram?.title ?: stringResource(R.string.player_live_now),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = timeFormat.format(java.util.Date(start)),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.55f)
-                                )
-                                Text(text = "-", color = Color.White.copy(alpha = 0.4f))
-                                Text(
-                                    text = timeFormat.format(java.util.Date(end)),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.55f)
-                                )
-                            }
-                        }
-                        LinearProgressIndicator(
-                            progress = { progress.coerceIn(0f, 1f) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(99.dp)),
-                            color = Primary,
-                            trackColor = Color.White.copy(alpha = 0.12f)
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = currentChannelName?.let { stringResource(R.string.channel_number_name_format, displayChannelNumber, it) }.orEmpty(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = stringResource(R.string.player_live_now),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    LinearProgressIndicator(
-                        progress = { 1f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(99.dp)),
-                        color = Primary,
-                        trackColor = Color.White.copy(alpha = 0.12f)
+            Text(
+                text = currentProgram?.title
+                    ?: currentChannelName?.let {
+                        stringResource(R.string.channel_number_name_format, displayChannelNumber, it)
+                    }.orEmpty(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (progStart > 0L && progEnd > 0L) {
+                val remainMs = (progEnd - nowMs).coerceAtLeast(0L)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${timeFormat.format(java.util.Date(progStart))} \u2013 ${timeFormat.format(java.util.Date(progEnd))}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.58f)
                     )
+                    if (remainMs > 60_000L) {
+                        Text(
+                            text = "(${formatTimeshiftDuration(remainMs)} kald\u0131)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Primary.copy(alpha = 0.85f),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
+        }
+        if (progStart > 0L && progEnd > 0L) {
+            Spacer(modifier = Modifier.height(6.dp))
+            val progProgress = ((nowMs - progStart).toFloat() / (progEnd - progStart)).coerceIn(0f, 1f)
+            LinearProgressIndicator(
+                progress = { progProgress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(99.dp)),
+                color = Primary,
+                trackColor = Color.White.copy(alpha = 0.12f)
+            )
+        }
+    }
 
-            // Buttons Layer Row (Playback on left, Quick Settings on right)
+    // ── Row 3: Timeshift scrubber (when available) ─────────────────
+    if (showTimeshiftControls) {
+        Spacer(modifier = Modifier.height(10.dp))
+        val bufferDepthMs = timeshiftUiState.bufferDepthMs.coerceAtLeast(1L)
+        val bufferedBehindLive = timeshiftUiState.bufferedBehindLiveMs
+        val oldestWallMs = timeshiftUiState.engineState.bufferStartMs
+        val oldestLabel = when {
+            oldestWallMs > 0L -> timeFormat.format(java.util.Date(oldestWallMs))
+            bufferDepthMs > 1_000L -> "-${formatTimeshiftDuration(bufferDepthMs)}"
+            else -> ""
+        }
+        var sliderValue by remember(bufferedBehindLive, bufferDepthMs) {
+            mutableStateOf(1f - (bufferedBehindLive.toFloat() / bufferDepthMs.toFloat()).coerceIn(0f, 1f))
+        }
+        var isScrubbing by remember { mutableStateOf(false) }
+        val latestSeekCallback by rememberUpdatedState(onSeekToPosition)
+        val latestScrubbingCallback by rememberUpdatedState(onSetScrubbingMode)
+        LaunchedEffect(bufferedBehindLive, bufferDepthMs, isScrubbing) {
+            if (!isScrubbing) {
+                sliderValue = 1f - (bufferedBehindLive.toFloat() / bufferDepthMs.toFloat()).coerceIn(0f, 1f)
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left Side: Playback controls
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Previous / Rewind
-                    CapsuleIconButton(
-                        icon = Icons.Default.SkipPrevious,
-                        contentDescription = stringResource(R.string.player_rewind),
-                        onClick = onSeekBackward,
-                        enabled = showTimeshiftControls,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Play/Pause (Capsule)
-                    CapsulePlayPauseButton(
-                        isPlaying = isPlaying,
-                        onClick = onTogglePlayPause,
-                        playButtonFocusRequester = playButtonFocusRequester,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Stop / Live Edge
-                    CapsuleIconButton(
-                        icon = Icons.Default.Stop,
-                        contentDescription = "Stop",
-                        onClick = onSeekToLiveEdge,
-                        enabled = showTimeshiftControls,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Next / Forward
-                    CapsuleIconButton(
-                        icon = Icons.Default.SkipNext,
-                        contentDescription = stringResource(R.string.player_forward),
-                        onClick = onSeekForward,
-                        enabled = showTimeshiftControls,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Volume / Mute
-                    CapsuleIconButton(
-                        icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                        contentDescription = stringResource(if (isMuted) R.string.player_unmute else R.string.player_mute),
-                        onClick = onToggleMute,
-                        focusedColor = if (isMuted) Color(0xFFFF6B6B) else Primary,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-                }
-
-                // Right Side: Quick Action capsule buttons
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.horizontalScroll(rememberScrollState())
-                ) {
-                    // Channel List
-                    QuickActionButton(
-                        icon = "kanal",
-                        label = stringResource(R.string.channel_list),
-                        onClick = onOpenChannelList,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Multiview (Split screen)
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_action_split),
-                        label = stringResource(R.string.player_multiview_short),
-                        onClick = onOpenSplitScreen,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // External Player
-                    if (showExternalPlayerAction) {
-                        QuickActionButton(
-                            icon = "harici",
-                            label = stringResource(R.string.player_open_in_external_player),
-                            onClick = onOpenExternalPlayer,
-                            compact = true,
-                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                        )
-                    }
-
-                    // Audio selection
-                    QuickActionButton(
-                        icon = "ses",
-                        label = stringResource(R.string.player_audio),
-                        onClick = onOpenAudioTracks,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Subtitles selection
-                    QuickActionButton(
-                        icon = "altyazı",
-                        label = stringResource(R.string.player_subs),
-                        onClick = onOpenSubtitleTracks,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Recording button
-                    if (currentRecordingStatus == RecordingStatus.RECORDING) {
-                        QuickActionButton(
-                            icon = "rec",
-                            label = stringResource(R.string.player_stop_recording),
-                            onClick = onStopRecording,
-                            compact = true,
-                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                        )
-                    } else {
-                        QuickActionButton(
-                            icon = "rec",
-                            label = stringResource(R.string.player_record),
-                            onClick = onStartRecording,
-                            compact = true,
-                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                        )
-                    }
-
-                    // Google Cast / Chromecast (Ekran Paylaşımı)
-                    QuickActionButton(
-                        icon = "yansıt",
-                        label = if (isCastConnected) stringResource(R.string.player_stop_casting) else stringResource(R.string.player_cast),
-                        onClick = if (isCastConnected) onStopCasting else onCast,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Picture-in-picture
-                    QuickActionButton(
-                        icon = "pip",
-                        label = stringResource(R.string.player_picture_in_picture),
-                        onClick = onEnterPictureInPicture,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Sleep Timer
-                    QuickActionButton(
-                        icon = "süre",
-                        label = stringResource(R.string.player_stop_playback_after),
-                        onClick = onOpenStopPlaybackTimer,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    // Aspect Ratio
-                    QuickActionButton(
-                        icon = "en-boy",
-                        label = aspectRatioLabel,
-                        onClick = onToggleAspectRatio,
-                        compact = true,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-                }
+                Text(
+                    text = oldestLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.55f)
+                )
+                Text(
+                    text = if (bufferedBehindLive > 1_000L)
+                        "-${formatTimeshiftDuration(bufferedBehindLive)}"
+                    else stringResource(R.string.player_live_ready),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (bufferedBehindLive <= 1_000L) Primary else Color(0xFFFFB347)
+                )
+                Text(
+                    text = stringResource(R.string.player_live_now),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Primary,
+                    fontWeight = FontWeight.Bold
+                )
             }
+            Slider(
+                value = sliderValue,
+                onValueChange = { newValue ->
+                    val clamped = newValue.coerceIn(0f, 1f)
+                    if (!isScrubbing) { isScrubbing = true; latestScrubbingCallback(true) }
+                    sliderValue = clamped
+                },
+                onValueChangeFinished = {
+                    latestSeekCallback(((1f - sliderValue) * bufferDepthMs.toFloat()).toLong())
+                    if (isScrubbing) { latestScrubbingCallback(false); isScrubbing = false }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusProperties { down = quickActionsFocusRequester },
+                colors = SliderDefaults.colors(
+                    activeTrackColor = AppColors.NeonCyan,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.12f)
+                )
+            )
         }
+    }
+
+    Spacer(modifier = Modifier.height(18.dp))
+
+    // ── Row 4: TV-first 7-button control row ──────────────────────
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 1. Play / Pause (primary)
+        TvLiveControlButton(
+            icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+            label = if (isPlaying) stringResource(R.string.player_pause)
+                    else stringResource(R.string.player_play),
+            onClick = onTogglePlayPause,
+            isPrimary = true,
+            modifier = Modifier
+                .focusRequester(playButtonFocusRequester)
+                .focusProperties { down = quickActionsFocusRequester }
+        )
+
+        // 2. Canlıya Dön — only when timeshift active
+        if (showTimeshiftControls) {
+            TvLiveControlButton(
+                icon = Icons.Default.FiberManualRecord,
+                label = stringResource(R.string.player_jump_to_live),
+                onClick = onSeekToLiveEdge,
+                accentColor = if (liveState == TvLiveState.LIVE_EDGE) Color.Red else Color.White,
+                modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+            )
+        }
+
+        // 3. Altyazı
+        TvLiveControlButton(
+            icon = Icons.Default.Subtitles,
+            label = stringResource(R.string.player_subs),
+            onClick = onOpenSubtitleTracks,
+            badgeActive = subtitleTrackCount > 0,
+            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+        )
+
+        // 4. Ses — mute state shown via icon; opens audio tracks panel
+        TvLiveControlButton(
+            icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+            label = if (isMuted) stringResource(R.string.player_muted_badge)
+                    else stringResource(R.string.player_audio),
+            onClick = onOpenAudioTracks,
+            accentColor = if (isMuted) Color(0xFFFF6B6B) else Color.White,
+            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+        )
+
+        // 5. Görüntü (Quality)
+        TvLiveControlButton(
+            icon = Icons.Default.HighQuality,
+            label = stringResource(R.string.player_video_quality),
+            onClick = onOpenVideoTracks,
+            badgeActive = videoQualityCount > 1,
+            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+        )
+
+        // 6. Kanallar
+        TvLiveControlButton(
+            icon = Icons.Default.Tv,
+            label = stringResource(R.string.channel_list),
+            onClick = onOpenChannelList,
+            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+        )
+
+        // 7. Rehber (EPG)
+        TvLiveControlButton(
+            icon = Icons.Default.ViewSidebar,
+            label = stringResource(R.string.player_open_guide_action),
+            onClick = onOpenGuide,
+            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+        )
     }
 }
 
@@ -1873,6 +1783,96 @@ private fun PlayerQuickSettingsButton(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TV-First Live Control Primitives
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** State machine for live TV stream mode displayed in the status badge. */
+private enum class TvLiveState { LIVE_EDGE, TIMESHIFT, ARCHIVE }
+
+/**
+ * Large, TV-remote-first control button with scale + border focus feedback.
+ *
+ * - Focused: 1.10× scale + bright border + accent icon/label color
+ * - [isPrimary]: renders with a tinted background (play/pause principal action)
+ * - [badgeActive]: renders a small accent dot to indicate an available feature
+ * - [accentColor]: overrides the focus/indicator color (e.g. red for muted)
+ */
+@Composable
+private fun TvLiveControlButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    isPrimary: Boolean = false,
+    accentColor: Color = Color.White,
+    badgeActive: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val scaleAnim by animateFloatAsState(
+        targetValue = if (isFocused) 1.10f else 1.0f,
+        label = "tvCtrlScale"
+    )
+    val focusColor = if (isPrimary) Primary else accentColor
+
+    TvClickableSurface(
+        onClick = onClick,
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (isPrimary) Primary.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.06f),
+            focusedContainerColor = focusColor.copy(alpha = 0.28f)
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                shape = RoundedCornerShape(14.dp)
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.2.dp, focusColor),
+                shape = RoundedCornerShape(14.dp)
+            )
+        ),
+        modifier = modifier
+            .scale(scaleAnim)
+            .onFocusChanged { isFocused = it.isFocused }
+            .semantics { this.contentDescription = label }
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Box {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (isFocused) focusColor else Color.White.copy(alpha = 0.88f),
+                        modifier = Modifier.size(if (isPrimary) 26.dp else 22.dp)
+                    )
+                    // Badge dot for feature availability indicator
+                    if (badgeActive) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(6.dp)
+                                .background(Primary, RoundedCornerShape(99.dp))
+                        )
+                    }
+                }
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isFocused) focusColor else Color.White.copy(alpha = 0.72f),
+                    fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

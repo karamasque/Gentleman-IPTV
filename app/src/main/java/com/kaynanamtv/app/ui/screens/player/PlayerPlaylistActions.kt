@@ -196,6 +196,7 @@ internal fun PlayerViewModel.loadPlaylist(
     isVirtual: Boolean,
     initialChannelId: Long
 ) {
+    if (currentContentType != ContentType.LIVE) return
     playlistJob?.cancel()
     playlistJob = viewModelScope.launch {
         val flows = currentCombinedProfileId?.let { profileId ->
@@ -251,6 +252,7 @@ internal fun PlayerViewModel.loadPlaylist(
             }
             numberingMode to displayedChannels.sanitizedChannelsForPlayer()
         }.collect { (numberingMode, displayedChannels) ->
+            if (currentContentType != ContentType.LIVE) return@collect
             channelNumberingMode = numberingMode
             channelList = displayedChannels
             currentChannelFlowList.value = displayedChannels

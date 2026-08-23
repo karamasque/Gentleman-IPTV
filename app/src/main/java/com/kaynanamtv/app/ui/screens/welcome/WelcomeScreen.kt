@@ -90,6 +90,7 @@ class WelcomeViewModel @Inject constructor(
     private val providerRepository: ProviderRepository,
     private val validateAndAddProvider: ValidateAndAddProvider,
     private val authRepository: AuthRepository,
+    private val accountE2eeCrypto: com.kaynanamtv.data.security.AccountE2eeCrypto,
     syncProgressBus: SyncProgressBus,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -169,6 +170,8 @@ class WelcomeViewModel @Inject constructor(
     }
 
     fun restoreAllRemoteProviders(remoteProviders: List<Map<String, Any>>) {
+        val user = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+        val userUid = user?.uid ?: ""
         viewModelScope.launch {
             try {
                 // De-duplicate remote providers by unique connection keys to prevent duplicates
@@ -184,13 +187,19 @@ class WelcomeViewModel @Inject constructor(
                 uniqueProviders.forEach { providerData ->
                     val type = ProviderType.valueOf(providerData["type"] as String)
                     val idVal = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull()) ?: 0L
+                    val rawPassword = providerData["password"] as? String ?: ""
+                    val decryptedPassword = try {
+                        accountE2eeCrypto.decryptForAccount(rawPassword, userUid)
+                    } catch (e: Exception) {
+                        rawPassword
+                    }
                     val provider = com.kaynanamtv.domain.model.Provider(
                         id = idVal,
                         name = providerData["name"] as String,
                         type = type,
                         serverUrl = providerData["serverUrl"] as? String ?: "",
                         username = providerData["username"] as? String ?: "",
-                        password = providerData["password"] as? String ?: "",
+                        password = decryptedPassword,
                         m3uUrl = providerData["m3uUrl"] as? String ?: "",
                         epgUrl = providerData["epgUrl"] as? String ?: "",
                         httpUserAgent = providerData["httpUserAgent"] as? String ?: "",
@@ -364,7 +373,7 @@ fun WelcomeScreen(
 
     val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(hasProviders, startupReady, trialStatus, showSplashIntro) {
-        if (trialStatus == TrialStatus.ACTIVE && !showSplashIntro) {
+        if (trialStatus != null && trialStatus != TrialStatus.NO_SESSION && !showSplashIntro) {
             when (hasProviders) {
                 true -> {
                     if (startupReady) {
@@ -384,127 +393,44 @@ fun WelcomeScreen(
         if (showSplashIntro) {
             KaynanaSplashIntro(quote = introQuote)
         } else {
-            when (trialStatus) {
-                TrialStatus.ACTIVE -> {
-                    when {
-                        hasProviders == true -> {
-                            WelcomeLoadingCard(
-                                syncProgress = syncProgress,
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .padding(32.dp)
-                            )
-                        }
-                        isCheckingCloud -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.align(Alignment.Center).size(48.dp),
-                                color = AppColors.Brand
-                            )
-                        }
-                        !remoteProviders.isNullOrEmpty() -> {
-                            RestoringCloudProgressCard(
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .padding(32.dp)
-                            )
-                        }
-                        else -> {
-                            WelcomeStartCard(
-                                onNavigateToHome = onNavigateToHome,
-                                onNavigateToSetup = onNavigateToSetup,
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .padding(32.dp)
-                            )
-                        }
+            if (trialStatus != null && trialStatus != TrialStatus.NO_SESSION) {
+                when {
+                    hasProviders == true -> {
+                        WelcomeLoadingCard(
+                            syncProgress = syncProgress,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(32.dp)
+                        )
+                    }
+                    isCheckingCloud -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center).size(48.dp),
+                            color = AppColors.Brand
+                        )
+                    }
+                    !remoteProviders.isNullOrEmpty() -> {
+                        RestoringCloudProgressCard(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(32.dp)
+                        )
+                    }
+                    else -> {
+                        WelcomeStartCard(
+                            onNavigateToHome = onNavigateToHome,
+                            onNavigateToSetup = onNavigateToSetup,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(32.dp)
+                        )
                     }
                 }
-                TrialStatus.EXPIRED -> {
-                    TrialExpiredCard(
-                        onLogout = viewModel::logout,
-                        onNavigateToHome = onNavigateToHome,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(32.dp)
-                    )
-                }
-                else -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center).size(48.dp),
-                        color = AppColors.Brand
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TrialExpiredCard(
-    onLogout: () -> Unit,
-    onNavigateToHome: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val borderBrush = Brush.linearGradient(
-        colors = listOf(Color.Red.copy(alpha = 0.5f), AppColors.Brand.copy(alpha = 0.5f))
-    )
-    Box(
-        modifier = modifier
-            .widthIn(max = 500.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xE60A0E1A))
-            .border(androidx.compose.foundation.BorderStroke(1.5.dp, borderBrush), RoundedCornerShape(24.dp))
-            .padding(horizontal = 40.dp, vertical = 34.dp)
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            StatusPill(
-                label = "DENEME SÜRESİ BİTTİ",
-                containerColor = Color.Red.copy(alpha = 0.2f),
-                contentColor = Color.Red
-            )
-            Text(
-                text = "Kullanım Süreniz Sona Erdi",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color.Red, AppColors.BrandStrong)
-                    )
-                ),
-                fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = "KaynanamTV 7 günlük ücretsiz deneme süreniz dolmuştur. Uygulamayı Free olarak kullanmaya devam edebilir veya Ayarlar > Üyelik menüsünden Premium pakete geçiş yapabilirsiniz.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = AppColors.TextSecondary,
-                textAlign = TextAlign.Center
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TvButton(
-                    onClick = onNavigateToHome,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = "Ana Ekrana Geç (Ücretsiz)")
-                }
-                TvButton(
-                    onClick = onLogout,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.colors(
-                        containerColor = AppColors.SurfaceElevated,
-                        focusedContainerColor = Color.White,
-                        contentColor = AppColors.TextPrimary,
-                        focusedContentColor = Color(0xFF0A0E1A)
-                    )
-                ) {
-                    Text(text = "Çıkış Yap")
-                }
+            } else {
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center).size(48.dp),
+                    color = AppColors.Brand
+                )
             }
         }
     }

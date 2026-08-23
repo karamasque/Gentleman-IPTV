@@ -160,6 +160,7 @@ private fun StalkerRequestRule.toUiState(): StalkerRequestRuleUiState =
 fun ProviderSetupScreen(
     onProviderAdded: () -> Unit,
     onBack: () -> Unit,
+    onNavigateToMembership: () -> Unit = {},
     editProviderId: Long? = null,
     initialImportUri: String? = null,
     viewModel: ProviderSetupViewModel = hiltViewModel()
@@ -729,6 +730,7 @@ fun ProviderSetupScreen(
             feature = feature,
             onNavigateToMembership = {
                 showPremiumPaywallForFeature = null
+                onNavigateToMembership()
             },
             onDismiss = { showPremiumPaywallForFeature = null }
         )

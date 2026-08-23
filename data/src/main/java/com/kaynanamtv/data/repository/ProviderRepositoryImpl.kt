@@ -63,6 +63,7 @@ class ProviderRepositoryImpl @Inject constructor(
     private val stalkerApiService: StalkerApiService,
     private val xtreamApiService: XtreamApiService,
     private val credentialCrypto: CredentialCrypto,
+    private val accountE2eeCrypto: com.kaynanamtv.data.security.AccountE2eeCrypto,
     private val preferencesRepository: PreferencesRepository,
     private val syncManager: SyncManager,
     private val syncMetadataRepository: SyncMetadataRepository,
@@ -106,6 +107,10 @@ class ProviderRepositoryImpl @Inject constructor(
                             if (snapshot != null) {
                                 repositoryScope.launch {
                                     try {
+                                        if (!isCurrentUserPremium()) {
+                                            Log.d("ProviderRepository", "Free user - cloud multi-device sync is disabled.")
+                                            return@launch
+                                        }
                                         val persistentDeletedIds = preferencesRepository.getDeletedProviderIdsSync()
                                         val tombstonedIds = persistentDeletedIds + pendingDeletedProviderIds
                                         val remoteList = snapshot.documents.mapNotNull { it.data }
@@ -252,13 +257,19 @@ class ProviderRepositoryImpl @Inject constructor(
                                             val idLong = idStr.toLongOrNull()
                                             if (idStr !in localIds && (idLong == null || idLong !in tombstonedIds)) {
                                                 val type = ProviderType.valueOf(providerData["type"] as String)
+                                                val rawRemotePassword = providerData["password"] as? String ?: ""
+                                                val cleartextPassword = try {
+                                                    accountE2eeCrypto.decryptForAccount(rawRemotePassword, user.uid)
+                                                } catch (e: Exception) {
+                                                    rawRemotePassword
+                                                }
                                                 val provider = Provider(
                                                     id = idStr.toLongOrNull() ?: 0L,
                                                     name = providerData["name"] as String,
                                                     type = type,
                                                     serverUrl = providerData["serverUrl"] as? String ?: "",
                                                     username = providerData["username"] as? String ?: "",
-                                                    password = providerData["password"] as? String ?: "",
+                                                    password = cleartextPassword,
                                                     m3uUrl = providerData["m3uUrl"] as? String ?: "",
                                                     epgUrl = providerData["epgUrl"] as? String ?: "",
                                                     httpUserAgent = providerData["httpUserAgent"] as? String ?: "",
@@ -405,87 +416,47 @@ class ProviderRepositoryImpl @Inject constructor(
         runCatching { preferencesRepository.recordDeletedProviderId(id) }
         return try {
             // Run Firestore delete in a background coroutine so it doesn't block the SQLite deletion if network is slow/offline
-            repositoryScope.launch {
+            repositoryScope.launch(Dispatchers.IO) {
                 runCatching { deleteProviderFromFirestore(id) }
                     .onFailure { logger.warning("Firestore provider delete failed for $id: ${it.message}") }
             }
             val recordingRunIds = recordingRunDao.getIdsByProvider(id)
             val reminderIds = programReminderDao.getIdsByProvider(id)
 
-            // Query image URLs for permanent cache cleanup before deleting from database using direct suspend functions instead of Flows
+            // Query image URLs for permanent cache cleanup before deleting from database
             val channelUrls = channelDao.getByProviderSync(id).mapNotNull { it.logoUrl }.filter { it.isNotBlank() }
             val movieUrls = movieDao.getByProviderSync(id).mapNotNull { it.posterUrl }.filter { it.isNotBlank() }
             val seriesUrls = seriesDao.getByProviderSync(id).mapNotNull { it.posterUrl }.filter { it.isNotBlank() }
             val allUrls = (channelUrls + movieUrls + seriesUrls).distinct()
 
-            // Weight progress by the real row counts of the large child tables so the bar
-            // advances proportionally to the work being done instead of in two big jumps.
-            val programCount = programDao.countByProvider(id)
-            val channelCount = channelDao.countByProvider(id)
-            val movieCount = movieDao.countByProvider(id)
-            val seriesCount = seriesDao.countByProvider(id)
+            onProgress?.invoke(ProviderDeleteProgress(message = "Sağlayıcı kaldırılıyor...", fraction = 0.5f))
 
-            val totalWeight = (
-                programCount + channelCount + movieCount + seriesCount +
-                    (recordingRunIds.size + reminderIds.size) * ALARM_STEP_WEIGHT +
-                    PROVIDER_ROW_STEP_WEIGHT + FINALIZE_STEP_WEIGHT
-                ).coerceAtLeast(1)
-            var completedWeight = 0
-
-            fun reportProgress(message: String) {
-                onProgress?.invoke(
-                    ProviderDeleteProgress(
-                        message = message,
-                        fraction = (completedWeight.toFloat() / totalWeight.toFloat()).coerceIn(0f, 1f)
-                    )
-                )
-            }
-
-            reportProgress("Preparing to remove provider...")
             transactionRunner.inTransaction {
-                // ProgramEntity still has no provider FK, so it requires explicit cleanup.
-                if (programCount > 0) reportProgress("Removing $programCount guide entries...")
                 programDao.deleteByProvider(id)
-                completedWeight += programCount
-
-                if (channelCount > 0) reportProgress("Removing $channelCount channels...")
                 channelDao.deleteByProvider(id)
-                completedWeight += channelCount
-
-                if (movieCount > 0) reportProgress("Removing $movieCount movies...")
                 movieDao.deleteByProvider(id)
-                completedWeight += movieCount
-
-                if (seriesCount > 0) reportProgress("Removing $seriesCount series...")
                 seriesDao.deleteByProvider(id)
-                completedWeight += seriesCount
-
-                reportProgress("Removing provider record...")
                 providerDao.delete(id)
-                completedWeight += PROVIDER_ROW_STEP_WEIGHT
             }
-            reportProgress("Provider library removed.")
+
             recordingRunIds.forEach { runId ->
-                reportProgress("Cleaning recording alarms...")
                 runPostDeleteCleanup("recording alarm $runId") {
                     recordingAlarmScheduler.cancel(runId)
                 }
-                completedWeight += ALARM_STEP_WEIGHT
             }
             reminderIds.forEach { reminderId ->
-                reportProgress("Cleaning reminders...")
                 runPostDeleteCleanup("reminder alarm $reminderId") {
                     programReminderAlarmScheduler.cancel(reminderId)
                 }
-                completedWeight += ALARM_STEP_WEIGHT
             }
-            reportProgress("Finalizing provider cleanup...")
             runPostDeleteCleanup("provider sync cleanup $id") {
                 syncManager.onProviderDeleted(id)
             }
             runPostDeleteCleanup("traffic coordinator reset $id") {
                 com.kaynanamtv.data.remote.stalker.StalkerTrafficCoordinator.resetForProvider(id)
             }
+
+            // Immediately ensure active provider fallback is selected so UI & player never refer to deleted provider
             runPostDeleteCleanup("active source cleanup $id") {
                 val lastActiveId = preferencesRepository.lastActiveProviderId.first()
                 if (lastActiveId == id) {
@@ -501,25 +472,28 @@ class ProviderRepositoryImpl @Inject constructor(
                     }
                 }
             }
-            runPostDeleteCleanup("provider image cache cleanup $id") {
-                PermanentImageCache.deleteCachedFiles(context, allUrls)
-            }
-            runPostDeleteCleanup("vacuum and wal checkpoint $id") {
-                database?.openHelper?.writableDatabase?.let { sqliteDb ->
-                    sqliteDb.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
-                    sqliteDb.execSQL("VACUUM")
+
+            onProgress?.invoke(ProviderDeleteProgress(message = "Sağlayıcı silindi.", fraction = 1.0f))
+
+            // Offload heavy disk I/O (image files, vacuum) to background
+            repositoryScope.launch(Dispatchers.IO) {
+                runPostDeleteCleanup("provider image cache cleanup $id") {
+                    PermanentImageCache.deleteCachedFiles(context, allUrls)
                 }
-            }
-            completedWeight += FINALIZE_STEP_WEIGHT
-            reportProgress("Provider deleted.")
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.error("Failed to delete provider: ${e.message}", e)
-        } finally {
-            repositoryScope.launch {
+                runPostDeleteCleanup("vacuum and wal checkpoint $id") {
+                    database?.openHelper?.writableDatabase?.let { sqliteDb ->
+                        sqliteDb.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
+                        sqliteDb.execSQL("VACUUM")
+                    }
+                }
                 kotlinx.coroutines.delay(3000)
                 pendingDeletedProviderIds.remove(id)
             }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            pendingDeletedProviderIds.remove(id)
+            Result.error("Failed to delete provider: ${e.message}", e)
         }
     }
 
@@ -1625,17 +1599,43 @@ class ProviderRepositoryImpl @Inject constructor(
         }
     }
 
+    private suspend fun isCurrentUserPremium(): Boolean {
+        val user = FirebaseAuth.getInstance().currentUser ?: return false
+        return try {
+            val userDoc = FirebaseFirestore.getInstance().collection("users").document(user.uid).get().await()
+            val plan = userDoc.getString("premiumPlan")
+            val isPremiumDoc = userDoc.getBoolean("isPremium") == true
+            (plan in listOf("YEARLY", "LIFETIME")) || isPremiumDoc
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private suspend fun syncProviderToFirestore(provider: Provider) {
         val user = FirebaseAuth.getInstance().currentUser ?: return
+        if (!isCurrentUserPremium()) {
+            Log.d("ProviderRepository", "Free user - skipping cloud upsert for provider ${provider.id}")
+            return
+        }
         val firestore = FirebaseFirestore.getInstance()
         try {
+            val cleartextPassword = try {
+                credentialCrypto.decryptIfNeeded(provider.password)
+            } catch (e: Exception) {
+                provider.password
+            }
+            val accountEncryptedPassword = try {
+                accountE2eeCrypto.encryptForAccount(cleartextPassword, user.uid)
+            } catch (e: Exception) {
+                cleartextPassword
+            }
             val data = hashMapOf(
                 "id" to provider.id,
                 "name" to provider.name,
                 "type" to provider.type.name,
                 "serverUrl" to provider.serverUrl,
                 "username" to provider.username,
-                "password" to provider.password,
+                "password" to accountEncryptedPassword,
                 "m3uUrl" to provider.m3uUrl,
                 "epgUrl" to provider.epgUrl,
                 "httpUserAgent" to provider.httpUserAgent,

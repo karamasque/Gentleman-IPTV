@@ -753,7 +753,20 @@ fun PlayerScreen(
                             }
                             if (contentType == "LIVE" && !isCatchUpPlayback) {
                                 if (showControls) return@onKeyEvent false
-                                if (showChannelListOverlay) {
+                                // Timeshift aktifken: LEFT = geri seek (timeline)
+                                if (timeshiftUiState.available && !showChannelListOverlay && !showCategoryListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
+                                    val repeatCount = event.nativeKeyEvent.repeatCount
+                                    val deltaMs = when {
+                                        repeatCount == 0 -> 30_000L
+                                        repeatCount < 5 -> 60_000L
+                                        repeatCount < 10 -> 120_000L
+                                        else -> 180_000L
+                                    }
+                                    if (isRtl) viewModel.seekToLiveEdge() else viewModel.seekTo(
+                                        (timeshiftUiState.bufferedBehindLiveMs + deltaMs).coerceAtMost(timeshiftUiState.bufferDepthMs)
+                                    )
+                                    true
+                                } else if (showChannelListOverlay) {
                                     viewModel.openCategoryListOverlay()
                                     true
                                 } else if (!showCategoryListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
@@ -780,7 +793,23 @@ fun PlayerScreen(
                             }
                             if (contentType == "LIVE" && !isCatchUpPlayback) {
                                 if (showControls) return@onKeyEvent false
-                                if (!showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
+                                // Timeshift aktifken: RIGHT = ileri seek (canlıya doğru)
+                                if (timeshiftUiState.available && !showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
+                                    val repeatCount = event.nativeKeyEvent.repeatCount
+                                    val deltaMs = when {
+                                        repeatCount == 0 -> 30_000L
+                                        repeatCount < 5 -> 60_000L
+                                        repeatCount < 10 -> 120_000L
+                                        else -> 180_000L
+                                    }
+                                    val newOffset = (timeshiftUiState.bufferedBehindLiveMs - deltaMs).coerceAtLeast(0L)
+                                    if (newOffset <= 0L) {
+                                        viewModel.seekToLiveEdge()
+                                    } else {
+                                        viewModel.seekTo(newOffset)
+                                    }
+                                    true
+                                } else if (!showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
                                     if (isRtl) viewModel.openChannelListOverlay() else viewModel.openEpgOverlay()
                                     true
                                 } else false
@@ -1126,6 +1155,9 @@ fun PlayerScreen(
             onSetScrubbingMode = viewModel::setScrubbingMode,
             seekPreview = seekPreview,
             onSeekPreviewPositionChanged = viewModel::updateSeekPreview,
+            onOpenGuide = {
+                viewModel.openEpgOverlay()
+            },
             onUserInteraction = {
                 viewModel.notifyUserActivity()
                 viewModel.refreshControlsAutoHide()
@@ -1545,14 +1577,11 @@ private fun PlayerControlsOverlayHost(
     onSetScrubbingMode: (Boolean) -> Unit,
     seekPreview: SeekPreviewState,
     onSeekPreviewPositionChanged: (Long?) -> Unit,
+    onOpenGuide: () -> Unit = {},
     onUserInteraction: () -> Unit
 ) {
-    val currentPosition = if (visible || seekPreview.visible) {
-        playerEngine.currentPosition.collectAsStateWithLifecycle().value
-    } else 0L
-    val duration = if (visible || seekPreview.visible) {
-        playerEngine.duration.collectAsStateWithLifecycle().value
-    } else 0L
+    val currentPosition = playerEngine.currentPosition.collectAsStateWithLifecycle().value
+    val duration = playerEngine.duration.collectAsStateWithLifecycle().value
 
     PlayerControlsOverlay(
         visible = visible,
@@ -1614,6 +1643,7 @@ private fun PlayerControlsOverlayHost(
         onSetScrubbingMode = onSetScrubbingMode,
         seekPreview = seekPreview,
         onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
+        onOpenGuide = onOpenGuide,
         onUserInteraction = onUserInteraction
     )
 }

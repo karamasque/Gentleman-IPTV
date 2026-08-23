@@ -48,6 +48,12 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
     lateinit var okHttpClient: OkHttpClient
 
     @Inject
+    lateinit var entitlementManager: com.kaynanamtv.domain.manager.EntitlementManager
+
+    @Inject
+    lateinit var cloudUserStateSyncManager: com.kaynanamtv.data.sync.CloudUserStateSyncManager
+
+    @Inject
     lateinit var jellyfinImageAuthInterceptor: JellyfinImageAuthInterceptor
 
     private val imageOkHttpClient: OkHttpClient by lazy {
@@ -106,16 +112,22 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
         }
 
         applicationScope.launch {
+            // Asynchronously reconcile favorites and watch progress without blocking startup
+            cloudUserStateSyncManager.reconcileFromCloud()
+
+            // Lifecycle-safe periodic background sync scheduling (strictly gated by AUTOMATIC_REFRESH feature)
             kotlinx.coroutines.flow.combine(
                 preferencesRepository.backgroundSyncEnabled,
                 preferencesRepository.backgroundSyncIntervalHours,
-                preferencesRepository.backgroundSyncWifiOnly
-            ) { enabled, interval, wifiOnly ->
-                Triple(enabled, interval, wifiOnly)
-            }.collect { (enabled, interval, wifiOnly) ->
+                preferencesRepository.backgroundSyncWifiOnly,
+                entitlementManager.observeFeature(com.kaynanamtv.domain.model.Feature.BACKGROUND_PLAYLIST_UPDATE)
+            ) { enabled, interval, wifiOnly, isEntitled ->
+                val shouldSchedule = enabled && isEntitled
+                Triple(shouldSchedule, interval, wifiOnly)
+            }.collect { (shouldSchedule, interval, wifiOnly) ->
                 com.kaynanamtv.data.sync.BackgroundSyncScheduler.updateSchedule(
                     this@KaynanamTVApp,
-                    enabled = enabled,
+                    enabled = shouldSchedule,
                     intervalHours = interval,
                     wifiOnly = wifiOnly
                 )

@@ -96,6 +96,12 @@ internal fun shouldPreloadAdjacentChannel(
 
 fun PlayerViewModel.playNext() {
     clearNumericChannelInput()
+    if (currentContentType != ContentType.LIVE) {
+        if (com.kaynanamtv.app.BuildConfig.DEBUG) {
+            android.util.Log.w("PlayerVM", "CHANNEL_ZAP_FORBIDDEN: playNext() called while contentType=$currentContentType")
+        }
+        return
+    }
     if (channelList.isEmpty()) return
     val nextIndex = wrappedChannelIndex(1)
     if (nextIndex == -1) return
@@ -104,6 +110,12 @@ fun PlayerViewModel.playNext() {
 
 fun PlayerViewModel.playPrevious() {
     clearNumericChannelInput()
+    if (currentContentType != ContentType.LIVE) {
+        if (com.kaynanamtv.app.BuildConfig.DEBUG) {
+            android.util.Log.w("PlayerVM", "CHANNEL_ZAP_FORBIDDEN: playPrevious() called while contentType=$currentContentType")
+        }
+        return
+    }
     if (channelList.isEmpty()) return
     val prevIndex = wrappedChannelIndex(-1)
     if (prevIndex == -1) return
@@ -111,6 +123,12 @@ fun PlayerViewModel.playPrevious() {
 }
 
 fun PlayerViewModel.changeChannelDebounced(index: Int) {
+    if (currentContentType != ContentType.LIVE) {
+        if (com.kaynanamtv.app.BuildConfig.DEBUG) {
+            android.util.Log.w("PlayerVM", "CHANNEL_ZAP_FORBIDDEN: changeChannelDebounced() called while contentType=$currentContentType")
+        }
+        return
+    }
     if (channelList.isEmpty() || index !in channelList.indices) return
     clearNumericChannelInput()
     zapDebounceJob?.cancel()
@@ -223,11 +241,23 @@ fun PlayerViewModel.clearNumericChannelInput() {
 }
 
 fun PlayerViewModel.changeChannel(index: Int, isAutoFallback: Boolean = false) {
+    if (currentContentType != ContentType.LIVE) {
+        if (com.kaynanamtv.app.BuildConfig.DEBUG) {
+            android.util.Log.w("PlayerVM", "CHANNEL_ZAP_FORBIDDEN: changeChannel() called while contentType=$currentContentType")
+        }
+        return
+    }
     zapDebounceJob?.cancel()
     executeChannelChange(index, isAutoFallback)
 }
 
 internal fun PlayerViewModel.executeChannelChange(index: Int, isAutoFallback: Boolean = false) {
+    if (currentContentType != ContentType.LIVE) {
+        if (com.kaynanamtv.app.BuildConfig.DEBUG) {
+            android.util.Log.w("PlayerVM", "CHANNEL_ZAP_FORBIDDEN: executeChannelChange() called while contentType=$currentContentType")
+        }
+        return
+    }
     check(index in channelList.indices) {
         "executeChannelChange index=$index out of channelList bounds (size=${channelList.size})"
     }

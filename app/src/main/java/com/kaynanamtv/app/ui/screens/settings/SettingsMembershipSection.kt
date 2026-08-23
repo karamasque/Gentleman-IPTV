@@ -50,6 +50,8 @@ import androidx.tv.material3.Text
 import com.kaynanamtv.app.ui.components.shell.StatusPill
 import com.kaynanamtv.app.ui.design.AppColors
 import com.kaynanamtv.app.ui.interaction.TvButton
+import com.kaynanamtv.domain.manager.EntitlementManager
+import com.kaynanamtv.domain.model.Feature
 import com.kaynanamtv.domain.model.PaymentRequest
 import com.kaynanamtv.domain.model.PaymentRequestStatus
 import com.kaynanamtv.domain.model.PremiumPlan
@@ -216,6 +218,12 @@ private fun MembershipSectionContent(
             premiumExpiresAt = session.premiumExpiresAt
         )
 
+        // ── Plan Breakdown & Feature Comparison (Free vs Premium) ─────────────
+        MembershipPlanComparisonCard(
+            isPremium = session.isPremium,
+            premiumPlan = session.premiumPlan
+        )
+
         // ── IBAN Payment / Upgrade Section (If not Lifetime) ─────────────────
         if (session.premiumPlan != PremiumPlan.LIFETIME) {
             IbanPaymentUpgradeCard(
@@ -299,7 +307,7 @@ private fun MembershipSectionHeader() {
                 color = AppColors.TextPrimary
             )
             Text(
-                text = "Hesabınızı, deneme sürenizi ve Premium aboneliklerinizi buradan yönetin.",
+                text = "Hesabınızı, üyelik modelinizi ve Premium aboneliklerinizi buradan yönetin.",
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.TextSecondary
             )
@@ -328,40 +336,34 @@ private fun SubscriptionStatusCard(
     premiumExpiresAt: Long
 ) {
     val now = System.currentTimeMillis()
-    val remainingMs = if (premiumPlan == PremiumPlan.YEARLY) (premiumExpiresAt - now) else (trialExpiresAt - now)
+    val remainingMs = if (premiumPlan == PremiumPlan.YEARLY) (premiumExpiresAt - now) else 0L
     val remainingDays = TimeUnit.MILLISECONDS.toDays(remainingMs).coerceAtLeast(0)
     val remainingHours = (TimeUnit.MILLISECONDS.toHours(remainingMs) % 24).coerceAtLeast(0)
 
     val (accentColor, statusLabel, statusEmoji, description) = when {
-        premiumPlan == PremiumPlan.LIFETIME -> Tuple4(
+        premiumPlan == PremiumPlan.LIFETIME || (isPremium && premiumPlan == PremiumPlan.LIFETIME) -> Tuple4(
             Color(0xFFFFD700),
             "SINIRSIZ (LIFETIME) PREMİUM",
             "👑",
-            "KaynanamTV'ye sınırsız ve süresiz tam erişiminiz bulunmaktadır."
+            "KaynanamTV'ye sınırsız ve süresiz tam erişiminiz bulunmaktadır. Tüm Premium özellikler aktiftir."
         )
-        premiumPlan == PremiumPlan.YEARLY && isPremium -> Tuple4(
+        premiumPlan == PremiumPlan.YEARLY && isPremium && remainingMs > 0 -> Tuple4(
             Color(0xFFFFD700),
             "YILLIK PREMİUM AKTİF",
             "⭐",
-            "Aboneliğinizin bitmesine $remainingDays gün $remainingHours saat kaldı."
+            "Yıllık Premium aboneliğiniz aktif ($remainingDays gün $remainingHours saat kaldı)."
         )
-        trialStatus == TrialStatus.ACTIVE -> {
-            val isUrgent = remainingDays <= 2
-            Tuple4(
-                if (isUrgent) Color(0xFFFF9800) else AppColors.Brand,
-                if (isUrgent) "DENEME BİTMEK ÜZERE (${remainingDays}G ${remainingHours}S)" else "7 GÜNLÜK DENEME AKTİF",
-                if (isUrgent) "⚠️" else "⏱",
-                if (isUrgent)
-                    "Denemenizin bitmesine $remainingDays gün kaldı! Kesintisiz devam etmek için aşağıdan Premium pakete geçebilirsiniz."
-                else
-                    "7 günlük tek seferlik Premium deneme süreniz aktif ($remainingDays gün $remainingHours saat kaldı)."
-            )
-        }
-        else -> Tuple4(
+        premiumPlan == PremiumPlan.YEARLY && (!isPremium || remainingMs <= 0) -> Tuple4(
             Color(0xFFEF5350),
-            "FREE (ÜCRETSİZ) ÜYE",
-            "🔒",
-            "Deneme süreniz sona ermiştir. Gelişmiş özelliklerden yararlanmak için lütfen Premium pakete geçin."
+            "YILLIK PREMİUM SÜRESİ BİTTİ",
+            "❌",
+            "Yıllık abonelik süreniz dolmuştur. Aşağıdaki ödeme bölümünden yenileyebilir veya Ücretsiz sürümü süresiz kullanmaya devam edebilirsiniz."
+        )
+        else -> Tuple4(
+            Color(0xFF10B981),
+            "ÜCRETSİZ (FREE) ÜYE",
+            "🆓",
+            "KaynanamTV'yi süresiz ve kesintisiz olarak Ücretsiz kullanıyorsunuz. Canlı TV, film ve dizi yayınlarını sınırsız izleyebilirsiniz. Gelişmiş Premium özellikler için aşağıdan Premium pakete geçebilirsiniz."
         )
     }
 
@@ -672,10 +674,15 @@ private fun AccountDatesCard(
                 label = "Yıllık Premium Bitiş",
                 value = dateFormat.format(Date(premiumExpiresAt))
             )
-        } else if (trialExpiresAt > 0) {
+        } else if (premiumPlan == PremiumPlan.LIFETIME) {
             InfoRow(
-                label = "Deneme Bitiş Tarihi",
-                value = dateFormat.format(Date(trialExpiresAt))
+                label = "Üyelik Modeli",
+                value = "Süresiz (Ömür Boyu) Premium"
+            )
+        } else {
+            InfoRow(
+                label = "Üyelik Modeli",
+                value = "Süresiz Ücretsiz Kullanım"
             )
         }
     }
@@ -852,6 +859,229 @@ private fun openWhatsAppSupport(context: Context, paymentCode: String?) {
             "WhatsApp açılamadı. Lütfen cihazınızda WhatsApp'ın kullanılabilir olduğundan emin olun.",
             Toast.LENGTH_LONG
         ).show()
+    }
+}
+
+private data class FeatureComparisonItem(
+    val title: String,
+    val description: String? = null,
+    val isIncluded: Boolean,
+    val feature: Feature? = null
+)
+
+private fun getFreeTierFeatures(): List<FeatureComparisonItem> {
+    val items = mutableListOf<FeatureComparisonItem>()
+    items.add(
+        FeatureComparisonItem(
+            title = "Sınırsız Canlı TV Yayını",
+            description = "Xtream Codes, M3U ve Stalker Portalları ile sınırsız canlı yayın izleme.",
+            isIncluded = true
+        )
+    )
+    items.add(
+        FeatureComparisonItem(
+            title = "Sınırsız Film (VOD) ve Dizi İzleme",
+            description = "Tüm film ve dizi arşivlerine tam ve süresiz erişim.",
+            isIncluded = true
+        )
+    )
+    items.add(
+        FeatureComparisonItem(
+            title = "Standart Elektronik Program Rehberi (EPG)",
+            description = "Yayın akışı, şimdi & sonra bilgisi ve standart kanal rehberi.",
+            isIncluded = true
+        )
+    )
+    items.add(
+        FeatureComparisonItem(
+            title = "Yerel Favoriler & İzleme Geçmişi",
+            description = "Cihaz üzerinde yerel favori kanal ve izleme geçmişi yönetimi.",
+            isIncluded = true
+        )
+    )
+    items.add(
+        FeatureComparisonItem(
+            title = "Dahili Hızlı Oynatıcı (Media3 + FFmpeg)",
+            description = "Donanım hızlandırma ve kararlı yayın motoru.",
+            isIncluded = true
+        )
+    )
+
+    Feature.entries.forEach { feature ->
+        items.add(
+            FeatureComparisonItem(
+                title = feature.displayName,
+                description = feature.description,
+                isIncluded = EntitlementManager.canUseFeature(feature, isPremium = false),
+                feature = feature
+            )
+        )
+    }
+    return items
+}
+
+private fun getPremiumTierFeatures(): List<FeatureComparisonItem> {
+    val items = mutableListOf<FeatureComparisonItem>()
+    items.add(
+        FeatureComparisonItem(
+            title = "Tüm Ücretsiz Özellikler",
+            description = "Sınırsız Canlı TV, Film ve Dizi kataloğuna tam ve süresiz erişim dahil.",
+            isIncluded = true
+        )
+    )
+
+    Feature.entries.forEach { feature ->
+        items.add(
+            FeatureComparisonItem(
+                title = feature.displayName,
+                description = feature.description,
+                isIncluded = EntitlementManager.canUseFeature(feature, isPremium = true),
+                feature = feature
+            )
+        )
+    }
+    return items
+}
+
+@Composable
+private fun MembershipPlanComparisonCard(
+    isPremium: Boolean,
+    premiumPlan: PremiumPlan
+) {
+    val freeFeatures = remember { getFreeTierFeatures() }
+    val premiumFeatures = remember { getPremiumTierFeatures() }
+
+    InfoCard(
+        title = "Paket Hakları ve Özellik Karşılaştırması",
+        accentColor = if (isPremium) Color(0xFFFFD700) else Color(0xFF10B981)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // ── 1. FREE TIER CARD ───────────────────────────────────────────
+            PlanFeatureBox(
+                planName = "Ücretsiz (Free) Paket",
+                planBadge = if (!isPremium) "ŞU ANKİ AKTİF PAKETİNİZ 🟢" else "TEMEL SEVİYE",
+                planBadgeContainerColor = if (!isPremium) Color(0xFF10B981).copy(alpha = 0.25f) else Color.White.copy(alpha = 0.08f),
+                planBadgeContentColor = if (!isPremium) Color(0xFF10B981) else Color.LightGray,
+                accentColor = Color(0xFF10B981),
+                isActive = !isPremium,
+                features = freeFeatures
+            )
+
+            // ── 2. PREMIUM TIER CARD ────────────────────────────────────────
+            PlanFeatureBox(
+                planName = if (isPremium && premiumPlan == PremiumPlan.LIFETIME) "👑 Sınırsız (Lifetime) Premium Paket"
+                           else if (isPremium) "⭐ Yıllık Premium Paket"
+                           else "💎 Premium Paket (Yıllık / Sınırsız)",
+                planBadge = if (isPremium) "ŞU ANKİ AKTİF PAKETİNİZ 👑" else "YÜKSELTİLEBİLİR 💎",
+                planBadgeContainerColor = if (isPremium) Color(0xFFFFD700).copy(alpha = 0.25f) else Color(0xFFFFD700).copy(alpha = 0.15f),
+                planBadgeContentColor = if (isPremium) Color(0xFFFFD700) else Color(0xFFFFD700),
+                accentColor = Color(0xFFFFD700),
+                isActive = isPremium,
+                features = premiumFeatures
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlanFeatureBox(
+    planName: String,
+    planBadge: String,
+    planBadgeContainerColor: Color,
+    planBadgeContentColor: Color,
+    accentColor: Color,
+    isActive: Boolean,
+    features: List<FeatureComparisonItem>
+) {
+    val borderColor = if (isActive) {
+        accentColor.copy(alpha = 0.85f)
+    } else if (accentColor == Color(0xFFFFD700)) {
+        Color(0xFFFFD700).copy(alpha = 0.4f)
+    } else {
+        Color.White.copy(alpha = 0.15f)
+    }
+
+    val bgColor = if (isActive) {
+        accentColor.copy(alpha = 0.07f)
+    } else {
+        Color(0xFF0D1117).copy(alpha = 0.6f)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(bgColor)
+            .border(
+                width = if (isActive) 1.5.dp else 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = planName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isActive) accentColor else if (accentColor == Color(0xFFFFD700)) Color(0xFFFFD700) else AppColors.TextSecondary
+                )
+                StatusPill(
+                    label = planBadge,
+                    containerColor = planBadgeContainerColor,
+                    contentColor = planBadgeContentColor
+                )
+            }
+
+            HorizontalDivider(
+                color = if (isActive) accentColor.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.1f)
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                features.forEach { item ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = if (item.isIncluded) {
+                                if (accentColor == Color(0xFFFFD700)) "⭐" else "✅"
+                            } else "🔒",
+                            fontSize = 15.sp
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = item.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (item.isIncluded) {
+                                    AppColors.TextPrimary
+                                } else {
+                                    AppColors.TextSecondary.copy(alpha = 0.7f)
+                                },
+                                fontWeight = if (item.isIncluded) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                            if (!item.description.isNullOrBlank()) {
+                                Text(
+                                    text = item.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (item.isIncluded) {
+                                        AppColors.TextSecondary
+                                    } else {
+                                        AppColors.TextTertiary.copy(alpha = 0.6f)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

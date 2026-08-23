@@ -1,5 +1,9 @@
 package com.kaynanamtv.app.ui.components
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -33,6 +38,12 @@ import androidx.tv.material3.Text
 import com.kaynanamtv.app.ui.design.AppColors
 import com.kaynanamtv.app.ui.interaction.TvButton
 
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ForcedUpdateDialog(
@@ -40,6 +51,20 @@ fun ForcedUpdateDialog(
     requiredVersionName: String = "1.0.67",
     onUpdateClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val exitApp: () -> Unit = {
+        val activity = context.findActivity()
+        if (activity != null) {
+            activity.finishAffinity()
+        } else {
+            kotlin.system.exitProcess(0)
+        }
+    }
+
+    BackHandler(enabled = true) {
+        exitApp()
+    }
+
     BasicAlertDialog(
         onDismissRequest = { /* Non-dismissible: cannot be dismissed via back button or outside click */ },
         properties = DialogProperties(
@@ -102,6 +127,23 @@ fun ForcedUpdateDialog(
                 ) {
                     Text(
                         text = "🚀 GÜNCELLE",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                TvButton(
+                    onClick = exitApp,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.colors(
+                        containerColor = Color(0xFF3F1D1D).copy(alpha = 0.6f),
+                        focusedContainerColor = Color(0xFFDC2626),
+                        contentColor = Color(0xFFFCA5A5),
+                        focusedContentColor = Color.White
+                    )
+                ) {
+                    Text(
+                        text = "🚪 UYGULAMADAN ÇIK",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium
                     )

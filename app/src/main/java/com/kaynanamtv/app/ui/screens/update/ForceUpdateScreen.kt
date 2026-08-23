@@ -1,6 +1,8 @@
 package com.kaynanamtv.app.ui.screens.update
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -43,15 +45,29 @@ import com.kaynanamtv.app.ui.design.AppColors
 import com.kaynanamtv.app.ui.interaction.TvButton
 import com.kaynanamtv.app.update.AppUpdateDownloadStatus
 
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @Composable
 fun ForceUpdateScreen(
     viewModel: ForceUpdateViewModel = hiltViewModel()
 ) {
     val currentContext = LocalContext.current
+    val exitApp: () -> Unit = {
+        val activity = currentContext.findActivity()
+        if (activity != null) {
+            activity.finishAffinity()
+        } else {
+            kotlin.system.exitProcess(0)
+        }
+    }
 
     // ── Hard Block: Back button exits the app instead of bypassing force update ──
     BackHandler(enabled = true) {
-        (currentContext as? Activity)?.finishAffinity()
+        exitApp()
     }
     val remoteConfig by viewModel.remoteConfig.collectAsStateWithLifecycle()
     val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
@@ -313,23 +329,31 @@ fun ForceUpdateScreen(
 
                 // Exit App Button
                 TvButton(
-                    onClick = {
-                        (currentContext as? Activity)?.finishAffinity()
-                    },
+                    onClick = exitApp,
                     modifier = Modifier.fillMaxWidth(),
                     shape = ButtonDefaults.shape(RoundedCornerShape(12.dp)),
                     colors = ButtonDefaults.colors(
-                        containerColor = Color.Transparent,
-                        focusedContainerColor = Color(0xFF7F1D1D).copy(alpha = 0.5f),
-                        contentColor = Color(0xFF94A3B8),
-                        focusedContentColor = Color(0xFFFCA5A5)
+                        containerColor = Color(0xFF3F1D1D).copy(alpha = 0.6f),
+                        focusedContainerColor = Color(0xFFDC2626),
+                        contentColor = Color(0xFFFCA5A5),
+                        focusedContentColor = Color.White
+                    ),
+                    border = ButtonDefaults.border(
+                        border = androidx.tv.material3.Border(
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(12.dp)
+                        ),
+                        focusedBorder = androidx.tv.material3.Border(
+                            border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                            shape = RoundedCornerShape(12.dp)
+                        )
                     )
                 ) {
                     Text(
                         text = "🚪 UYGULAMADAN ÇIK",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(vertical = 2.dp)
+                        fontSize = 15.sp,
+                        modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
             }

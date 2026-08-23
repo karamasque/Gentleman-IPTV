@@ -35,6 +35,29 @@ internal suspend fun PlayerViewModel.persistPlaybackProgress() {
         )
         watchNextManager.refreshWatchNext()
         launcherRecommendationsManager.refreshRecommendations()
+
+        // Asynchronous non-blocking Cloud User State Sync (E2EE multi-device)
+        cloudUserStateSyncManager.recordPlaybackProgress(
+            providerId = currentProviderId,
+            contentId = currentContentId,
+            contentType = currentContentType,
+            positionMs = pos,
+            durationMs = dur,
+            seriesId = currentSeriesId,
+            seasonNumber = currentEpisode.value?.seasonNumber,
+            episodeNumber = currentEpisode.value?.episodeNumber,
+            forceCloudSync = false
+        )
+
+        // Trakt.tv scrobble pause/progress update (Fire-and-forget, zero traffic if disconnected)
+        val progressPercent = (pos.toFloat() / dur.toFloat() * 100f).coerceIn(0f, 100f)
+        traktRepository.scrobblePause(
+            title = playbackTitleFlow.value.ifBlank { "Unknown" },
+            contentType = currentContentType,
+            progressPercent = progressPercent,
+            seasonNumber = currentEpisode.value?.seasonNumber,
+            episodeNumber = currentEpisode.value?.episodeNumber
+        )
     }
 }
 

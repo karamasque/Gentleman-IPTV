@@ -103,7 +103,7 @@
      const val EPG = "epg"
      const val EPG_DESTINATION = "epg?categoryId={categoryId}&anchorTime={anchorTime}&favoritesOnly={favoritesOnly}"
      const val SETTINGS = "settings"
-     const val SETTINGS_DESTINATION = "settings?backupUri={backupUri}"
+     const val SETTINGS_DESTINATION = "settings?backupUri={backupUri}&initialSection={initialSection}"
      const val PLUGINS = "plugins"
      const val COMMUNITY_CHAT = "chat"
      const val PLAYER = "player"
@@ -184,8 +184,12 @@
      fun search(query: String? = null): String =
          if (query.isNullOrBlank()) SEARCH else "$SEARCH?query=${Uri.encode(query)}"
  
-     fun settings(backupUri: String? = null): String =
-         if (backupUri.isNullOrBlank()) SETTINGS else "$SETTINGS?backupUri=${Uri.encode(backupUri)}"
+     fun settings(backupUri: String? = null, initialSection: Int? = null): String {
+         val uriPart = if (backupUri.isNullOrBlank()) "" else "backupUri=${Uri.encode(backupUri)}"
+         val sectionPart = if (initialSection == null || initialSection < 0) "" else "initialSection=$initialSection"
+         val query = listOf(uriPart, sectionPart).filter { it.isNotBlank() }.joinToString("&")
+         return if (query.isBlank()) SETTINGS else "$SETTINGS?$query"
+     }
  
      fun player(
          streamUrl: String,
@@ -248,7 +252,6 @@
  internal fun safePlayerNavigationRequest(request: PlayerNavigationRequest?): PlayerNavigationRequest? =
      request?.takeIf { isStreamUrlSafe(it.streamUrl) }
  
- /** Navigate only when the current destination is fully resumed – prevents double-navigation during transitions. */
  private fun NavHostController.navigateIfResumed(route: String, builder: NavOptionsBuilder.() -> Unit = {}): Boolean {
      if (currentBackStackEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != true) return false
      navigate(route, builder)
@@ -516,6 +519,9 @@
                  onBack = { navController.popBackStack() },
                  onProviderAdded = {
                      navigateToStartupTarget(Routes.PROVIDER_SETUP)
+                 },
+                 onNavigateToMembership = {
+                     navController.navigate(Routes.settings(initialSection = 7))
                  }
              )
          }
@@ -696,10 +702,12 @@
          composable(
              route = Routes.SETTINGS_DESTINATION,
              arguments = listOf(
-                 navArgument("backupUri") { type = NavType.StringType; defaultValue = "" }
+                 navArgument("backupUri") { type = NavType.StringType; defaultValue = "" },
+                 navArgument("initialSection") { type = NavType.IntType; defaultValue = -1 }
              )
          ) { backStackEntry ->
              val backupUri = backStackEntry.arguments?.getString("backupUri")?.takeIf { it.isNotBlank() }
+             val initialSection = backStackEntry.arguments?.getInt("initialSection")?.takeIf { it >= 0 }
              SettingsScreen(
                  onNavigate = { route -> tabNavigate(route) },
                  onAddProvider = dropUnlessResumed {
@@ -717,7 +725,8 @@
                      }
                  },
                  currentRoute = Routes.SETTINGS,
-                 initialBackupImportUri = backupUri
+                 initialBackupImportUri = backupUri,
+                 initialSection = initialSection
              )
          }
  

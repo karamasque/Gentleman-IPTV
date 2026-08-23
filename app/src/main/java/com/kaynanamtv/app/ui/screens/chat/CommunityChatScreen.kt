@@ -2006,7 +2006,7 @@ private fun getBadgeStyle(badgeText: String): BadgeStyle {
             borderColor = Color(0xFF34D399),
             textColor = Color(0xFFA7F3D0)
         )
-        badgeText.contains("Deneme") -> BadgeStyle(
+        badgeText.contains("Ücretsiz") || badgeText.contains("Free") || badgeText.contains("Deneme") -> BadgeStyle(
             backgroundColor = Color(0xFF0D9488).copy(alpha = 0.25f),
             borderColor = Color(0xFF2DD4BF),
             textColor = Color(0xFFCCFBF1)

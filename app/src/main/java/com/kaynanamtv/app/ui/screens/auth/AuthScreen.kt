@@ -497,7 +497,7 @@ private fun EmailAuthFormCard(
             // Info notice about free trial
             if (!uiState.isLoginTab) {
                 Text(
-                    text = "Kayıt olan her hesaba 7 gün ücretsiz tam sürüm deneme otomatik tanımlanır.",
+                    text = "Kayıt olan tüm hesaplar Canlı TV, film ve dizi yayınlarını süresiz olarak Ücretsiz izleyebilir.",
                     style = MaterialTheme.typography.bodySmall,
                     color = AppColors.TextTertiary,
                     textAlign = TextAlign.Center,

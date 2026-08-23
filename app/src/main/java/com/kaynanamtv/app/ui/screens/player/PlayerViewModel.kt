@@ -116,6 +116,8 @@ class PlayerViewModel @Inject constructor(
     private val downloadManager: DownloadManager,
     internal val okHttpClient: OkHttpClient,
     internal val playerEngineFactory: com.kaynanamtv.player.PlayerEngineFactory,
+    internal val cloudUserStateSyncManager: com.kaynanamtv.data.sync.CloudUserStateSyncManager,
+    internal val traktRepository: com.kaynanamtv.domain.repository.TraktRepository,
 ) : ViewModel() {
     companion object {
         private const val MAX_PROGRAM_HISTORY_ITEMS = 18
@@ -1056,6 +1058,8 @@ class PlayerViewModel @Inject constructor(
 
     internal fun beginPlaybackSession(): Long {
         recoveryJob?.cancel()
+        zapDebounceJob?.cancel()
+        zapDebounceJob = null
         thumbnailPreloadJob?.cancel()
         stopLiveTranslationSession()
         hasRetriedXtreamAuthRefresh = false

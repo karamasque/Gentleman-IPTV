@@ -98,44 +98,29 @@ internal fun PlayerViewModel.applyPrepareSessionState(
     applyDefaultPlaybackTimersIfNeeded()
 
     if (currentContentType != ContentType.LIVE) {
+        playlistJob?.cancel()
+        playlistJob = null
+        channelList = emptyList()
+        currentChannelFlowList.value = emptyList()
         previousChannelIndex = -1
         currentChannelIndex = -1
         currentChannelFlow.value = null
+        zapDebounceJob?.cancel()
+        zapDebounceJob = null
         zapBufferWatchdogJob?.cancel()
         zapBufferWatchdogJob = null
         recoveryJob?.cancel()
         recoveryJob = null
-        livePreviewHandoffManager.stopAndClearAll()
-    }
-
-    if (currentContentType == ContentType.LIVE && currentCombinedProfileId != null) {
-        val activeCombinedProfileId = currentCombinedProfileId
-        viewModelScope.launch {
-            val members = activeCombinedProfileId?.let { combinedM3uRepository.getProfile(it)?.members }.orEmpty()
-            if (currentCombinedProfileId == activeCombinedProfileId) {
-                currentCombinedProfileMembers = members
-            }
-        }
-    } else {
-        currentCombinedProfileMembers = emptyList()
-        combinedCategoriesById = emptyMap()
-    }
-
-    if (!hasArchiveRequest) {
-        pendingCatchUpUrls = emptyList()
-    }
-    if (currentContentType != ContentType.SERIES_EPISODE || providerId <= 0 || currentSeriesId == null) {
-        clearSeriesEpisodeContext()
-    }
-    if (currentContentType != ContentType.LIVE) {
-        lastRecordedLivePlaybackKey = null
+        epgJob?.cancel()
+        epgJob = null
+        activeEpgRequestKey = null
+        showZapOverlayFlow.value = false
         recentChannelsJob?.cancel()
         recentChannelsFlow.value = emptyList()
         lastVisitedCategoryJob?.cancel()
         _lastVisitedCategory.value = null
-        currentChannelFlow.value = null
-        currentChannelIndex = -1
-        previousChannelIndex = -1
+        lastRecordedLivePlaybackKey = null
+        livePreviewHandoffManager.stopAndClearAll()
         playerEngine.stopLiveTimeshift()
     }
 
