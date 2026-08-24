@@ -105,7 +105,7 @@ class ProviderRepositoryImpl @Inject constructor(
 
     init {
         try {
-            FirebaseAuth.getInstance().addAuthStateListener { firebaseAuth ->
+            val authListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
                 val user = firebaseAuth.currentUser
                 val uid = user?.uid
                 Log.i("ProviderRepository", "[AUTH_STATE_CHANGED] user=${user?.email} uid=$uid")
@@ -115,141 +115,160 @@ class ProviderRepositoryImpl @Inject constructor(
                 if (user != null) {
                     val currentUid = user.uid
                     Log.i("ProviderRepository", "[CURRENT_UID] $currentUid")
-                    Log.i("ProviderRepository", "[PROVIDER_CLOUD_LISTENER_START] Starting Firestore snapshot listener for uid=$currentUid")
-                    val firestore = FirebaseFirestore.getInstance()
-                    firestoreListenerRegistration = firestore.collection("users").document(currentUid)
-                        .collection("providers").addSnapshotListener { snapshot, error ->
-                            if (error != null) {
-                                Log.e("ProviderRepository", "[FIRESTORE_SNAPSHOT_ERROR] Firestore listener error: ${error.message}", error)
-                                return@addSnapshotListener
-                            }
-                            if (snapshot != null) {
-                                val remoteDocCount = snapshot.documents.size
-                                Log.i("ProviderRepository", "[FIRESTORE_SNAPSHOT_RECEIVED] docCount=$remoteDocCount")
-                                Log.i("ProviderRepository", "[REMOTE_DOC_COUNT] $remoteDocCount")
-                                repositoryScope.launch {
-                                    try {
-                                        val persistentDeletedIds = preferencesRepository.getDeletedProviderIdsSync()
-                                        val tombstonedIds = persistentDeletedIds + pendingDeletedProviderIds
-                                        val remoteList = snapshot.documents.mapNotNull { it.data }
-                                        val localEntities = providerDao.getAllForAccountSync(currentUid)
-                                        
-                                        // 1. Sync from Local to Firestore (Upload missing local providers owned by this user)
-                                        val remoteIds = remoteList.mapNotNull { 
-                                            (it["id"] as? Long ?: (it["id"] as? String)?.toLongOrNull())?.toString() 
-                                        }
-                                        localEntities.forEach { entity ->
-                                            if (entity.accountUid == currentUid && entity.id.toString() !in remoteIds && entity.id !in tombstonedIds) {
-                                                val cleartextPassword = try {
-                                                    credentialCrypto.decryptIfNeeded(entity.password)
-                                                } catch (e: Exception) {
-                                                    ""
-                                                }
-                                                val provider = entity.toPublicDomain().copy(password = cleartextPassword)
-                                                syncProviderToFirestore(provider)
-                                            }
-                                        }
-                                        
-                                        // 2. Sync from Firestore to Local (Download missing remote providers)
-                                        val localIds = localEntities.map { it.id.toString() }
+                    startFirestoreSnapshotListener(currentUid)
+                }
+            }
+            FirebaseAuth.getInstance().addAuthStateListener(authListener)
+        } catch (e: Exception) {
+            Log.e("ProviderRepository", "Failed to register AuthStateListener", e)
+        }
+    }
 
-                                        remoteList.forEach { providerData ->
-                                            val idStr = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull())?.toString() ?: return@forEach
-                                            val idLong = idStr.toLongOrNull() ?: return@forEach
-                                            Log.i("ProviderRepository", "[REMOTE_PROVIDER_ID] idLong=$idLong localExists=${idStr in localIds} tombstoned=${idLong in tombstonedIds}")
-                                            if (idStr !in localIds && idLong !in tombstonedIds) {
-                                                val typeStr = providerData["type"] as? String ?: return@forEach
-                                                val type = try { ProviderType.valueOf(typeStr) } catch (e: Exception) { 
-                                                    Log.e("ProviderRepository", "Unknown provider type: $typeStr", e)
-                                                    return@forEach 
-                                                }
-                                                val rawRemotePassword = providerData["password"] as? String ?: ""
-                                                Log.i("ProviderRepository", "[E2EE_DECRYPT_START] id=$idLong isEncrypted=${rawRemotePassword.startsWith("enc:v2:")}")
-                                                val cleartextPassword = try {
-                                                    val decrypted = accountE2eeCrypto.decryptForAccount(rawRemotePassword, currentUid)
-                                                    Log.i("ProviderRepository", "[E2EE_DECRYPT_SUCCESS] id=$idLong")
-                                                    decrypted
-                                                } catch (e: Exception) {
-                                                    Log.e("ProviderRepository", "[E2EE_DECRYPT_FAIL] id=$idLong error=${e.message}", e)
-                                                    rawRemotePassword
-                                                }
-                                                val provider = Provider(
-                                                    id = idLong,
-                                                    accountUid = currentUid,
-                                                    name = providerData["name"] as? String ?: "",
-                                                    type = type,
-                                                    serverUrl = providerData["serverUrl"] as? String ?: "",
-                                                    username = providerData["username"] as? String ?: "",
-                                                    password = cleartextPassword,
-                                                    m3uUrl = providerData["m3uUrl"] as? String ?: "",
-                                                    epgUrl = providerData["epgUrl"] as? String ?: "",
-                                                    httpUserAgent = providerData["httpUserAgent"] as? String ?: "",
-                                                    httpHeaders = providerData["httpHeaders"] as? String ?: "",
-                                                    stalkerMacAddress = providerData["stalkerMacAddress"] as? String ?: "",
-                                                    stalkerDeviceProfile = providerData["stalkerDeviceProfile"] as? String ?: "",
-                                                    stalkerDeviceTimezone = providerData["stalkerDeviceTimezone"] as? String ?: "",
-                                                    stalkerDeviceLocale = providerData["stalkerDeviceLocale"] as? String ?: "",
-                                                    stalkerSerialNumber = providerData["stalkerSerialNumber"] as? String ?: "",
-                                                    stalkerDeviceId = providerData["stalkerDeviceId"] as? String ?: "",
-                                                    stalkerDeviceId2 = providerData["stalkerDeviceId2"] as? String ?: "",
-                                                    stalkerSignature = providerData["stalkerSignature"] as? String ?: "",
-                                                    stalkerAdvancedOptionsJson = providerData["stalkerAdvancedOptionsJson"] as? String ?: "",
-                                                    stalkerAuthMode = StalkerAuthMode.valueOf(providerData["stalkerAuthMode"] as? String ?: "AUTO"),
-                                                    stalkerPortalProfile = StalkerPortalProfile.valueOf(providerData["stalkerPortalProfile"] as? String ?: "MAG_BASIC"),
-                                                    stalkerPortalFingerprint = StalkerPortalFingerprint.valueOf(providerData["stalkerPortalFingerprint"] as? String ?: "BASIC_MAC"),
-                                                    stalkerMagPreset = StalkerMagPreset.valueOf(providerData["stalkerMagPreset"] as? String ?: "GENERIC_SAFE"),
-                                                    stalkerLastBootstrapRecipe = StalkerBootstrapRecipe.valueOf(providerData["stalkerLastBootstrapRecipe"] as? String ?: "GENERIC_SAFE"),
-                                                    stalkerEndpointPreference = StalkerEndpointPreference.valueOf(providerData["stalkerEndpointPreference"] as? String ?: "AUTO"),
-                                                    stalkerCookieMode = StalkerCookieMode.valueOf(providerData["stalkerCookieMode"] as? String ?: "NONE"),
-                                                    stalkerPlaybackBackendHint = StalkerPlaybackBackendHint.valueOf(providerData["stalkerPlaybackBackendHint"] as? String ?: "AUTO"),
-                                                    stalkerLastPlaybackMode = providerData["stalkerLastPlaybackMode"] as? String,
-                                                    stalkerCredentialsRequired = providerData["stalkerCredentialsRequired"] as? Boolean ?: false,
-                                                    stalkerMacRequired = providerData["stalkerMacRequired"] as? Boolean ?: true,
-                                                    stalkerUsesTemporaryLinks = providerData["stalkerUsesTemporaryLinks"] as? Boolean ?: false,
-                                                    stalkerModuleRestricted = providerData["stalkerModuleRestricted"] as? Boolean ?: false,
-                                                    stalkerStrictFingerprintRequired = providerData["stalkerStrictFingerprintRequired"] as? Boolean ?: false,
-                                                    stalkerRecipeFallbackUsed = providerData["stalkerRecipeFallbackUsed"] as? Boolean ?: false,
-                                                    stalkerRecipeRediscoveryAttempts = (providerData["stalkerRecipeRediscoveryAttempts"] as? Long)?.toInt() ?: 0,
-                                                    isActive = providerData["isActive"] as? Boolean ?: true,
-                                                    maxConnections = (providerData["maxConnections"] as? Long)?.toInt() ?: 1,
-                                                    expirationDate = providerData["expirationDate"] as? Long,
-                                                    apiVersion = providerData["apiVersion"] as? String,
-                                                    allowedOutputFormats = providerData["allowedOutputFormats"] as? List<String> ?: emptyList(),
-                                                    epgSyncMode = ProviderEpgSyncMode.valueOf(providerData["epgSyncMode"] as? String ?: "UPFRONT"),
-                                                    guideSourcePolicy = GuideSourcePolicy.valueOf(providerData["guideSourcePolicy"] as? String ?: "AUTO"),
-                                                    channelLogoSourcePolicy = ChannelLogoSourcePolicy.valueOf(providerData["channelLogoSourcePolicy"] as? String ?: "SUPPLIER_PREFERRED"),
-                                                    xtreamFastSyncEnabled = providerData["xtreamFastSyncEnabled"] as? Boolean ?: true,
-                                                    xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.valueOf(providerData["xtreamLiveSyncMode"] as? String ?: "AUTO"),
-                                                    m3uVodClassificationEnabled = providerData["m3uVodClassificationEnabled"] as? Boolean ?: false,
-                                                    status = ProviderStatus.valueOf(providerData["status"] as? String ?: "UNKNOWN"),
-                                                    lastSyncedAt = providerData["lastSyncedAt"] as? Long ?: 0L,
-                                                    createdAt = providerData["createdAt"] as? Long ?: System.currentTimeMillis()
-                                                )
-                                                Log.i("ProviderRepository", "[ROOM_UPSERT_START] id=$idLong accountUid=$currentUid name=${provider.name}")
-                                                try {
-                                                    providerDao.insert(provider.toSecureEntity())
-                                                    Log.i("ProviderRepository", "[ROOM_UPSERT_SUCCESS] id=$idLong")
-                                                } catch (e: Exception) {
-                                                    Log.e("ProviderRepository", "[ROOM_UPSERT_FAIL] id=$idLong error=${e.message}", e)
-                                                }
-                                                repositoryScope.launch {
-                                                    syncManager.sync(provider.id, force = false)
-                                                }
-                                            }
-                                        }
-                                        val roomCount = providerDao.getAllForAccountSync(currentUid).size
-                                        Log.i("ProviderRepository", "[ROOM_PROVIDER_COUNT_FOR_UID] uid=$currentUid count=$roomCount")
-                                    } catch (e: Exception) {
-                                        Log.e("ProviderRepository", "Failed to sync local providers inside snapshot listener", e)
-                                    }
+    private fun startFirestoreSnapshotListener(currentUid: String) {
+        firestoreListenerRegistration?.remove()
+        val firestore = FirebaseFirestore.getInstance()
+        Log.i("ProviderRepository", "[PROVIDER_CLOUD_LISTENER_START] Starting Firestore snapshot listener for uid=$currentUid")
+        firestoreListenerRegistration = firestore.collection("users").document(currentUid)
+            .collection("providers").addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("ProviderRepository", "[FIRESTORE_SNAPSHOT_ERROR] Firestore listener error: ${error.message}", error)
+                    if (error.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                        repositoryScope.launch {
+                            kotlinx.coroutines.delay(2000)
+                            val currentUser = FirebaseAuth.getInstance().currentUser
+                            if (currentUser?.uid == currentUid) {
+                                currentUser.getIdToken(true).addOnSuccessListener {
+                                    Log.i("ProviderRepository", "[AUTH_TOKEN_REFRESHED] Retrying Firestore snapshot listener for uid=$currentUid")
+                                    startFirestoreSnapshotListener(currentUid)
                                 }
                             }
                         }
+                    }
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    val remoteDocCount = snapshot.documents.size
+                    Log.i("ProviderRepository", "[FIRESTORE_SNAPSHOT_RECEIVED] docCount=$remoteDocCount")
+                    Log.i("ProviderRepository", "[REMOTE_DOC_COUNT] $remoteDocCount")
+                    repositoryScope.launch {
+                        try {
+                            val persistentDeletedIds = preferencesRepository.getDeletedProviderIdsSync()
+                            val tombstonedIds = persistentDeletedIds + pendingDeletedProviderIds
+                            val remoteList = snapshot.documents.mapNotNull { it.data }
+                            val localEntities = providerDao.getAllForAccountSync(currentUid)
+                            
+                            // 1. Sync from Local to Firestore (Upload missing local providers owned by this user)
+                            val remoteIds = remoteList.mapNotNull { 
+                                (it["id"] as? Long ?: (it["id"] as? String)?.toLongOrNull())?.toString() 
+                            }
+                            val unassignedEntities = providerDao.getAllForAccountSync(null)
+                            (localEntities + unassignedEntities).distinctBy { it.id }.forEach { entity ->
+                                if (entity.id.toString() !in remoteIds && entity.id !in tombstonedIds) {
+                                    val cleartextPassword = try {
+                                        credentialCrypto.decryptIfNeeded(entity.password)
+                                    } catch (e: Exception) {
+                                        ""
+                                    }
+                                    val provider = entity.toPublicDomain().copy(password = cleartextPassword, accountUid = currentUid)
+                                    syncProviderToFirestore(provider)
+                                }
+                            }
+                            
+                            // 2. Sync from Firestore to Local (Download missing remote providers)
+                            val localIds = localEntities.map { it.id.toString() }
+
+                            remoteList.forEach { providerData ->
+                                val idStr = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull())?.toString() ?: return@forEach
+                                val idLong = idStr.toLongOrNull() ?: return@forEach
+                                Log.i("ProviderRepository", "[REMOTE_PROVIDER_ID] idLong=$idLong localExists=${idStr in localIds} tombstoned=${idLong in tombstonedIds}")
+                                if (idStr !in localIds && idLong !in tombstonedIds) {
+                                    val typeStr = providerData["type"] as? String ?: return@forEach
+                                    val type = try { ProviderType.valueOf(typeStr) } catch (e: Exception) { 
+                                        Log.e("ProviderRepository", "Unknown provider type: $typeStr", e)
+                                        return@forEach 
+                                    }
+                                    val rawRemotePassword = providerData["password"] as? String ?: ""
+                                    Log.i("ProviderRepository", "[E2EE_DECRYPT_START] id=$idLong isEncrypted=${rawRemotePassword.startsWith("enc:v2:")}")
+                                    val cleartextPassword = try {
+                                        val decrypted = accountE2eeCrypto.decryptForAccount(rawRemotePassword, currentUid)
+                                        Log.i("ProviderRepository", "[E2EE_DECRYPT_SUCCESS] id=$idLong")
+                                        decrypted
+                                    } catch (e: Exception) {
+                                        Log.e("ProviderRepository", "[E2EE_DECRYPT_FAIL] id=$idLong error=${e.message}", e)
+                                        rawRemotePassword
+                                    }
+                                    val provider = Provider(
+                                        id = idLong,
+                                        accountUid = currentUid,
+                                        name = providerData["name"] as? String ?: "",
+                                        type = type,
+                                        serverUrl = providerData["serverUrl"] as? String ?: "",
+                                        username = providerData["username"] as? String ?: "",
+                                        password = cleartextPassword,
+                                        m3uUrl = providerData["m3uUrl"] as? String ?: "",
+                                        epgUrl = providerData["epgUrl"] as? String ?: "",
+                                        httpUserAgent = providerData["httpUserAgent"] as? String ?: "",
+                                        httpHeaders = providerData["httpHeaders"] as? String ?: "",
+                                        stalkerMacAddress = providerData["stalkerMacAddress"] as? String ?: "",
+                                        stalkerDeviceProfile = providerData["stalkerDeviceProfile"] as? String ?: "",
+                                        stalkerDeviceTimezone = providerData["stalkerDeviceTimezone"] as? String ?: "",
+                                        stalkerDeviceLocale = providerData["stalkerDeviceLocale"] as? String ?: "",
+                                        stalkerSerialNumber = providerData["stalkerSerialNumber"] as? String ?: "",
+                                        stalkerDeviceId = providerData["stalkerDeviceId"] as? String ?: "",
+                                        stalkerDeviceId2 = providerData["stalkerDeviceId2"] as? String ?: "",
+                                        stalkerSignature = providerData["stalkerSignature"] as? String ?: "",
+                                        stalkerAdvancedOptionsJson = providerData["stalkerAdvancedOptionsJson"] as? String ?: "",
+                                        stalkerAuthMode = StalkerAuthMode.valueOf(providerData["stalkerAuthMode"] as? String ?: "AUTO"),
+                                        stalkerPortalProfile = StalkerPortalProfile.valueOf(providerData["stalkerPortalProfile"] as? String ?: "MAG_BASIC"),
+                                        stalkerPortalFingerprint = StalkerPortalFingerprint.valueOf(providerData["stalkerPortalFingerprint"] as? String ?: "BASIC_MAC"),
+                                        stalkerMagPreset = StalkerMagPreset.valueOf(providerData["stalkerMagPreset"] as? String ?: "GENERIC_SAFE"),
+                                        stalkerLastBootstrapRecipe = StalkerBootstrapRecipe.valueOf(providerData["stalkerLastBootstrapRecipe"] as? String ?: "GENERIC_SAFE"),
+                                        stalkerEndpointPreference = StalkerEndpointPreference.valueOf(providerData["stalkerEndpointPreference"] as? String ?: "AUTO"),
+                                        stalkerCookieMode = StalkerCookieMode.valueOf(providerData["stalkerCookieMode"] as? String ?: "NONE"),
+                                        stalkerPlaybackBackendHint = StalkerPlaybackBackendHint.valueOf(providerData["stalkerPlaybackBackendHint"] as? String ?: "AUTO"),
+                                        stalkerLastPlaybackMode = providerData["stalkerLastPlaybackMode"] as? String,
+                                        stalkerCredentialsRequired = providerData["stalkerCredentialsRequired"] as? Boolean ?: false,
+                                        stalkerMacRequired = providerData["stalkerMacRequired"] as? Boolean ?: true,
+                                        stalkerUsesTemporaryLinks = providerData["stalkerUsesTemporaryLinks"] as? Boolean ?: false,
+                                        stalkerModuleRestricted = providerData["stalkerModuleRestricted"] as? Boolean ?: false,
+                                        stalkerStrictFingerprintRequired = providerData["stalkerStrictFingerprintRequired"] as? Boolean ?: false,
+                                        stalkerRecipeFallbackUsed = providerData["stalkerRecipeFallbackUsed"] as? Boolean ?: false,
+                                        stalkerRecipeRediscoveryAttempts = (providerData["stalkerRecipeRediscoveryAttempts"] as? Long)?.toInt() ?: 0,
+                                        isActive = providerData["isActive"] as? Boolean ?: true,
+                                        maxConnections = (providerData["maxConnections"] as? Long)?.toInt() ?: 1,
+                                        expirationDate = providerData["expirationDate"] as? Long,
+                                        apiVersion = providerData["apiVersion"] as? String,
+                                        allowedOutputFormats = providerData["allowedOutputFormats"] as? List<String> ?: emptyList(),
+                                        epgSyncMode = ProviderEpgSyncMode.valueOf(providerData["epgSyncMode"] as? String ?: "UPFRONT"),
+                                        guideSourcePolicy = GuideSourcePolicy.valueOf(providerData["guideSourcePolicy"] as? String ?: "AUTO"),
+                                        channelLogoSourcePolicy = ChannelLogoSourcePolicy.valueOf(providerData["channelLogoSourcePolicy"] as? String ?: "SUPPLIER_PREFERRED"),
+                                        xtreamFastSyncEnabled = providerData["xtreamFastSyncEnabled"] as? Boolean ?: true,
+                                        xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.valueOf(providerData["xtreamLiveSyncMode"] as? String ?: "AUTO"),
+                                        m3uVodClassificationEnabled = providerData["m3uVodClassificationEnabled"] as? Boolean ?: false,
+                                        status = ProviderStatus.valueOf(providerData["status"] as? String ?: "UNKNOWN"),
+                                        lastSyncedAt = providerData["lastSyncedAt"] as? Long ?: 0L,
+                                        createdAt = providerData["createdAt"] as? Long ?: System.currentTimeMillis()
+                                    )
+                                    Log.i("ProviderRepository", "[ROOM_UPSERT_START] id=$idLong accountUid=$currentUid name=${provider.name}")
+                                    try {
+                                        providerDao.insert(provider.toSecureEntity())
+                                        Log.i("ProviderRepository", "[ROOM_UPSERT_SUCCESS] id=$idLong")
+                                    } catch (e: Exception) {
+                                        Log.e("ProviderRepository", "[ROOM_UPSERT_FAIL] id=$idLong error=${e.message}", e)
+                                    }
+                                    repositoryScope.launch {
+                                        syncManager.sync(provider.id, force = false)
+                                    }
+                                }
+                            }
+                            val roomCount = providerDao.getAllForAccountSync(currentUid).size
+                            Log.i("ProviderRepository", "[ROOM_PROVIDER_COUNT_FOR_UID] uid=$currentUid count=$roomCount")
+                        } catch (e: Exception) {
+                            Log.e("ProviderRepository", "Error processing Firestore snapshot", e)
+                        }
+                    }
                 }
             }
-        } catch (e: Exception) {
-            Log.e("ProviderRepository", "Firebase auth listener setup failed", e)
-        }
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -1532,7 +1551,10 @@ class ProviderRepositoryImpl @Inject constructor(
     private fun syncProviderIdToFirestore(providerId: Long) {
         repositoryScope.launch {
             runCatching {
-                val entity = providerDao.getById(providerId) ?: return@launch
+                val entity = providerDao.getById(providerId) ?: run {
+                    Log.w("ProviderRepository", "[CLOUD_UPLOAD_FAIL] id=$providerId not found in Room")
+                    return@launch
+                }
                 val cleartextPassword = try {
                     credentialCrypto.decryptIfNeeded(entity.password)
                 } catch (e: Exception) {
@@ -1541,19 +1563,32 @@ class ProviderRepositoryImpl @Inject constructor(
                 val provider = entity.toPublicDomain().copy(password = cleartextPassword)
                 syncProviderToFirestore(provider)
             }.onFailure { throwable ->
-                logger.warning("Firestore provider sync failed for $providerId: ${throwable.message}")
+                Log.e("ProviderRepository", "[CLOUD_UPLOAD_FAIL] id=$providerId error=${throwable.message}", throwable)
             }
         }
     }
 
     private suspend fun syncProviderToFirestore(provider: Provider) {
-        val user = FirebaseAuth.getInstance().currentUser ?: return
-        // Cloud Sync Guard: Strict ownership invariant
-        if (provider.accountUid != null && provider.accountUid != user.uid) {
-            Log.w("ProviderRepository", "Blocked cloud sync: Provider ${provider.id} owned by ${provider.accountUid}, but current user is ${user.uid}")
+        val user = FirebaseAuth.getInstance().currentUser
+        if (user == null) {
+            Log.i("ProviderRepository", "[CLOUD_UPLOAD_SKIP] No authenticated Firebase user for provider id=${provider.id}")
             return
         }
+        val targetUid = user.uid
+        if (provider.accountUid != null && provider.accountUid != targetUid) {
+            Log.w("ProviderRepository", "[CLOUD_UPLOAD_BLOCKED] Provider ${provider.id} owned by ${provider.accountUid}, but current user is $targetUid")
+            return
+        }
+        // If provider in Room had null accountUid, bind it to current user
+        if (provider.accountUid == null) {
+            val entity = providerDao.getById(provider.id)
+            if (entity != null && entity.accountUid == null) {
+                providerDao.update(entity.copy(accountUid = targetUid))
+            }
+        }
         val firestore = FirebaseFirestore.getInstance()
+        Log.i("ProviderRepository", "[CLOUD_UPLOAD_START] id=${provider.id} uid=$targetUid")
+        Log.i("ProviderRepository", "[CLOUD_UPLOAD_PATH] users/$targetUid/providers/${provider.id}")
         try {
             val cleartextPassword = try {
                 credentialCrypto.decryptIfNeeded(provider.password)
@@ -1561,7 +1596,7 @@ class ProviderRepositoryImpl @Inject constructor(
                 provider.password
             }
             val accountEncryptedPassword = try {
-                accountE2eeCrypto.encryptForAccount(cleartextPassword, user.uid)
+                accountE2eeCrypto.encryptForAccount(cleartextPassword, targetUid)
             } catch (e: Exception) {
                 cleartextPassword
             }
@@ -1616,12 +1651,13 @@ class ProviderRepositoryImpl @Inject constructor(
                 "lastSyncedAt" to provider.lastSyncedAt,
                 "createdAt" to provider.createdAt
             )
-            firestore.collection("users").document(user.uid)
+            firestore.collection("users").document(targetUid)
                 .collection("providers").document(provider.id.toString())
                 .set(data).await()
-            Log.d("ProviderRepository", "Synced provider ${provider.id} to Firestore for uid=${user.uid}")
+            Log.i("ProviderRepository", "[CLOUD_UPLOAD_SUCCESS] id=${provider.id} path=users/$targetUid/providers/${provider.id}")
         } catch (e: Exception) {
-            Log.e("ProviderRepository", "Failed to sync provider ${provider.id} to Firestore", e)
+            Log.e("ProviderRepository", "[CLOUD_UPLOAD_FAIL] id=${provider.id} error=${e.message}", e)
+            throw e
         }
     }
 
@@ -1690,7 +1726,9 @@ class ProviderRepositoryImpl @Inject constructor(
         }
         val deterministicId = generateDeterministicId(boundProvider)
         val providerWithId = boundProvider.copy(id = deterministicId)
-        return providerDao.insert(providerWithId.toSecureEntity())
+        providerDao.insert(providerWithId.toSecureEntity())
+        Log.i("ProviderRepository", "[ROOM_UPSERT_SUCCESS] id=$deterministicId accountUid=${boundProvider.accountUid}")
+        return deterministicId
     }
 }
 

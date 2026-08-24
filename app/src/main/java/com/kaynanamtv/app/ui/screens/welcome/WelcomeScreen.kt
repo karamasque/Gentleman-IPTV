@@ -116,7 +116,22 @@ class WelcomeViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            checkTrial()
+            authRepository.getSessionFlow().collect { session ->
+                val prevStatus = _trialStatus.value
+                val newStatus = if (session == null) {
+                    TrialStatus.NO_SESSION
+                } else {
+                    TrialStatus.ACTIVE
+                }
+                android.util.Log.i(
+                    "WelcomeViewModel",
+                    "[AUTH_STATE_CHANGED] ${if (session == null) "null" else session.userId} [WELCOME_SESSION_REFRESH ${session?.userId}] [TRIAL_STATUS BEFORE = $prevStatus] [TRIAL_STATUS AFTER = $newStatus]"
+                )
+                _trialStatus.value = newStatus
+                if (session != null && _hasProviders.value != true) {
+                    checkForCloudProviders()
+                }
+            }
         }
         viewModelScope.launch {
             launch {
@@ -126,7 +141,7 @@ class WelcomeViewModel @Inject constructor(
                 .map { it.isNotEmpty() }
                 .collect { hasLocal ->
                     _hasProviders.value = hasLocal
-                    if (hasLocal == false) {
+                    if (hasLocal == false && _trialStatus.value != TrialStatus.NO_SESSION) {
                         checkForCloudProviders()
                     }
                 }
@@ -195,6 +210,7 @@ class WelcomeViewModel @Inject constructor(
                     }
                     val provider = com.kaynanamtv.domain.model.Provider(
                         id = idVal,
+                        accountUid = userUid.ifBlank { null },
                         name = providerData["name"] as String,
                         type = type,
                         serverUrl = providerData["serverUrl"] as? String ?: "",
@@ -380,6 +396,7 @@ fun WelcomeScreen(
                         while (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
                             kotlinx.coroutines.delay(50)
                         }
+                        android.util.Log.i("WelcomeScreen", "[WELCOME_NAVIGATION_ALLOWED = YES] [ROOM_PROVIDER_COUNT = ${if (hasProviders == true) 1 else 0}]")
                         onNavigateToHome()
                     }
                 }
