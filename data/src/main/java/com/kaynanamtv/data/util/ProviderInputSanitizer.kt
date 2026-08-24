@@ -62,6 +62,45 @@ object ProviderInputSanitizer {
         return raw
     }
 
+    /**
+     * Cleans Xtream server URLs by removing extraneous path segments like /player_api.php,
+     * /get.php, query parameters, fragments, or trailing slashes that users might paste.
+     */
+    fun cleanXtreamServerUrl(input: String): String {
+        var raw = sanitizeRaw(input, MAX_URL_LENGTH).trim()
+        val protocolMatch = URL_PROTOCOL_REGEX.find(raw)
+        if (protocolMatch != null) {
+            val prefix = protocolMatch.value.lowercase()
+            raw = prefix + raw.substring(protocolMatch.value.length)
+        }
+
+        // Strip query string and fragments if pasted in Xtream server URL field
+        if (raw.contains("?")) {
+            raw = raw.substringBefore("?")
+        }
+        if (raw.contains("#")) {
+            raw = raw.substringBefore("#")
+        }
+
+        val suffixesToRemove = listOf(
+            "/player_api.php",
+            "/player_api",
+            "/get.php",
+            "/xmltv.php",
+            "/c",
+            "/live",
+            "/movie",
+            "/series"
+        )
+        var cleaned = raw
+        for (suffix in suffixesToRemove) {
+            if (cleaned.endsWith(suffix, ignoreCase = true)) {
+                cleaned = cleaned.substring(0, cleaned.length - suffix.length)
+            }
+        }
+        return cleaned.trimEnd('/')
+    }
+
     suspend fun resolveUrlProtocol(url: String): String {
         // If the input already carries any scheme (http, https, file, content, …)
         // respect it — only schemeless input needs protocol probing. In particular

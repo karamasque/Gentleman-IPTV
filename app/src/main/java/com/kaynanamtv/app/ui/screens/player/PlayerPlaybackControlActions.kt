@@ -106,22 +106,10 @@ fun PlayerViewModel.dismissResumePrompt(resume: Boolean) {
 
 fun PlayerViewModel.play() {
     notifyUserActivity()
-    if (
-        currentContentType == ContentType.LIVE &&
-        timeshiftConfig.enabled &&
-        timeshiftUiState.value.engineState.status == LiveTimeshiftStatus.PAUSED_BEHIND_LIVE
-    ) {
-        playerEngine.resumeTimeshift()
-    } else {
-        playerEngine.play()
-    }
+    playerEngine.play()
 }
 
 fun PlayerViewModel.pause() {
     notifyUserActivity()
-    if (currentContentType == ContentType.LIVE && timeshiftConfig.enabled) {
-        playerEngine.pauseTimeshift()
-    } else {
-        playerEngine.pause()
-    }
+    playerEngine.pause()
 }

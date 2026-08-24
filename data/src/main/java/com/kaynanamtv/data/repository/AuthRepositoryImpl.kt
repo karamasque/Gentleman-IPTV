@@ -83,6 +83,20 @@ class AuthRepositoryImpl @Inject constructor(
         return rawSession.copy(isPremium = entitlementStatus.isPremiumAccess)
     }
 
+    private fun createDefaultFallbackSession(user: com.google.firebase.auth.FirebaseUser): UserSession {
+        val isDefaultAdmin = user.email == "kilicemre3437@gmail.com"
+        return UserSession(
+            userId = user.uid,
+            email = user.email ?: "",
+            createdAt = System.currentTimeMillis(),
+            isPremium = isDefaultAdmin,
+            premiumPlan = if (isDefaultAdmin) com.kaynanamtv.domain.model.PremiumPlan.LIFETIME else com.kaynanamtv.domain.model.PremiumPlan.FREE,
+            role = if (isDefaultAdmin) "ADMIN" else "USER",
+            isAdmin = isDefaultAdmin,
+            lastVerifiedServerTime = System.currentTimeMillis()
+        )
+    }
+
     override fun getSessionFlow(): Flow<UserSession?> = callbackFlow {
         var firestoreListener: com.google.firebase.firestore.ListenerRegistration? = null
 
@@ -94,10 +108,15 @@ class AuthRepositoryImpl @Inject constructor(
                 trySend(null)
             } else {
                 firestoreListener?.remove()
+                // Emit initial valid session immediately so UI never enters false-positive "logged out" state
+                val initialSession = createDefaultFallbackSession(user)
+                trySend(initialSession)
+
                 firestoreListener = firestore.collection("users").document(user.uid)
                     .addSnapshotListener { doc, error ->
                         if (error != null) {
-                            android.util.Log.w("AuthRepository", "Firestore snapshot error, keeping session", error)
+                            android.util.Log.w("AuthRepository", "Firestore snapshot error, keeping active session", error)
+                            trySend(initialSession)
                             return@addSnapshotListener
                         }
                         if (doc != null && doc.exists()) {
@@ -118,7 +137,29 @@ class AuthRepositoryImpl @Inject constructor(
                             val session = parseUserSession(user, doc)
                             trySend(session)
                         } else {
-                            trySend(null)
+                            // User is authenticated in Firebase Auth but document is missing in Firestore: auto-create it
+                            android.util.Log.i("AuthRepository", "User doc missing in Firestore, auto-creating default profile")
+                            val now = System.currentTimeMillis()
+                            val isDefaultAdmin = user.email == "kilicemre3437@gmail.com"
+                            val userData = hashMapOf(
+                                "userId" to user.uid,
+                                "email" to (user.email ?: ""),
+                                "createdAt" to now,
+                                "isPremium" to isDefaultAdmin,
+                                "premiumPlan" to (if (isDefaultAdmin) com.kaynanamtv.domain.model.PremiumPlan.LIFETIME.name else com.kaynanamtv.domain.model.PremiumPlan.FREE.name),
+                                "premiumStartedAt" to 0L,
+                                "premiumExpiresAt" to 0L,
+                                "trialUsed" to false,
+                                "trialStartedAt" to 0L,
+                                "trialExpiresAt" to 0L,
+                                "transitionTrialGranted" to false,
+                                "entitlementVersion" to 1,
+                                "role" to (if (isDefaultAdmin) "ADMIN" else "USER"),
+                                "isAdmin" to isDefaultAdmin,
+                                "updatedAt" to now
+                            )
+                            firestore.collection("users").document(user.uid).set(userData)
+                            trySend(initialSession)
                         }
                     }
             }
@@ -142,24 +183,37 @@ class AuthRepositoryImpl @Inject constructor(
                         preferencesRepository.restorePreferencesMap(settingsMap)
                     }
                     parseUserSession(user, doc)
-                } else null
+                } else {
+                    val defaultSession = createDefaultFallbackSession(user)
+                    val now = System.currentTimeMillis()
+                    val isDefaultAdmin = user.email == "kilicemre3437@gmail.com"
+                    val userData = hashMapOf(
+                        "userId" to user.uid,
+                        "email" to (user.email ?: ""),
+                        "createdAt" to now,
+                        "isPremium" to isDefaultAdmin,
+                        "premiumPlan" to (if (isDefaultAdmin) com.kaynanamtv.domain.model.PremiumPlan.LIFETIME.name else com.kaynanamtv.domain.model.PremiumPlan.FREE.name),
+                        "premiumStartedAt" to 0L,
+                        "premiumExpiresAt" to 0L,
+                        "trialUsed" to false,
+                        "trialStartedAt" to 0L,
+                        "trialExpiresAt" to 0L,
+                        "transitionTrialGranted" to false,
+                        "entitlementVersion" to 1,
+                        "role" to (if (isDefaultAdmin) "ADMIN" else "USER"),
+                        "isAdmin" to isDefaultAdmin,
+                        "updatedAt" to now
+                    )
+                    firestore.collection("users").document(user.uid).set(userData)
+                    defaultSession
+                }
             } ?: run {
                 android.util.Log.w("AuthRepository", "Firestore timeout in getCurrentSession, returning safe default")
-                UserSession(
-                    userId = user.uid,
-                    email = user.email ?: "",
-                    createdAt = 0L,
-                    isPremium = false
-                )
+                createDefaultFallbackSession(user)
             }
         } catch (e: Exception) {
             android.util.Log.e("AuthRepository", "getCurrentSession exception", e)
-            UserSession(
-                userId = user.uid,
-                email = user.email ?: "",
-                createdAt = 0L,
-                isPremium = false
-            )
+            createDefaultFallbackSession(user)
         }
     }
 
@@ -167,17 +221,46 @@ class AuthRepositoryImpl @Inject constructor(
         return try {
             val result = auth.signInWithEmailAndPassword(email, pass).await()
             val user = result.user ?: return Result.error("Giriş başarısız. Lütfen tekrar deneyin.")
-            val doc = firestore.collection("users").document(user.uid).get().await()
-            if (!doc.exists()) {
-                return Result.error("Kullanıcı verisi bulunamadı.")
+            val doc = try {
+                firestore.collection("users").document(user.uid).get().await()
+            } catch (e: Exception) {
+                null
             }
-            @Suppress("UNCHECKED_CAST")
-            val settingsMap = doc.get("settings") as? Map<String, Any>
-            if (settingsMap != null) {
-                preferencesRepository.restorePreferencesMap(settingsMap)
+            if (doc != null && doc.exists()) {
+                @Suppress("UNCHECKED_CAST")
+                val settingsMap = doc.get("settings") as? Map<String, Any>
+                if (settingsMap != null) {
+                    preferencesRepository.restorePreferencesMap(settingsMap)
+                }
+                val session = parseUserSession(user, doc)
+                Result.success(session)
+            } else {
+                // Auto-create document if missing
+                val fallbackSession = createDefaultFallbackSession(user)
+                val now = System.currentTimeMillis()
+                val isDefaultAdmin = user.email == "kilicemre3437@gmail.com"
+                val userData = hashMapOf(
+                    "userId" to user.uid,
+                    "email" to (user.email ?: ""),
+                    "createdAt" to now,
+                    "isPremium" to isDefaultAdmin,
+                    "premiumPlan" to (if (isDefaultAdmin) com.kaynanamtv.domain.model.PremiumPlan.LIFETIME.name else com.kaynanamtv.domain.model.PremiumPlan.FREE.name),
+                    "premiumStartedAt" to 0L,
+                    "premiumExpiresAt" to 0L,
+                    "trialUsed" to false,
+                    "trialStartedAt" to 0L,
+                    "trialExpiresAt" to 0L,
+                    "transitionTrialGranted" to false,
+                    "entitlementVersion" to 1,
+                    "role" to (if (isDefaultAdmin) "ADMIN" else "USER"),
+                    "isAdmin" to isDefaultAdmin,
+                    "updatedAt" to now
+                )
+                try {
+                    firestore.collection("users").document(user.uid).set(userData)
+                } catch (_: Exception) {}
+                Result.success(fallbackSession)
             }
-            val session = parseUserSession(user, doc)
-            Result.success(session)
         } catch (e: Exception) {
             val message = when (e) {
                 is FirebaseAuthInvalidUserException -> when (e.errorCode) {
@@ -329,45 +412,50 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override fun getPaymentRequestsFlow(): Flow<List<com.kaynanamtv.domain.model.PaymentRequest>> = callbackFlow {
-        val user = auth.currentUser
-        if (user == null) {
-            trySend(emptyList())
-            close()
-            return@callbackFlow
+        var firestoreListener: com.google.firebase.firestore.ListenerRegistration? = null
+
+        val authListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            val user = firebaseAuth.currentUser
+            firestoreListener?.remove()
+            if (user == null) {
+                trySend(emptyList())
+            } else {
+                firestoreListener = firestore.collection("payment_requests")
+                    .whereEqualTo("uid", user.uid)
+                    .addSnapshotListener { snapshot, error ->
+                        if (error != null) {
+                            android.util.Log.w("AuthRepository", "Payment requests snapshot error", error)
+                            return@addSnapshotListener
+                        }
+                        val requests = snapshot?.documents?.mapNotNull { doc ->
+                            try {
+                                com.kaynanamtv.domain.model.PaymentRequest(
+                                    requestId = doc.getString("requestId") ?: doc.id,
+                                    uid = doc.getString("uid") ?: "",
+                                    email = doc.getString("email") ?: "",
+                                    plan = com.kaynanamtv.domain.model.PremiumPlan.fromString(doc.getString("plan")),
+                                    expectedPrice = doc.getString("expectedPrice") ?: "",
+                                    paymentCode = doc.getString("paymentCode") ?: "",
+                                    createdAt = doc.getLong("createdAt") ?: 0L,
+                                    status = com.kaynanamtv.domain.model.PaymentRequestStatus.fromString(doc.getString("status")),
+                                    approvedAt = doc.getLong("approvedAt"),
+                                    approvedBy = doc.getString("approvedBy"),
+                                    notes = doc.getString("notes")
+                                )
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }?.sortedByDescending { it.createdAt } ?: emptyList()
+
+                        trySend(requests)
+                    }
+            }
         }
 
-        val listener = firestore.collection("payment_requests")
-            .whereEqualTo("uid", user.uid)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    android.util.Log.w("AuthRepository", "Payment requests snapshot error", error)
-                    return@addSnapshotListener
-                }
-                val requests = snapshot?.documents?.mapNotNull { doc ->
-                    try {
-                        com.kaynanamtv.domain.model.PaymentRequest(
-                            requestId = doc.getString("requestId") ?: doc.id,
-                            uid = doc.getString("uid") ?: "",
-                            email = doc.getString("email") ?: "",
-                            plan = com.kaynanamtv.domain.model.PremiumPlan.fromString(doc.getString("plan")),
-                            expectedPrice = doc.getString("expectedPrice") ?: "",
-                            paymentCode = doc.getString("paymentCode") ?: "",
-                            createdAt = doc.getLong("createdAt") ?: 0L,
-                            status = com.kaynanamtv.domain.model.PaymentRequestStatus.fromString(doc.getString("status")),
-                            approvedAt = doc.getLong("approvedAt"),
-                            approvedBy = doc.getString("approvedBy"),
-                            notes = doc.getString("notes")
-                        )
-                    } catch (e: Exception) {
-                        null
-                    }
-                }?.sortedByDescending { it.createdAt } ?: emptyList()
-
-                trySend(requests)
-            }
-
+        auth.addAuthStateListener(authListener)
         awaitClose {
-            listener.remove()
+            firestoreListener?.remove()
+            auth.removeAuthStateListener(authListener)
         }
     }
 

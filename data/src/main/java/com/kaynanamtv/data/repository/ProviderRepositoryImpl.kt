@@ -535,7 +535,7 @@ class ProviderRepositoryImpl @Inject constructor(
         onProgress: ((String) -> Unit)?,
         id: Long?
     ): Result<Provider> {
-        val normalizedServerUrl = ProviderInputSanitizer.normalizeUrl(serverUrl)
+        val normalizedServerUrl = ProviderInputSanitizer.cleanXtreamServerUrl(serverUrl)
         val normalizedUsername = ProviderInputSanitizer.normalizeUsername(username)
         val normalizedName = ProviderInputSanitizer.normalizeProviderName(name)
         val resolvedServerUrl = ProviderInputSanitizer.resolveUrlProtocol(normalizedServerUrl)

@@ -280,11 +280,13 @@ internal fun PlayerViewModel.executeChannelChange(index: Int, userInitiated: Boo
         previousChannelIndex = currentChannelIndex
     }
     val requestVersion = beginPlaybackSession()
+    android.util.Log.d("PlayerZapTrace", "[CHANNEL_ZAP_START] index=$index channelId=${channelList.getOrNull(index)?.id} sessionVersion=$requestVersion source=$source")
     releaseOutgoingLiveZapPlayback(
         stopPlayback = playerEngine::stop,
         stopLiveTimeshift = playerEngine::stopLiveTimeshift,
         clearPreload = { playerEngine.preload(null) }
     )
+    android.util.Log.d("PlayerZapTrace", "[OLD_MEDIA_SOURCE_RELEASED]")
     resetTimeshiftUiState()
     currentResolvedPlaybackUrl = ""
     currentResolvedStreamInfo = null

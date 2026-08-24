@@ -907,16 +907,18 @@ private fun getFreeTierFeatures(): List<FeatureComparisonItem> {
         )
     )
 
-    Feature.entries.forEach { feature ->
-        items.add(
-            FeatureComparisonItem(
-                title = feature.displayName,
-                description = feature.description,
-                isIncluded = EntitlementManager.canUseFeature(feature, isPremium = false),
-                feature = feature
+    Feature.entries
+        .filter { it != Feature.TIMESHIFT }
+        .forEach { feature ->
+            items.add(
+                FeatureComparisonItem(
+                    title = feature.displayName,
+                    description = feature.description,
+                    isIncluded = EntitlementManager.canUseFeature(feature, isPremium = false),
+                    feature = feature
+                )
             )
-        )
-    }
+        }
     return items
 }
 
@@ -930,16 +932,18 @@ private fun getPremiumTierFeatures(): List<FeatureComparisonItem> {
         )
     )
 
-    Feature.entries.forEach { feature ->
-        items.add(
-            FeatureComparisonItem(
-                title = feature.displayName,
-                description = feature.description,
-                isIncluded = EntitlementManager.canUseFeature(feature, isPremium = true),
-                feature = feature
+    Feature.entries
+        .filter { it != Feature.TIMESHIFT }
+        .forEach { feature ->
+            items.add(
+                FeatureComparisonItem(
+                    title = feature.displayName,
+                    description = feature.description,
+                    isIncluded = EntitlementManager.canUseFeature(feature, isPremium = true),
+                    feature = feature
+                )
             )
-        )
-    }
+        }
     return items
 }
 
@@ -1044,37 +1048,50 @@ private fun PlanFeatureBox(
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 features.forEach { item ->
+                    val isIncluded = item.isIncluded
+                    val iconText = when {
+                        !isIncluded -> "🔒"
+                        item.feature != null && isActive -> "🔓"
+                        isActive -> "✅"
+                        else -> "⭐"
+                    }
+                    val titleColor = if (isIncluded) AppColors.TextPrimary else AppColors.TextSecondary.copy(alpha = 0.6f)
+                    val descColor = if (isIncluded) AppColors.TextSecondary else AppColors.TextTertiary.copy(alpha = 0.5f)
+                    val fontWeight = if (isIncluded) FontWeight.SemiBold else FontWeight.Normal
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.Top,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = if (item.isIncluded) {
-                                if (accentColor == Color(0xFFFFD700)) "⭐" else "✅"
-                            } else "🔒",
-                            fontSize = 15.sp
+                            text = iconText,
+                            fontSize = 16.sp
                         )
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = item.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (item.isIncluded) {
-                                    AppColors.TextPrimary
-                                } else {
-                                    AppColors.TextSecondary.copy(alpha = 0.7f)
-                                },
-                                fontWeight = if (item.isIncluded) FontWeight.SemiBold else FontWeight.Normal
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = item.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = titleColor,
+                                    fontWeight = fontWeight
+                                )
+                                if (isActive && item.feature != null) {
+                                    StatusPill(
+                                        label = "AKTİF",
+                                        containerColor = Color(0xFFFFD700).copy(alpha = 0.2f),
+                                        contentColor = Color(0xFFFFD700)
+                                    )
+                                }
+                            }
                             if (!item.description.isNullOrBlank()) {
                                 Text(
                                     text = item.description,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = if (item.isIncluded) {
-                                        AppColors.TextSecondary
-                                    } else {
-                                        AppColors.TextTertiary.copy(alpha = 0.6f)
-                                    }
+                                    color = descColor
                                 )
                             }
                         }

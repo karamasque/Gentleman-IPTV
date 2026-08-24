@@ -747,20 +747,7 @@ fun PlayerScreen(
                             }
                             if (contentType == "LIVE" && !isCatchUpPlayback) {
                                 if (showControls) return@onKeyEvent false
-                                // Timeshift aktifken: LEFT = geri seek (timeline)
-                                if (timeshiftUiState.available && !showChannelListOverlay && !showCategoryListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
-                                    val repeatCount = event.nativeKeyEvent.repeatCount
-                                    val deltaMs = when {
-                                        repeatCount == 0 -> 30_000L
-                                        repeatCount < 5 -> 60_000L
-                                        repeatCount < 10 -> 120_000L
-                                        else -> 180_000L
-                                    }
-                                    if (isRtl) viewModel.seekToLiveEdge() else viewModel.seekTo(
-                                        (timeshiftUiState.bufferedBehindLiveMs + deltaMs).coerceAtMost(timeshiftUiState.bufferDepthMs)
-                                    )
-                                    true
-                                } else if (showChannelListOverlay) {
+                                if (showChannelListOverlay) {
                                     viewModel.openCategoryListOverlay()
                                     true
                                 } else if (!showCategoryListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
@@ -787,23 +774,7 @@ fun PlayerScreen(
                             }
                             if (contentType == "LIVE" && !isCatchUpPlayback) {
                                 if (showControls) return@onKeyEvent false
-                                // Timeshift aktifken: RIGHT = ileri seek (canlıya doğru)
-                                if (timeshiftUiState.available && !showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
-                                    val repeatCount = event.nativeKeyEvent.repeatCount
-                                    val deltaMs = when {
-                                        repeatCount == 0 -> 30_000L
-                                        repeatCount < 5 -> 60_000L
-                                        repeatCount < 10 -> 120_000L
-                                        else -> 180_000L
-                                    }
-                                    val newOffset = (timeshiftUiState.bufferedBehindLiveMs - deltaMs).coerceAtLeast(0L)
-                                    if (newOffset <= 0L) {
-                                        viewModel.seekToLiveEdge()
-                                    } else {
-                                        viewModel.seekTo(newOffset)
-                                    }
-                                    true
-                                } else if (!showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
+                                if (!showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
                                     if (isRtl) viewModel.openChannelListOverlay() else viewModel.openEpgOverlay()
                                     true
                                 } else false
@@ -983,6 +954,10 @@ fun PlayerScreen(
                         )
                     )
             )
+        }
+
+        LaunchedEffect(playbackState) {
+            android.util.Log.d("PlayerZapTrace", "[BUFFERING_UI_VISIBLE] visible=${playbackState == PlaybackState.BUFFERING}")
         }
 
         // Buffering indicator

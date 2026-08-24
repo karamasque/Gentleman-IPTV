@@ -72,6 +72,7 @@ private class PlayerDataSourceReadStatsDataSource(
         tracker.open(clockMs())
         PlayerDataSourceReadStatsRegistry.register(target, tracker)
         opened = true
+        Log.d("PlayerZapTrace", "[HTTP_OPEN] url=$target length=$length")
         if (readStatsLoggingEnabled()) {
             Log.d(
                 TAG,

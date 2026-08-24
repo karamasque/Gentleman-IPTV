@@ -88,7 +88,7 @@ object NetworkModule {
     @Singleton
     fun provideXtreamApiService(okHttpClient: OkHttpClient, xtreamJson: Json): XtreamApiService =
         OkHttpXtreamApiService(
-            client = okHttpClient,
+            client = okHttpClient.newBuilder().applyUnsafeTlsBypass().build(),
             json = xtreamJson,
             defaultRequestProfile = buildAppRequestProfile(BuildConfig.VERSION_NAME, ownerTag = "app/xtream")
         )

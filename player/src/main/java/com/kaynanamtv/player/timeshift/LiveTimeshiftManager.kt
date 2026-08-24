@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.URI
@@ -45,6 +46,7 @@ internal interface LiveTimeshiftManager {
     suspend fun stopSession()
     suspend fun createSnapshot(): LiveTimeshiftSnapshot?
     suspend fun releaseRetiredSnapshots()
+    fun openTeeSink(): OutputStream?
 }
 
 internal data class DashSnapshotPlaylistSegment(
@@ -179,48 +181,35 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
                         return@withLock
                     }
                 }
-                val session = when (support.streamType) {
-                    StreamType.HLS -> HlsSession(streamInfo, config, backend, sessionDir)
-                    StreamType.DASH -> DashSession(streamInfo, config, backend, sessionDir)
-                    StreamType.SMOOTH_STREAMING,
-                    StreamType.MPEG_TS,
-                    StreamType.PROGRESSIVE,
-                    StreamType.UNKNOWN -> ProgressiveSession(streamInfo, config, backend, sessionDir)
-                    StreamType.RTSP -> null
-                }
-                if (session == null) {
-                    _state.value = LiveTimeshiftState(
-                        enabled = true,
-                        supported = false,
-                        status = LiveTimeshiftStatus.UNSUPPORTED,
-                        message = "This live stream type cannot use local rewind yet."
-                    )
-                    return@withLock
-                }
+                val session = ProgressiveSession(streamInfo, config, backend, sessionDir)
                 activeSession = session
                 _state.value = LiveTimeshiftState(
                     enabled = true,
                     supported = true,
                     backend = backend,
-                    status = LiveTimeshiftStatus.PREPARING,
-                    message = "Preparing local live rewind…"
+                    status = LiveTimeshiftStatus.LIVE,
+                    message = "Local live rewind ready."
                 )
                 android.util.Log.d("LiveTimeshiftManager", "[TS_INSTANCE] managerHash=${System.identityHashCode(this@DefaultLiveTimeshiftManager)}")
                 android.util.Log.d("LiveTimeshiftManager", "[TS_START] channelId=$channelKey streamType=${support.streamType} backend=$backend sessionDir=${sessionDir.absolutePath}")
-                session.job = scope.launch {
-                    try {
-                        session.capture()
-                    } catch (t: Throwable) {
-                        android.util.Log.e("LiveTimeshiftManager", "[TS_START] capture failed error=${t.message}", t)
-                        _state.value = _state.value.copy(
-                            enabled = true,
-                            supported = true,
-                            backend = session.backend,
-                            status = LiveTimeshiftStatus.FAILED,
-                            message = t.message ?: "Local live rewind failed."
-                        )
-                    }
-                }
+            }
+        }
+    }
+
+    override fun openTeeSink(): OutputStream? {
+        val session = activeSession ?: return null
+        return object : OutputStream() {
+            override fun write(b: Int) {
+                session.onTeeBytes(byteArrayOf(b.toByte()), 0, 1)
+            }
+            override fun write(b: ByteArray, off: Int, len: Int) {
+                session.onTeeBytes(b, off, len)
+            }
+            override fun flush() {
+                session.flushTee()
+            }
+            override fun close() {
+                session.closeTee()
             }
         }
     }
@@ -347,7 +336,10 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
         protected val stateStartMs = System.currentTimeMillis()
         @Volatile private var activeCall: okhttp3.Call? = null
 
-        abstract suspend fun capture()
+        open fun onTeeBytes(buffer: ByteArray, offset: Int, length: Int) {}
+        open fun flushTee() {}
+        open fun closeTee() {}
+        open suspend fun capture() {}
         abstract suspend fun createSnapshot(): LiveTimeshiftSnapshot?
 
         open suspend fun stop() {
@@ -444,53 +436,66 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
     ) : Session(streamInfo, config, backend, sessionDir) {
 
         private val chunks = ArrayDeque<ProgressiveChunk>()
-        private val chunkMutex = Mutex()
         private var runningChunkDurationMs = 0L
+        private var currentActiveChunk: ActiveProgressiveChunk? = null
 
-        override suspend fun capture() {
-            var retryDelay = 1_000L
-            var retryCount = 0
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                try {
-                    val request = makeRequest(streamInfo.url)
-                    val call = trackCall(request)
-                    try {
-                        call.execute().use { response ->
-                            if (!response.isSuccessful) throw IOException("Timeshift stream failed with HTTP ${response.code}")
-                            val input = response.body?.byteStream() ?: throw IOException("Timeshift stream returned an empty body")
-                            retryDelay = 1_000L
-                            retryCount = 0
-                            input.use { source ->
-                                var current = createChunk()
-                                val buffer = ByteArray(PROGRESSIVE_READ_BUFFER_SIZE)
-                                while (true) {
-                                    currentCoroutineContext().ensureActive()
-                                    val read = source.read(buffer)
-                                    if (read <= 0) break
-                                    current.write(buffer, read)
-                                    if (System.currentTimeMillis() - current.startedAtMs >= PROGRESSIVE_CHUNK_MS) {
-                                        finalizeChunk(current)
-                                        current = createChunk()
-                                    }
-                                }
-                                if (current.bytesWritten > 0L) {
-                                    finalizeChunk(current)
-                                }
-                            }
-                        }
-                    } finally {
-                        clearTrackedCall(call)
-                    }
-                    break  // stream ended normally
-                } catch (t: Throwable) {
-                    currentCoroutineContext().ensureActive()
-                    retryCount++
-                    if (retryCount > MAX_PROGRESSIVE_RETRIES) throw t
-                    delay(retryDelay)
-                    retryDelay = (retryDelay * 2).coerceAtMost(MAX_RETRY_DELAY_MS)
+        override fun onTeeBytes(buffer: ByteArray, offset: Int, length: Int) {
+            if (length <= 0) return
+            try {
+                var current = currentActiveChunk
+                if (current == null) {
+                    current = createChunk()
+                    currentActiveChunk = current
+                }
+                current.write(buffer, offset, length)
+                val now = System.currentTimeMillis()
+                if (now - current.startedAtMs >= PROGRESSIVE_CHUNK_MS) {
+                    finalizeChunkSync(current)
+                    currentActiveChunk = createChunk()
+                }
+            } catch (t: Throwable) {
+                android.util.Log.w("LiveTimeshiftManager", "Tee write error: ${t.message}")
+            }
+        }
+
+        private fun finalizeChunkSync(active: ActiveProgressiveChunk) {
+            val output = active.output ?: return
+            if (backend == LiveTimeshiftBackend.DISK) {
+                runCatching { checkDiskAndBudget() }
+            }
+            runCatching { output.flush() }
+            runCatching { output.close() }
+            val endedAtMs = System.currentTimeMillis()
+            val chunk = ProgressiveChunk(
+                id = active.id,
+                startedAtMs = active.startedAtMs,
+                endedAtMs = endedAtMs,
+                durationMs = (endedAtMs - active.startedAtMs).coerceAtLeast(1L),
+                file = active.file,
+                payload = if (backend == LiveTimeshiftBackend.MEMORY) (output as? ByteArrayOutputStream)?.toByteArray() else null
+            )
+            val windowDuration = synchronized(chunks) {
+                runningChunkDurationMs += chunk.durationMs
+                chunks += chunk
+                pruneProgressiveChunksLocked()
+                runningChunkDurationMs
+            }
+            updateWindow(windowDuration)
+            android.util.Log.d("LiveTimeshiftManager", "[TS_CHUNK] file=${chunk.file?.name} bytes=${active.bytesWritten} durationMs=${chunk.durationMs}")
+            android.util.Log.d("LiveTimeshiftManager", "[TS_ENGINE] CHUNK_WRITTEN bytes=${active.bytesWritten} durationMs=${chunk.durationMs} totalWindowMs=$windowDuration chunkCount=${chunks.size}")
+        }
+
+        override fun flushTee() {
+            currentActiveChunk?.let { chunk ->
+                if (chunk.bytesWritten > 0L) {
+                    finalizeChunkSync(chunk)
+                    currentActiveChunk = null
                 }
             }
+        }
+
+        override fun closeTee() {
+            flushTee()
         }
 
         override suspend fun createSnapshot(): LiveTimeshiftSnapshot? {
@@ -498,7 +503,7 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
             val snapshotDir = File(sessionDir, "snapshot-$snapshotId").apply { mkdirs() }
             activeSnapshotDir = snapshotDir
             val snapshotFile = File(snapshotDir, "buffer.ts")
-            val orderedChunks = chunkMutex.withLock { chunks.toList() }
+            val orderedChunks = synchronized(chunks) { chunks.toList() }
             if (orderedChunks.isEmpty()) return null
             snapshotFile.outputStream().use { output ->
                 orderedChunks.forEach { chunk ->
@@ -532,38 +537,13 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
             )
         }
 
-        private suspend fun finalizeChunk(active: ActiveProgressiveChunk) {
-            val output = active.output ?: return  // never written — nothing to finalize
-            if (backend == LiveTimeshiftBackend.DISK) checkDiskAndBudget()
-            output.flush()
-            output.close()
-            val endedAtMs = System.currentTimeMillis()
-            val chunk = ProgressiveChunk(
-                id = active.id,
-                startedAtMs = active.startedAtMs,
-                endedAtMs = endedAtMs,
-                durationMs = (endedAtMs - active.startedAtMs).coerceAtLeast(1L),
-                file = active.file,
-                payload = if (backend == LiveTimeshiftBackend.MEMORY) (output as ByteArrayOutputStream).toByteArray() else null
-            )
-            val windowDuration = chunkMutex.withLock {
-                runningChunkDurationMs += chunk.durationMs
-                chunks += chunk
-                pruneProgressiveChunksLocked()
-                runningChunkDurationMs
-            }
-            updateWindow(windowDuration)
-            android.util.Log.d("LiveTimeshiftManager", "[TS_CHUNK] file=${chunk.file?.name} bytes=${active.bytesWritten} durationMs=${chunk.durationMs}")
-            android.util.Log.d("LiveTimeshiftManager", "[TS_ENGINE] CHUNK_WRITTEN bytes=${active.bytesWritten} durationMs=${chunk.durationMs} totalWindowMs=$windowDuration chunkCount=${chunks.size}")
-        }
-
-        private fun ActiveProgressiveChunk.write(buffer: ByteArray, read: Int) {
+        private fun ActiveProgressiveChunk.write(buffer: ByteArray, offset: Int, read: Int) {
             val out = output ?: run {
                 val created = if (file != null) file.outputStream().buffered() else ByteArrayOutputStream()
                 output = created
                 created
             }
-            out.write(buffer, 0, read)
+            out.write(buffer, offset, read)
             bytesWritten += read
         }
 

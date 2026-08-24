@@ -221,7 +221,7 @@ class ValidateAndAddProvider @Inject constructor(
                 val validatedInput = validated.data
                 when (val parsed = parseXtreamPlaylistUrl(validatedInput.url)) {
                     is ParsedXtreamPlaylistUrlResult.Success -> {
-                        loginXtream(
+                        val xtreamResult = loginXtream(
                             XtreamProviderSetupCommand(
                                 serverUrl = parsed.serverUrl,
                                 username = parsed.username,
@@ -236,6 +236,24 @@ class ValidateAndAddProvider @Inject constructor(
                             ),
                             onProgress = onProgress
                         )
+                        if (xtreamResult is ValidateAndAddProviderResult.Error) {
+                            // Fallback to validating and importing directly as M3U playlist
+                            providerRepository.validateM3u(
+                                url = validatedInput.url,
+                                name = validatedInput.name,
+                                epgUrl = command.epgUrl,
+                                httpUserAgent = validatedInput.httpUserAgent,
+                                httpHeaders = validatedInput.httpHeaders,
+                                epgSyncMode = command.epgSyncMode,
+                                m3uVodClassificationEnabled = command.m3uVodClassificationEnabled,
+                                guideSourcePolicy = command.guideSourcePolicy,
+                                channelLogoSourcePolicy = command.channelLogoSourcePolicy,
+                                onProgress = onProgress,
+                                id = command.existingProviderId
+                            ).toUseCaseResult()
+                        } else {
+                            xtreamResult
+                        }
                     }
                     is ParsedXtreamPlaylistUrlResult.ValidationError -> {
                         ValidateAndAddProviderResult.ValidationError(parsed.message)

@@ -971,44 +971,51 @@ class ProviderSetupViewModel @Inject constructor(
 
     private fun mapXtreamLoginError(result: ValidateAndAddProviderResult.Error): String {
         val failure = result.exception
+        val msg = result.message.lowercase()
         return when {
             result.message.startsWith(PROVIDER_LOGIN_SYNC_FAILED_PREFIX, ignoreCase = true) ->
-                "Login succeeded, but the initial sync failed while loading the playlist"
+                "Giriş yapıldı ancak içerikler yüklenirken senkronizasyon tamamlanamadı."
 
             failure.hasCause<CredentialDecryptionException>() ->
                 failure.findCause<CredentialDecryptionException>()?.message
-                    ?: CredentialDecryptionException.MESSAGE
+                    ?: "Kimlik bilgileri çözülemedi."
 
             failure.hasCause<SSLPeerUnverifiedException>() ||
                 failure.hasCause<CertificateException>() ||
                 failure.hasCause<SSLException>() ->
-                "Secure connection failed - the server's TLS certificate is not trusted on this device"
+                "SSL/TLS bağlantısı kurulamadı. Sunucunun güvenlik sertifikası doğrulanamadı."
 
-            failure.hasCause<XtreamAuthenticationException>() ->
-                "Login failed - please check your credentials and server URL"
+            failure.hasCause<XtreamAuthenticationException>() ||
+                failure.findCause<XtreamRequestException>()?.statusCode == 401 ||
+                msg.contains("authentication failed") ||
+                msg.contains("auth != 1") ->
+                "Kullanıcı adı veya şifre hatalı."
 
-            failure.findCause<XtreamRequestException>()?.statusCode in setOf(403, 408, 429) ->
-                "Server is temporarily busy - try syncing again in a moment"
+            failure.findCause<XtreamRequestException>()?.statusCode in setOf(403, 429) ->
+                "Sunucu bu bağlantıyı reddetti (Erişim engellendi veya sınır aşıldı)."
 
-            failure.findCause<XtreamRequestException>()?.statusCode == 401 ->
-                "Login failed - please check your credentials and server URL"
+            failure.findCause<XtreamRequestException>()?.statusCode == 408 ||
+                failure.hasCause<SocketTimeoutException>() ||
+                failure.hasCause<InterruptedIOException>() ->
+                "Bağlantı zaman aşımına uğradı. Sunucu yanıt vermiyor."
 
             failure.findCause<XtreamRequestException>()?.statusCode in 500..599 ->
-                "Server is temporarily busy - try syncing again in a moment"
+                "Sunucu geçici olarak yanıt vermiyor (5xx Hatası). Lütfen daha sonra tekrar deneyin."
 
-            failure.hasCause<SocketTimeoutException>() ||
-                failure.hasCause<InterruptedIOException>() ||
-                failure.hasCause<UnknownHostException>() ||
+            msg.contains("cleartext") || msg.contains("cleartraffic") ->
+                "HTTP bağlantısına cihaz güvenlik politikası tarafından izin verilmedi."
+
+            failure.hasCause<UnknownHostException>() ||
                 failure.hasCause<ConnectException>() ||
                 failure.hasCause<NoRouteToHostException>() ||
                 failure.hasCause<XtreamNetworkException>() ->
-                "Cannot reach server - check your internet connection and server URL"
+                "Sunucuya ulaşılamadı. İnternet bağlantınızı ve sunucu adresini kontrol edin."
 
             failure.hasCause<XtreamResponseTooLargeException>() ->
-                "Server returned an unusually large response - try again later or contact the provider"
+                "Sunucu beklenenden çok büyük bir liste döndürdü."
 
             failure.hasCause<XtreamParsingException>() ->
-                "Server returned unreadable data - verify the provider details and try again"
+                "Oynatma listesi geçersiz veya sunucu yanıtı okunamadı."
 
             else -> result.message
         }
@@ -1022,11 +1029,30 @@ class ProviderSetupViewModel @Inject constructor(
      */
     private fun mapM3uSetupError(result: ValidateAndAddProviderResult.Error): String {
         if (result.message.startsWith(M3U_PLAYLIST_SYNC_FAILED_PREFIX, ignoreCase = true)) {
-            return "Playlist saved, but the initial sync failed while loading the content"
+            return "Oynatma listesi kaydedildi ancak içerikler yüklenirken senkronizasyon tamamlanamadı."
         }
-        // Auto-converted Xtream playlist URLs go through loginXtream internally, so the
-        // same Xtream exception types apply.
-        return mapXtreamLoginError(result)
+        val failure = result.exception
+        val msg = result.message.lowercase()
+        return when {
+            failure.hasCause<SSLPeerUnverifiedException>() ||
+                failure.hasCause<CertificateException>() ||
+                failure.hasCause<SSLException>() ->
+                "SSL/TLS bağlantısı kurulamadı. Oynatma listesi bağlantısının sertifikası doğrulanamadı."
+
+            failure.hasCause<SocketTimeoutException>() ||
+                failure.hasCause<InterruptedIOException>() ->
+                "Bağlantı zaman aşımına uğradı. Oynatma listesi indirilemedi."
+
+            failure.hasCause<UnknownHostException>() ||
+                failure.hasCause<ConnectException>() ||
+                failure.hasCause<NoRouteToHostException>() ->
+                "Sunucuya ulaşılamadı. İnternet bağlantınızı ve M3U bağlantısını kontrol edin."
+
+            msg.contains("no channels found") || msg.contains("invalid m3u") || msg.contains("parsing") ->
+                "Oynatma listesi geçersiz veya desteklenen kanal bulunamadı."
+
+            else -> mapXtreamLoginError(result)
+        }
     }
 
     /**
@@ -1036,46 +1062,48 @@ class ProviderSetupViewModel @Inject constructor(
      */
     private fun mapStalkerLoginError(result: ValidateAndAddProviderResult.Error): String {
         if (result.message.startsWith(PROVIDER_LOGIN_SYNC_FAILED_PREFIX, ignoreCase = true)) {
-            return "Login succeeded, but the initial sync failed while loading the channel list"
+            return "Giriş yapıldı ancak kanallar yüklenirken ilk senkronizasyon tamamlanamadı."
         }
         val failure = result.exception
         return when {
             result.message.contains("requires account credentials", ignoreCase = true) ->
-                "Portal requires account credentials - switch the Stalker auth mode or add the username and password"
+                "Portal hesap bilgileri (kullanıcı adı ve şifre) gerektiriyor."
 
             result.message.contains("partially accepted MAC identity", ignoreCase = true) ->
-                "Portal accepted the MAC address, but playback entitlement is incomplete for this session"
+                "Portal MAC adresini tanıdı ancak bu oturum için yayın yetkisi verilmedi."
 
             result.message.contains("stricter MAG emulation", ignoreCase = true) ->
-                "Portal requires stricter MAG emulation - keep the MAC and advanced device identity fields aligned with the working device"
+                "Portal daha sıkı MAG cihaz öykünmesi gerektiriyor."
 
             result.message.contains("legacy MAG recipe", ignoreCase = true) ->
-                "Portal matched a legacy MAG recipe and was retried automatically, but playback still failed"
+                "Portal eski MAG protokolüyle denendi ancak yayın başlatılamadı."
 
             result.message.contains("rediscovery attempted", ignoreCase = true) ->
-                "The saved Stalker portal recipe failed, and the app already retried discovery automatically"
+                "Kayıtlı Stalker portal ayarı başarısız oldu ve otomatik yeniden denendi."
 
             result.message.contains("unsupported portal profile", ignoreCase = true) ->
-                "Portal authenticated, but this Stalker profile is not supported yet"
+                "Portal girişi yapıldı ancak bu Stalker profili henüz desteklenmiyor."
 
             result.message.contains("no working recipe succeeded", ignoreCase = true) ->
-                "Portal family was detected, but none of the known Stalker recipes worked for this connection"
+                "Portal türü algılandı ancak bu bağlantı için uygun Stalker protokolü bulunamadı."
 
             failure.hasCause<CredentialDecryptionException>() ->
                 failure.findCause<CredentialDecryptionException>()?.message
-                    ?: CredentialDecryptionException.MESSAGE
+                    ?: "Kimlik bilgileri çözülemedi."
 
             failure.hasCause<SSLPeerUnverifiedException>() ||
                 failure.hasCause<CertificateException>() ||
                 failure.hasCause<SSLException>() ->
-                "Secure connection failed - the server's TLS certificate is not trusted on this device"
+                "SSL/TLS bağlantısı kurulamadı. Portal güvenlik sertifikası doğrulanamadı."
 
             failure.hasCause<SocketTimeoutException>() ||
-                failure.hasCause<InterruptedIOException>() ||
-                failure.hasCause<UnknownHostException>() ||
+                failure.hasCause<InterruptedIOException>() ->
+                "Bağlantı zaman aşımına uğradı. Portaldan yanıt alınamadı."
+
+            failure.hasCause<UnknownHostException>() ||
                 failure.hasCause<ConnectException>() ||
                 failure.hasCause<NoRouteToHostException>() ->
-                "Cannot reach portal - check your internet connection and portal URL"
+                "Portala ulaşılamadı. İnternet bağlantınızı ve portal adresini kontrol edin."
 
             else -> result.message
         }

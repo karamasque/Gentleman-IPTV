@@ -49,10 +49,26 @@ enum class LiveTimeshiftStatus {
     UNSUPPORTED,
     PREPARING,
     LIVE,
+    LIVE_PAUSED,
+    SNAPSHOT_PLAYING,
+    SNAPSHOT_PAUSED,
+    RETURNING_TO_LIVE,
     PAUSED_BEHIND_LIVE,
     PLAYING_BEHIND_LIVE,
     BUFFERING,
     FAILED
+}
+
+object LiveTimeshiftSeekConverter {
+    fun offsetToAbsolute(offsetBehindLiveMs: Long, bufferDepthMs: Long): Long {
+        if (bufferDepthMs <= 0L) return 0L
+        return (bufferDepthMs - offsetBehindLiveMs).coerceIn(0L, bufferDepthMs)
+    }
+
+    fun absoluteToOffset(absolutePositionMs: Long, bufferDepthMs: Long): Long {
+        if (bufferDepthMs <= 0L) return 0L
+        return (bufferDepthMs - absolutePositionMs).coerceIn(0L, bufferDepthMs)
+    }
 }
 
 data class LiveTimeshiftState(
@@ -67,7 +83,14 @@ data class LiveTimeshiftState(
     val bufferedDurationMs: Long = 0L,
     val message: String? = null
 ) {
-    val canSeekToLive: Boolean = supported && currentOffsetFromLiveMs > 1_000L
+    val canSeekToLive: Boolean = supported && (
+        status == LiveTimeshiftStatus.LIVE_PAUSED ||
+        status == LiveTimeshiftStatus.SNAPSHOT_PLAYING ||
+        status == LiveTimeshiftStatus.SNAPSHOT_PAUSED ||
+        status == LiveTimeshiftStatus.PAUSED_BEHIND_LIVE ||
+        status == LiveTimeshiftStatus.PLAYING_BEHIND_LIVE ||
+        currentOffsetFromLiveMs > 1_000L
+    )
     val isActive: Boolean = enabled && supported && status != LiveTimeshiftStatus.DISABLED && status != LiveTimeshiftStatus.UNSUPPORTED
 }
 

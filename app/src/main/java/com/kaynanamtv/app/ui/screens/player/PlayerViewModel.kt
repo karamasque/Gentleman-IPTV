@@ -470,49 +470,13 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun maybeStartLiveTimeshift(streamInfoOverride: StreamInfo? = null) {
-        if (currentContentType != ContentType.LIVE || !timeshiftConfig.enabled) {
-            playerEngine.stopLiveTimeshift()
-            return
-        }
-        if (!shouldStartLiveTimeshiftForStreamClass(currentStreamClassLabel)) {
-            playerEngine.stopLiveTimeshift()
-            return
-        }
-        val streamInfo = resolveTimeshiftStreamInfo(
-            streamInfoOverride = streamInfoOverride,
-            currentResolvedStreamInfo = currentResolvedStreamInfo,
-            currentResolvedPlaybackUrl = currentResolvedPlaybackUrl,
-            currentStreamUrl = currentStreamUrl,
-            playbackTitle = playbackTitleFlow.value,
-            currentTitle = currentTitle
-        ) ?: run {
-            playerEngine.stopLiveTimeshift()
-            _timeshiftUiState.update {
-                it.copy(
-                    available = false,
-                    enabledForSession = timeshiftConfig.enabled,
-                    statusMessage = "Local live rewind is unavailable for this stream.",
-                    bufferDepthMs = 0L,
-                    bufferedBehindLiveMs = 0L
-                )
-            }
-            return
-        }
-        val fallbackUrl = streamInfo.url
-        val channelKey = currentChannel.value?.id?.toString()
-            ?: currentContentId.takeIf { it > 0L }?.toString()
-            ?: fallbackUrl
-        _timeshiftUiState.update {
-            it.copy(
-                available = false,
-                enabledForSession = true,
-                statusMessage = "Preparing local live rewind…",
-                bufferDepthMs = 0L,
-                bufferedBehindLiveMs = 0L
-            )
-        }
-        android.util.Log.d("PlayerTimeshiftTrace", "[TS_INSTANCE] viewModelHash=${System.identityHashCode(this)} engineHash=${System.identityHashCode(playerEngine)}")
-        playerEngine.startLiveTimeshift(streamInfo, channelKey, timeshiftConfig)
+        playerEngine.stopLiveTimeshift()
+        _timeshiftUiState.value = PlayerTimeshiftUiState(
+            available = false,
+            enabledForSession = false,
+            bufferDepthMs = 0L,
+            bufferedBehindLiveMs = 0L
+        )
     }
 
     init {
@@ -775,6 +739,38 @@ class PlayerViewModel @Inject constructor(
                 }
         }
         viewModelScope.launch {
+            preferencesRepository.playerMuted
+                .combine(activePlayerEngineFlow) { muted, engine -> engine to muted }
+                .collect { (engine, muted) -> engine.setMuted(muted) }
+        }
+        viewModelScope.launch {
+            preferencesRepository.playerPlaybackSpeed
+                .combine(activePlayerEngineFlow) { speed, engine -> engine to speed }
+                .collect { (engine, speed) ->
+                    if (currentContentType != ContentType.LIVE) {
+                        engine.setPlaybackSpeed(speed)
+                    }
+                }
+        }
+        viewModelScope.launch {
+            combine(
+                preferencesRepository.preferredAudioLanguage,
+                preferencesRepository.appLanguage,
+                activePlayerEngineFlow
+            ) { preferred, appLang, engine ->
+                engine.setPreferredAudioLanguage(resolvePreferredAudioLanguage(preferred, appLang))
+            }.collect()
+        }
+        viewModelScope.launch {
+            combine(
+                preferencesRepository.playerWifiMaxVideoHeight,
+                preferencesRepository.playerEthernetMaxVideoHeight,
+                activePlayerEngineFlow
+            ) { wifiMax, ethMax, engine ->
+                engine.setNetworkQualityPreferences(wifiMaxHeight = wifiMax, ethernetMaxHeight = ethMax)
+            }.collect()
+        }
+        viewModelScope.launch {
             var consecutiveLowBandwidthSeconds = 0
             var noticeShown = false
             activePlayerEngineFlow.flatMapLatest { it.playerStats }.collect { stats ->
@@ -812,19 +808,6 @@ class PlayerViewModel @Inject constructor(
                         durationMs = 10_000L
                     )
                 }
-            }
-        }
-        viewModelScope.launch {
-            while (true) {
-                delay(5_000L)
-                val engState = playerEngine.timeshiftState.value
-                val uiState = _timeshiftUiState.value
-                val chId = currentChannel.value?.id ?: currentContentId
-                val canReturn = uiState.bufferedBehindLiveMs >= 60_000L
-                android.util.Log.d(
-                    "PlayerTimeshiftTrace",
-                    "[TS_TRACE] ch=$chId mgr=${engState.bufferedDurationMs} engine=${engState.bufferedDurationMs} vm=${uiState.bufferDepthMs} ui=${uiState.available} offset=${uiState.bufferedBehindLiveMs} canReturn=$canReturn status=${engState.status}"
-                )
             }
         }
     }
@@ -1218,29 +1201,9 @@ class PlayerViewModel @Inject constructor(
         )
     }
 
-    private suspend fun applyPlaybackPreferences() {
-        playerEngine.setMuted(preferencesRepository.playerMuted.first())
-        playerEngine.setPlaybackSpeed(
-            if (currentContentType == ContentType.LIVE) {
-                1f
-            } else {
-                preferencesRepository.playerPlaybackSpeed.first()
-            }
-        )
-        playerEngine.setPreferredAudioLanguage(
-            resolvePreferredAudioLanguage(
-                preferredAudioLanguage = preferencesRepository.preferredAudioLanguage.first(),
-                appLanguage = preferencesRepository.appLanguage.first()
-            )
-        )
-        playerEngine.setNetworkQualityPreferences(
-            wifiMaxHeight = preferencesRepository.playerWifiMaxVideoHeight.first(),
-            ethernetMaxHeight = preferencesRepository.playerEthernetMaxVideoHeight.first()
-        )
-        playerEngine.setSurfaceMode(preferencesRepository.playerSurfaceMode.first())
-        playerEngine.setPlaybackBufferMode(preferencesRepository.playerPlaybackBufferMode.first())
-        playerEngine.setVodHttpProtocolMode(preferencesRepository.playerVodHttpProtocolMode.first())
-        playerEngine.setFastRetryOnTransientFailures(preferencesRepository.playerFastRetryOnTransientFailures.first())
+    private fun applyPlaybackPreferences() {
+        // Zero-IO in-memory application: all preference values are continuously
+        // observed and cached via reactive flows in ViewModel init.
         playerEngine.setAudioVideoOffsetMs(_audioVideoOffsetUiState.value.effectiveOffsetMs)
     }
 
@@ -1334,11 +1297,12 @@ class PlayerViewModel @Inject constructor(
                 )
             )
         }
-        applyPlaybackPreferences()
         if (!isActivePlaybackSession(requestVersion)) return false
         currentResolvedPlaybackUrl = preparedStreamInfo.url
         currentResolvedStreamInfo = preparedStreamInfo
         readySideEffectsRequestVersion = requestVersion
+        applyPlaybackPreferences()
+        android.util.Log.d("PlayerZapTrace", "[NEW_PREPARE_START] sessionVersion=$requestVersion url=${preparedStreamInfo.url.substringBefore('?')}")
         playerEngine.prepare(preparedStreamInfo)
         refreshLiveTranslationAvailability()
         startTokenRenewalMonitoring(preparedStreamInfo.expirationTime)

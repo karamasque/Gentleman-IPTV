@@ -183,6 +183,14 @@ fun ChannelInfoOverlay(
         }
     }
 
+    var epgTickerMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(currentProgram) {
+        while (true) {
+            delay(5_000L)
+            epgTickerMs = System.currentTimeMillis()
+        }
+    }
+
     BackHandler {
         onDismiss()
     }
@@ -218,7 +226,7 @@ fun ChannelInfoOverlay(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
-                val canReturnToLive = (showTimeshiftControls && timeshiftUiState.canSeekToLive) || isCatchUpPlayback
+                val canReturnToLive = !isPlaying || (showTimeshiftControls && timeshiftUiState.canSeekToLive) || isCatchUpPlayback
                 LaunchedEffect(showTimeshiftControls, timeshiftUiState.bufferDepthMs, timeshiftUiState.bufferedBehindLiveMs, canReturnToLive) {
                     android.util.Log.d(
                         "PlayerOverlayTrace",
@@ -374,44 +382,99 @@ fun ChannelInfoOverlay(
                             overflow = TextOverflow.Ellipsis
                         )
 
-                        // Row 3: Program Timing & Remaining Duration + Linear Progress Bar
-                        val progStart = currentProgram?.startTime ?: 0L
-                        val progEnd = currentProgram?.endTime ?: 0L
-                        val nowMs = System.currentTimeMillis()
+                        // Row 3: Program Timing & Remaining Duration + EPG Progress Bar
+                        val rawStart = currentProgram?.startTime ?: 0L
+                        val rawEnd = currentProgram?.endTime ?: 0L
+                        val progStart = if (rawStart in 1L..100_000_000_000L) rawStart * 1000L else rawStart
+                        val progEnd = if (rawEnd in 1L..100_000_000_000L) rawEnd * 1000L else rawEnd
 
-                        if (progStart > 0L && progEnd > 0L) {
-                            val remainMs = (progEnd - nowMs).coerceAtLeast(0L)
-                            val remainMin = remainMs / 60_000L
-                            Row(
-                                modifier = Modifier.fillMaxWidth(0.95f),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "${timeFormat.format(Date(progStart))} - ${timeFormat.format(Date(progEnd))}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.65f)
-                                )
-                                if (remainMin > 0) {
-                                    Text(
-                                        text = "$remainMin dk kaldı",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.65f),
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
+                        if (progStart > 0L && progEnd > progStart) {
+                            val durationMs = (progEnd - progStart).coerceAtLeast(1L)
+                            val elapsedMs = (epgTickerMs - progStart).coerceAtLeast(0L)
+                            val remainMs = (progEnd - epgTickerMs).coerceAtLeast(0L)
+                            val progProgress = (elapsedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+
+                            val remainMin = (remainMs + 59_999L) / 60_000L
+                            val remainText = when {
+                                remainMin >= 60 -> "${remainMin / 60} sa ${remainMin % 60} dk kaldı"
+                                remainMin > 0 -> "$remainMin dk kaldı"
+                                else -> "Bitiyor"
                             }
 
-                            val progProgress = ((nowMs - progStart).toFloat() / (progEnd - progStart)).coerceIn(0f, 1f)
-                            LinearProgressIndicator(
-                                progress = { progProgress },
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth(0.95f)
-                                    .height(3.dp)
-                                    .clip(RoundedCornerShape(99.dp)),
-                                color = Color(0xFF818CF8),
-                                trackColor = Color.White.copy(alpha = 0.12f)
-                            )
+                                    .padding(vertical = 2.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${timeFormat.format(Date(progStart))} - ${timeFormat.format(Date(progEnd))}",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                        color = Color.White.copy(alpha = 0.70f),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = remainText,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                        color = Color(0xFFA5B4FC),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(10.dp),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    // Background Track
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(4.dp)
+                                            .clip(RoundedCornerShape(99.dp))
+                                            .background(Color.White.copy(alpha = 0.16f))
+                                    )
+                                    // Active Elapsed Track
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(progProgress.coerceIn(0f, 1f))
+                                            .height(4.dp)
+                                            .clip(RoundedCornerShape(99.dp))
+                                            .background(
+                                                Brush.horizontalGradient(
+                                                    listOf(
+                                                        Color(0xFF6366F1),
+                                                        Color(0xFF818CF8),
+                                                        Color(0xFFA855F7)
+                                                    )
+                                                )
+                                            )
+                                    )
+                                    // Live Indicator Dot (●)
+                                    if (progProgress in 0.01f..0.99f) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth(progProgress)
+                                                .height(10.dp),
+                                            contentAlignment = Alignment.CenterEnd
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(9.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color.White)
+                                                    .border(1.5.dp, Color(0xFF818CF8), CircleShape)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // Row 4: Next Program
@@ -492,96 +555,12 @@ fun ChannelInfoOverlay(
                                 )
                             }
                         }
-
-                        // Timeshift Timeline Area
-                        if (showTimeshiftControls) {
-                            val bufferDepthMs = timeshiftUiState.bufferDepthMs.coerceAtLeast(1L)
-                            val bufferedBehindLive = timeshiftUiState.bufferedBehindLiveMs
-                            val oldestWallMs = timeshiftUiState.engineState.bufferStartMs
-                            val oldestLabel = when {
-                                oldestWallMs > 0L -> timeFormat.format(Date(oldestWallMs))
-                                bufferDepthMs >= 10_000L -> "-${formatTimeshiftDuration(bufferDepthMs)}"
-                                else -> ""
-                            }
-                            val offsetMin = (bufferedBehindLive / 60_000L)
-                            val offsetLabel = if (offsetMin >= 1L) "-$offsetMin dk" else "● CANLI"
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Replay,
-                                    contentDescription = null,
-                                    tint = Color(0xFF38BDF8),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = offsetLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (offsetMin >= 1L) Color(0xFF38BDF8) else Color(0xFFFF4D4F)
-                                )
-                            }
-
-                            var sliderValue by remember(bufferedBehindLive, bufferDepthMs) {
-                                mutableStateOf(1f - (bufferedBehindLive.toFloat() / bufferDepthMs.toFloat()).coerceIn(0f, 1f))
-                            }
-                            var isScrubbing by remember { mutableStateOf(false) }
-                            val latestSeekCallback by rememberUpdatedState(onSeekToPosition)
-                            LaunchedEffect(bufferedBehindLive, bufferDepthMs, isScrubbing) {
-                                if (!isScrubbing) {
-                                    sliderValue = 1f - (bufferedBehindLive.toFloat() / bufferDepthMs.toFloat()).coerceIn(0f, 1f)
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = oldestLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.55f)
-                                )
-                                Slider(
-                                    value = sliderValue,
-                                    onValueChange = { newValue ->
-                                        val clamped = newValue.coerceIn(0f, 1f)
-                                        isScrubbing = true
-                                        sliderValue = clamped
-                                    },
-                                    onValueChangeFinished = {
-                                        val targetOffset = ((1f - sliderValue) * bufferDepthMs.toFloat()).toLong()
-                                        if (targetOffset <= 2000L) {
-                                            onSeekToLiveEdge()
-                                        } else {
-                                            latestSeekCallback(targetOffset)
-                                        }
-                                        isScrubbing = false
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    colors = SliderDefaults.colors(
-                                        activeTrackColor = AppColors.NeonCyan,
-                                        inactiveTrackColor = Color.White.copy(alpha = 0.15f),
-                                        thumbColor = Color.White
-                                    )
-                                )
-                                Text(
-                                    text = "CANLI",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (bufferedBehindLive <= 1_000L) Color.Red else Color.White.copy(alpha = 0.55f),
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // HORIZONTALLY SCROLLABLE ACTIONS ROW (18 Actions)
+                // HORIZONTALLY SCROLLABLE ACTIONS ROW
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -604,30 +583,18 @@ fun ChannelInfoOverlay(
                     )
 
                     // 2. Canlıya Dön
-                    val canReturnToLive = (showTimeshiftControls && timeshiftUiState.canSeekToLive) || isCatchUpPlayback
+                    val canReturnToLive = !isPlaying || isCatchUpPlayback
                     LiveActionButton(
                         actionId = LiveActionId.RETURN_LIVE,
                         icon = Icons.Default.FiberManualRecord,
                         label = "Canlıya Dön",
                         enabled = canReturnToLive,
-                        accentColor = if (canReturnToLive) Color(0xFFFFB347) else Color.White.copy(alpha = 0.30f),
+                        accentColor = if (canReturnToLive) Color(0xFFEF4444) else Color.White.copy(alpha = 0.30f),
                         onClick = onSeekToLiveEdge,
                         onOverlayInteracted = onOverlayInteracted
                     )
 
-                    // 3. Programı Baştan Başlat
-                    val canRestart = currentProgram != null && currentChannel?.isCurrentProgramRestartable(currentProgram) == true
-                    LiveActionButton(
-                        actionId = LiveActionId.RESTART_PROGRAM,
-                        icon = Icons.Default.Replay,
-                        label = "Baştan Başlat",
-                        enabled = canRestart,
-                        accentColor = if (canRestart) Color.White else Color.White.copy(alpha = 0.30f),
-                        onClick = onRestartProgram,
-                        onOverlayInteracted = onOverlayInteracted
-                    )
-
-                    // 4. Ses / Audio Tracks
+                    // 3. Ses / Audio Tracks
                     LiveActionButton(
                         actionId = LiveActionId.AUDIO_TRACKS,
                         icon = Icons.Default.VolumeUp,

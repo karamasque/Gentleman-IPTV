@@ -357,6 +357,7 @@ class Media3PlayerEngine @Inject constructor(
     @get:MainThread private var activeLiveTimeshiftStreamInfo: StreamInfo? = null
     @get:MainThread private var activeLiveTimeshiftChannelKey: String? = null
     @get:MainThread private var isPlayingTimeshiftSnapshot: Boolean = false
+    @get:MainThread private var isReturningToLive: Boolean = false
     private var pendingTimeshiftSeekMs: Long? = null
     private var pendingTimeshiftSeekToEnd: Boolean = false
     private var pendingTimeshiftAutoPlay: Boolean = false
@@ -540,36 +541,10 @@ class Media3PlayerEngine @Inject constructor(
     }
 
     override fun seekTo(positionMs: Long) {
-        Log.d(TAG, "[LIVE_TS] action=SEEK target=$positionMs isSnapshot=$isPlayingTimeshiftSnapshot")
-        if (activeLiveTimeshiftStreamInfo != null && !isPlayingTimeshiftSnapshot && _timeshiftState.value.supported) {
-            val managerState = liveTimeshiftManager.state.value
-            val targetInSnapshot = (managerState.bufferedDurationMs - positionMs).coerceAtLeast(0L)
-            switchToTimeshiftSnapshot(positionMs = targetInSnapshot, autoPlay = true)
-            return
-        }
         exoPlayer?.seekTo(positionMs)
     }
 
     override fun seekForward(ms: Long) {
-        if (isPlayingTimeshiftSnapshot) {
-            exoPlayer?.let { player ->
-                val duration = player.duration
-                if (duration != C.TIME_UNSET && player.currentPosition + ms >= duration - 2_000L) {
-                    Log.d(TAG, "[LIVE_TS] action=SEEK_FORWARD reached live edge -> returnToLiveEdge")
-                    seekToLiveEdge()
-                    return
-                }
-                val newPosition = if (duration != C.TIME_UNSET) {
-                    (player.currentPosition + ms).coerceAtMost(duration)
-                } else {
-                    player.currentPosition + ms
-                }
-                player.seekTo(newPosition)
-                syncTimeshiftState()
-                Log.d(TAG, "[LIVE_TS] action=SEEK_FORWARD newPosition=$newPosition duration=$duration")
-            }
-            return
-        }
         exoPlayer?.let { player ->
             val newPosition = (player.currentPosition + ms).coerceAtLeast(0L)
             player.seekTo(newPosition)
@@ -577,21 +552,9 @@ class Media3PlayerEngine @Inject constructor(
     }
 
     override fun seekBackward(ms: Long) {
-        if (isPlayingTimeshiftSnapshot) {
-            exoPlayer?.let { player ->
-                val newPosition = (player.currentPosition - ms).coerceAtLeast(0L)
-                player.seekTo(newPosition)
-                syncTimeshiftState()
-                Log.d(TAG, "[LIVE_TS] action=SEEK_BACK newPosition=$newPosition")
-            }
-            return
-        }
-        if (activeLiveTimeshiftStreamInfo != null && _timeshiftState.value.supported) {
-            seekTo(ms)
-            return
-        }
         exoPlayer?.let { player ->
-            player.seekTo((player.currentPosition - ms).coerceAtLeast(0L))
+            val newPosition = (player.currentPosition - ms).coerceAtLeast(0L)
+            player.seekTo(newPosition)
         }
     }
 
@@ -705,95 +668,37 @@ class Media3PlayerEngine @Inject constructor(
 
     @MainThread
     override fun startLiveTimeshift(streamInfo: StreamInfo, channelKey: String, config: TimeshiftConfig) {
-        if (ensureNotDisposed("startLiveTimeshift")) return
-        activeLiveTimeshiftStreamInfo = streamInfo
-        activeLiveTimeshiftChannelKey = channelKey
-        Log.d(TAG, "[TS_INSTANCE] engineHash=${System.identityHashCode(this)} managerHash=${System.identityHashCode(liveTimeshiftManager)}")
-        Log.d(TAG, "[TS_START] channelId=$channelKey streamType=${streamInfo.streamType}")
-        scope.launch {
-            liveTimeshiftManager.startSession(streamInfo, channelKey, config)
-            syncTimeshiftState()
-        }
+        _timeshiftState.value = LiveTimeshiftState(enabled = false, supported = false)
     }
 
     @MainThread
     override fun stopLiveTimeshift() {
-        val wasSnapshot = isPlayingTimeshiftSnapshot
-        val liveInfo = activeLiveTimeshiftStreamInfo
+        val sink = teeOutputStreamRef.getAndSet(null)
+        runCatching { sink?.flush() }
+        runCatching { sink?.close() }
+        isPlayingTimeshiftSnapshot = false
         activeLiveTimeshiftStreamInfo = null
         activeLiveTimeshiftChannelKey = null
-        isPlayingTimeshiftSnapshot = false
-        pendingTimeshiftSeekMs = null
-        pendingTimeshiftSeekToEnd = false
-        pendingTimeshiftAutoPlay = false
-        if (wasSnapshot) {
-            exoPlayer?.stop()
-            exoPlayer?.clearMediaItems()
-        }
-        scope.launch {
-            liveTimeshiftManager.stopSession()
-            if (wasSnapshot && liveInfo != null) {
-                prepareInternal(liveInfo, preserveRetryState = false, seekPositionMs = null, autoPlay = true)
-            }
-            syncTimeshiftState()
-        }
+        _timeshiftState.value = LiveTimeshiftState(enabled = false, supported = false)
     }
 
     @MainThread
     override fun seekToLiveEdge() {
         val player = exoPlayer ?: return
-        val wasSnapshot = isPlayingTimeshiftSnapshot
-        val beforePosition = player.currentPosition
-        val buffered = player.bufferedPosition
-        val stateBefore = player.playbackState
-
-        Log.d(TAG, "[RETURN_LIVE_TRACE] beforePosition=$beforePosition buffered=$buffered stateBefore=$stateBefore wasSnapshot=$wasSnapshot")
-
         isPlayingTimeshiftSnapshot = false
-        pendingTimeshiftSeekMs = null
-        pendingTimeshiftSeekToEnd = false
-        pendingTimeshiftAutoPlay = false
-
-        if (wasSnapshot) {
-            val liveInfo = activeLiveTimeshiftStreamInfo
-            if (liveInfo != null) {
-                prepareInternal(liveInfo, preserveRetryState = true, seekPositionMs = null, autoPlay = true)
-                scope.launch { liveTimeshiftManager.releaseRetiredSnapshots() }
-            } else {
-                player.seekToDefaultPosition()
-                player.play()
-            }
-        } else {
-            // Seamless live-edge seek: retains media items and connection without recreate
-            player.seekToDefaultPosition()
-            player.play()
-        }
-
+        player.seekToDefaultPosition()
+        player.play()
         syncTimeshiftState()
         Log.d(TAG, "[RETURN_LIVE_TRACE] targetLiveEdge=defaultPosition stateAfter=${player.playbackState}")
     }
 
     override fun pauseTimeshift() {
-        val stateBefore = exoPlayer?.playWhenReady
-        Log.d(TAG, "[LIVE_PAUSE_TRACE] pauseTimeshift called stateBefore=$stateBefore supported=${_timeshiftState.value.supported} isPlayingSnapshot=$isPlayingTimeshiftSnapshot")
-        
-        // Immediately pause ExoPlayer rendering & audio regardless of timeshift state
         exoPlayer?.playWhenReady = false
         audioFocusController.onPauseOrStop()
-        
-        if (activeLiveTimeshiftStreamInfo != null && !isPlayingTimeshiftSnapshot && _timeshiftState.value.supported) {
-            switchToTimeshiftSnapshot(positionMs = null, autoPlay = false, seekToEnd = true)
-        } else {
-            syncTimeshiftState()
-        }
-        Log.d(TAG, "[LIVE_PAUSE_TRACE] pauseTimeshift finished playWhenReady=${exoPlayer?.playWhenReady}")
+        syncTimeshiftState()
     }
 
     override fun resumeTimeshift() {
-        if (isPlayingTimeshiftSnapshot) {
-            play()
-            return
-        }
         seekToLiveEdge()
     }
 
@@ -1030,6 +935,7 @@ class Media3PlayerEngine @Inject constructor(
         activeLiveTimeshiftStreamInfo = null
         activeLiveTimeshiftChannelKey = null
         isPlayingTimeshiftSnapshot = false
+        isReturningToLive = false
         _timeshiftState.value = LiveTimeshiftState()
         scope.cancel()
         if (restartCollectors) {
@@ -1577,10 +1483,14 @@ class Media3PlayerEngine @Inject constructor(
                 renderTimeMs: Long
             ) {
                 hasRenderedFirstVideoFrame = true
-                if (prepareStartMs > 0L) {
-                    val ttff = System.currentTimeMillis() - prepareStartMs
-                    _playerStats.value = _playerStats.value.copy(ttffMs = ttff)
+                val ttff = if (prepareStartMs > 0L) {
+                    val computed = System.currentTimeMillis() - prepareStartMs
+                    _playerStats.value = _playerStats.value.copy(ttffMs = computed)
+                    computed
+                } else {
+                    0L
                 }
+                Log.d("PlayerZapTrace", "[FIRST_FRAME] ttffMs=$ttff target=${PlaybackLogSanitizer.sanitizeUrl(lastStreamInfo?.url)}")
                 videoStallDetector.onVideoFrameRendered(eventTime.currentPlaybackPositionMs)
                 markPlaybackStarted("first-frame-success")
             }
@@ -1593,8 +1503,14 @@ class Media3PlayerEngine @Inject constructor(
                 val previousState = _playbackState.value
                 _playbackState.value = when (state) {
                     Player.STATE_IDLE -> PlaybackState.IDLE
-                    Player.STATE_BUFFERING -> PlaybackState.BUFFERING
-                    Player.STATE_READY -> PlaybackState.READY
+                    Player.STATE_BUFFERING -> {
+                        Log.d("PlayerZapTrace", "[PLAYER_STATE_BUFFERING] target=${PlaybackLogSanitizer.sanitizeUrl(lastStreamInfo?.url)}")
+                        PlaybackState.BUFFERING
+                    }
+                    Player.STATE_READY -> {
+                        Log.d("PlayerZapTrace", "[PLAYER_STATE_READY] target=${PlaybackLogSanitizer.sanitizeUrl(lastStreamInfo?.url)}")
+                        PlaybackState.READY
+                    }
                     Player.STATE_ENDED -> PlaybackState.ENDED
                     else -> PlaybackState.IDLE
                 }
@@ -1621,6 +1537,11 @@ class Media3PlayerEngine @Inject constructor(
                             playerOrNull()?.seekTo(target)
                         }
                     }
+                }
+                if (state == Player.STATE_ENDED && isPlayingTimeshiftSnapshot) {
+                    Log.d(TAG, "[LIVE_TS] reached snapshot EOF (STATE_ENDED) -> auto returnToLiveEdge")
+                    seekToLiveEdge()
+                    return
                 }
                 if (_playbackState.value == PlaybackState.READY && _isPlaying.value) {
                     markPlaybackStarted("ready-while-playing")
@@ -1751,37 +1672,15 @@ class Media3PlayerEngine @Inject constructor(
     }
 
     private fun syncTimeshiftState(messageOverride: String? = null) {
-        val managerState = liveTimeshiftManager.state.value
-        if (!managerState.enabled) {
-            _timeshiftState.value = managerState
-            return
-        }
-        val player = exoPlayer
-        val duration = player?.duration?.takeIf { it != C.TIME_UNSET } ?: managerState.liveEdgePositionMs
-        val currentPosition = player?.currentPosition ?: duration
-        val offsetFromLive = when {
-            isPlayingTimeshiftSnapshot -> (managerState.liveEdgePositionMs - currentPosition).coerceAtLeast(0L)
-            player?.playWhenReady == false && managerState.bufferedDurationMs > 0L -> managerState.bufferedDurationMs
-            else -> 0L
-        }
-        val status = when {
-            managerState.status == LiveTimeshiftStatus.FAILED -> LiveTimeshiftStatus.FAILED
-            !managerState.supported -> LiveTimeshiftStatus.UNSUPPORTED
-            isPlayingTimeshiftSnapshot && _playbackState.value == PlaybackState.BUFFERING -> LiveTimeshiftStatus.BUFFERING
-            isPlayingTimeshiftSnapshot && _isPlaying.value -> LiveTimeshiftStatus.PLAYING_BEHIND_LIVE
-            isPlayingTimeshiftSnapshot -> LiveTimeshiftStatus.PAUSED_BEHIND_LIVE
-            player?.playWhenReady == false && offsetFromLive > 0L -> LiveTimeshiftStatus.PAUSED_BEHIND_LIVE
-            managerState.status == LiveTimeshiftStatus.PREPARING -> LiveTimeshiftStatus.PREPARING
-            else -> LiveTimeshiftStatus.LIVE
-        }
-        _timeshiftState.value = managerState.copy(
-            backend = managerState.backend,
-            status = status,
-            liveEdgePositionMs = managerState.liveEdgePositionMs,
-            currentOffsetFromLiveMs = offsetFromLive,
-            message = messageOverride ?: managerState.message
+        val isPaused = exoPlayer?.playWhenReady == false
+        _timeshiftState.value = LiveTimeshiftState(
+            enabled = false,
+            supported = false,
+            status = if (isPaused) LiveTimeshiftStatus.LIVE_PAUSED else LiveTimeshiftStatus.LIVE,
+            bufferedDurationMs = 0L,
+            currentOffsetFromLiveMs = 0L,
+            message = messageOverride
         )
-        Log.d(TAG, "[TS_STATE_ENGINE] depthMs=${managerState.bufferedDurationMs} liveOffsetMs=$offsetFromLive status=$status isSnapshot=$isPlayingTimeshiftSnapshot")
     }
 
     private fun markPlaybackStarted(reason: String) {
