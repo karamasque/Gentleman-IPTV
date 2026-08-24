@@ -8,6 +8,13 @@ Updates the canonical `config/app_config` document in Firestore.
 import os
 import sys
 import time
+
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import firebase_admin
 from firebase_admin import credentials, firestore
 
