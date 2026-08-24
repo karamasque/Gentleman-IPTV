@@ -149,125 +149,13 @@ class ProviderRepositoryImpl @Inject constructor(
                                         
                                         // 2. Sync from Firestore to Local (Download missing remote providers)
                                         val localIds = localEntities.map { it.id.toString() }
-                                        
-                                        // De-duplicate remote providers by unique connection keys to prevent duplicates
-                                        val uniqueRemoteList = remoteList.distinctBy {
-                                            val serverUrl = it["serverUrl"] as? String ?: ""
-                                            val username = it["username"] as? String ?: ""
-                                            val m3uUrl = it["m3uUrl"] as? String ?: ""
-                                            val stalkerMacAddress = it["stalkerMacAddress"] as? String ?: ""
-                                            val type = it["type"] as? String ?: ""
-                                            "$type|$serverUrl|$username|$m3uUrl|$stalkerMacAddress"
-                                        }
 
-                                        // Delete duplicates and tombstoned providers from Firestore immediately
-                                        val duplicates = remoteList.filter { it !in uniqueRemoteList }
-                                        duplicates.forEach { dupData ->
-                                            val dupId = (dupData["id"] as? Long ?: (dupData["id"] as? String)?.toLongOrNull())
-                                            if (dupId != null) {
-                                                repositoryScope.launch {
-                                                    deleteProviderFromFirestore(dupId)
-                                                }
-                                            }
-                                        }
-
-                                        // Purge any remote documents that were deleted locally on this device
-                                        uniqueRemoteList.forEach { providerData ->
-                                            val currentId = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull()) ?: 0L
-                                            if (currentId in tombstonedIds) {
-                                                deleteProviderFromFirestore(currentId)
-                                            }
-                                        }
-
-                                        // Migrate non-deterministic IDs to deterministic IDs in Firestore
-                                        uniqueRemoteList.forEach { providerData ->
-                                            val typeStr = providerData["type"] as? String ?: return@forEach
-                                            val type = try { ProviderType.valueOf(typeStr) } catch (e: Exception) { return@forEach }
-                                            val serverUrl = providerData["serverUrl"] as? String ?: ""
-                                            val username = providerData["username"] as? String ?: ""
-                                            val m3uUrl = providerData["m3uUrl"] as? String ?: ""
-                                            val stalkerMacAddress = providerData["stalkerMacAddress"] as? String ?: ""
-                                            
-                                            val correctId = generateDeterministicId(
-                                                type = type,
-                                                serverUrl = serverUrl,
-                                                username = username,
-                                                m3uUrl = m3uUrl,
-                                                stalkerMacAddress = stalkerMacAddress,
-                                                accountUid = currentUid
-                                            )
-                                            val currentId = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull()) ?: 0L
-                                            
-                                            if (currentId != correctId && currentId !in tombstonedIds) {
-                                                // Delete old document from Firestore
-                                                deleteProviderFromFirestore(currentId)
-                                                
-                                                // Re-upload with the correct ID
-                                                val correctedProvider = Provider(
-                                                    id = correctId,
-                                                    accountUid = currentUid,
-                                                    name = providerData["name"] as? String ?: "",
-                                                    type = type,
-                                                    serverUrl = serverUrl,
-                                                    username = username,
-                                                    password = providerData["password"] as? String ?: "",
-                                                    m3uUrl = m3uUrl,
-                                                    epgUrl = providerData["epgUrl"] as? String ?: "",
-                                                    httpUserAgent = providerData["httpUserAgent"] as? String ?: "",
-                                                    httpHeaders = providerData["httpHeaders"] as? String ?: "",
-                                                    stalkerMacAddress = stalkerMacAddress,
-                                                    stalkerDeviceProfile = providerData["stalkerDeviceProfile"] as? String ?: "",
-                                                    stalkerDeviceTimezone = providerData["stalkerDeviceTimezone"] as? String ?: "",
-                                                    stalkerDeviceLocale = providerData["stalkerDeviceLocale"] as? String ?: "",
-                                                    stalkerSerialNumber = providerData["stalkerSerialNumber"] as? String ?: "",
-                                                    stalkerDeviceId = providerData["stalkerDeviceId"] as? String ?: "",
-                                                    stalkerDeviceId2 = providerData["stalkerDeviceId2"] as? String ?: "",
-                                                    stalkerSignature = providerData["stalkerSignature"] as? String ?: "",
-                                                    stalkerAdvancedOptionsJson = providerData["stalkerAdvancedOptionsJson"] as? String ?: "",
-                                                    stalkerAuthMode = StalkerAuthMode.valueOf(providerData["stalkerAuthMode"] as? String ?: "AUTO"),
-                                                    stalkerPortalProfile = StalkerPortalProfile.valueOf(providerData["stalkerPortalProfile"] as? String ?: "MAG_BASIC"),
-                                                    stalkerPortalFingerprint = StalkerPortalFingerprint.valueOf(providerData["stalkerPortalFingerprint"] as? String ?: "BASIC_MAC"),
-                                                    stalkerMagPreset = StalkerMagPreset.valueOf(providerData["stalkerMagPreset"] as? String ?: "GENERIC_SAFE"),
-                                                    stalkerLastBootstrapRecipe = StalkerBootstrapRecipe.valueOf(providerData["stalkerLastBootstrapRecipe"] as? String ?: "GENERIC_SAFE"),
-                                                    stalkerEndpointPreference = StalkerEndpointPreference.valueOf(providerData["stalkerEndpointPreference"] as? String ?: "AUTO"),
-                                                    stalkerCookieMode = StalkerCookieMode.valueOf(providerData["stalkerCookieMode"] as? String ?: "NONE"),
-                                                    stalkerPlaybackBackendHint = StalkerPlaybackBackendHint.valueOf(providerData["stalkerPlaybackBackendHint"] as? String ?: "AUTO"),
-                                                    stalkerLastPlaybackMode = providerData["stalkerLastPlaybackMode"] as? String,
-                                                    stalkerCredentialsRequired = providerData["stalkerCredentialsRequired"] as? Boolean ?: false,
-                                                    stalkerMacRequired = providerData["stalkerMacRequired"] as? Boolean ?: true,
-                                                    stalkerUsesTemporaryLinks = providerData["stalkerUsesTemporaryLinks"] as? Boolean ?: false,
-                                                    stalkerModuleRestricted = providerData["stalkerModuleRestricted"] as? Boolean ?: false,
-                                                    stalkerStrictFingerprintRequired = providerData["stalkerStrictFingerprintRequired"] as? Boolean ?: false,
-                                                    stalkerRecipeFallbackUsed = providerData["stalkerRecipeFallbackUsed"] as? Boolean ?: false,
-                                                    stalkerRecipeRediscoveryAttempts = (providerData["stalkerRecipeRediscoveryAttempts"] as? Long)?.toInt() ?: 0,
-                                                    isActive = providerData["isActive"] as? Boolean ?: true,
-                                                    maxConnections = (providerData["maxConnections"] as? Long)?.toInt() ?: 1,
-                                                    expirationDate = providerData["expirationDate"] as? Long,
-                                                    apiVersion = providerData["apiVersion"] as? String,
-                                                    allowedOutputFormats = providerData["allowedOutputFormats"] as? List<String> ?: emptyList(),
-                                                    epgSyncMode = ProviderEpgSyncMode.valueOf(providerData["epgSyncMode"] as? String ?: "UPFRONT"),
-                                                    guideSourcePolicy = GuideSourcePolicy.valueOf(providerData["guideSourcePolicy"] as? String ?: "AUTO"),
-                                                    channelLogoSourcePolicy = ChannelLogoSourcePolicy.valueOf(providerData["channelLogoSourcePolicy"] as? String ?: "SUPPLIER_PREFERRED"),
-                                                    xtreamFastSyncEnabled = providerData["xtreamFastSyncEnabled"] as? Boolean ?: true,
-                                                    xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.valueOf(providerData["xtreamLiveSyncMode"] as? String ?: "AUTO"),
-                                                    m3uVodClassificationEnabled = providerData["m3uVodClassificationEnabled"] as? Boolean ?: false,
-                                                    status = ProviderStatus.valueOf(providerData["status"] as? String ?: "UNKNOWN"),
-                                                    lastSyncedAt = providerData["lastSyncedAt"] as? Long ?: 0L,
-                                                    createdAt = providerData["createdAt"] as? Long ?: System.currentTimeMillis()
-                                                )
-                                                syncProviderToFirestore(correctedProvider)
-                                            }
-                                        }
-
-                                        val uniqueRemoteIds = uniqueRemoteList.mapNotNull { 
-                                            (it["id"] as? Long ?: (it["id"] as? String)?.toLongOrNull())?.toString() 
-                                        }
-
-                                        uniqueRemoteList.forEach { providerData ->
+                                        remoteList.forEach { providerData ->
                                             val idStr = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull())?.toString() ?: return@forEach
-                                            val idLong = idStr.toLongOrNull()
-                                            if (idStr !in localIds && (idLong == null || idLong !in tombstonedIds)) {
-                                                val type = ProviderType.valueOf(providerData["type"] as String)
+                                            val idLong = idStr.toLongOrNull() ?: return@forEach
+                                            if (idStr !in localIds && idLong !in tombstonedIds) {
+                                                val typeStr = providerData["type"] as? String ?: return@forEach
+                                                val type = try { ProviderType.valueOf(typeStr) } catch (e: Exception) { return@forEach }
                                                 val rawRemotePassword = providerData["password"] as? String ?: ""
                                                 val cleartextPassword = try {
                                                     accountE2eeCrypto.decryptForAccount(rawRemotePassword, currentUid)
@@ -275,9 +163,9 @@ class ProviderRepositoryImpl @Inject constructor(
                                                     rawRemotePassword
                                                 }
                                                 val provider = Provider(
-                                                    id = idStr.toLongOrNull() ?: 0L,
+                                                    id = idLong,
                                                     accountUid = currentUid,
-                                                    name = providerData["name"] as String,
+                                                    name = providerData["name"] as? String ?: "",
                                                     type = type,
                                                     serverUrl = providerData["serverUrl"] as? String ?: "",
                                                     username = providerData["username"] as? String ?: "",
@@ -330,13 +218,6 @@ class ProviderRepositoryImpl @Inject constructor(
                                                 repositoryScope.launch {
                                                     syncManager.sync(provider.id, force = false)
                                                 }
-                                            }
-                                        }
-                                        
-                                        // 3. Delete local providers that are no longer in Firestore (were deleted from another device)
-                                        localEntities.forEach { entity ->
-                                            if (entity.accountUid == currentUid && entity.id.toString() !in uniqueRemoteIds && entity.id !in tombstonedIds) {
-                                                deleteProvider(entity.id)
                                             }
                                         }
                                     } catch (e: Exception) {

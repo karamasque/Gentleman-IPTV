@@ -27,7 +27,7 @@ def get_token():
 
 TOKEN = get_token()
 REPO = "karamasque/Gentleman-IPTV"
-TAG = "v1.1.3"
+TAG = "v1.1.4"
 APK_PATH = r"D:\Masaüstü\KaynanamTV-IPTV\app\build\outputs\apk\release\app-release.apk"
 
 headers = {
@@ -42,7 +42,7 @@ data = {
     "tag_name": TAG,
     "target_commitish": "master",
     "name": f"KaynanamTV {TAG}",
-    "body": "KaynanamTV v1.1.3 Zorunlu Güncelleme\n\n- P0 Provider Ekleme & Görünürlük Düzeltmesi (insertProvider, loginXtream, validateM3u, loginJellyfin, loginStalker accountUid ataması).\n- Account izolasyonlu getByUrlAndUserForAccount çakışma önleme desteği.\n- UI listeleme ve Room sorguları optimize edildi.",
+    "body": "KaynanamTV v1.1.4 Zorunlu Güncelleme\n\n- P0 Data-Loss & Provider Restore Düzeltmesi (Reinstall / Login sonrasında snapshot listener'ın Firestore sağlayıcılarını silmesi engellendi).\n- Strict 'REMOTE DELETE = EXPLICIT USER PROVIDER DELETE ONLY' güvenlik kuralı uygulandı.\n- Clean install E2EE bulut geri yükleme ve senkronizasyonu güvenceye alındı.",
     "draft": False,
     "prerelease": False
 }
