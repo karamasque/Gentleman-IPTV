@@ -49,12 +49,12 @@ def init_firebase():
         return None
 
 def update_config(
-    latest_code=101,
-    latest_name="1.1.1",
-    min_supported_code=101,
+    latest_code=102,
+    latest_name="1.1.2",
+    min_supported_code=102,
     force_update=True,
-    apk_url="https://github.com/karamasque/Gentleman-IPTV/releases/download/v1.1.1/KaynanamTV.apk",
-    release_notes="KaynanamTV v1.1.1 zorunlu güncelleme."
+    apk_url="https://github.com/karamasque/Gentleman-IPTV/releases/download/v1.1.2/KaynanamTV.apk",
+    release_notes="KaynanamTV v1.1.2 zorunlu güncelleme."
 ):
     db = init_firebase()
     if not db:

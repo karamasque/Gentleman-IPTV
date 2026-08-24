@@ -27,7 +27,7 @@ def get_token():
 
 TOKEN = get_token()
 REPO = "karamasque/Gentleman-IPTV"
-TAG = "v1.1.1"
+TAG = "v1.1.2"
 APK_PATH = r"D:\Masaüstü\KaynanamTV-IPTV\app\build\outputs\apk\release\app-release.apk"
 
 headers = {
@@ -42,7 +42,7 @@ data = {
     "tag_name": TAG,
     "target_commitish": "master",
     "name": f"KaynanamTV {TAG}",
-    "body": "KaynanamTV v1.1.1 Zorunlu Güncelleme\n\n- Force update versiyonlama ve kontrol mekanizması düzeltildi.\n- Launcher ve installer ikon render kalitesi iyileştirildi.\n- Canlı TV EPG program ilerleme çubuğu ve kalan süre göstergesi optimize edildi.",
+    "body": "KaynanamTV v1.1.2 Zorunlu Güncelleme\n\n- P0 Uninstall / Reinstall IPTV Cloud Restore düzeltildi (temiz kurulumda E2EE restore & provider senkronizasyonu).\n- Launcher, tablet/telefon güvenli bölge (safe-zone) ve TV ikon kompozisyonu optimize edildi.\n- Account izolasyonu ve veritabanı kararlılığı artırıldı.",
     "draft": False,
     "prerelease": False
 }
