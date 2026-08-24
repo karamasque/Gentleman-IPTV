@@ -107,25 +107,28 @@ class ProviderRepositoryImpl @Inject constructor(
         try {
             FirebaseAuth.getInstance().addAuthStateListener { firebaseAuth ->
                 val user = firebaseAuth.currentUser
+                val uid = user?.uid
+                Log.i("ProviderRepository", "[AUTH_STATE_CHANGED] user=${user?.email} uid=$uid")
                 firestoreListenerRegistration?.remove()
                 firestoreListenerRegistration = null
                 
                 if (user != null) {
                     val currentUid = user.uid
+                    Log.i("ProviderRepository", "[CURRENT_UID] $currentUid")
+                    Log.i("ProviderRepository", "[PROVIDER_CLOUD_LISTENER_START] Starting Firestore snapshot listener for uid=$currentUid")
                     val firestore = FirebaseFirestore.getInstance()
                     firestoreListenerRegistration = firestore.collection("users").document(currentUid)
                         .collection("providers").addSnapshotListener { snapshot, error ->
                             if (error != null) {
-                                Log.e("ProviderRepository", "Firestore listener error", error)
+                                Log.e("ProviderRepository", "[FIRESTORE_SNAPSHOT_ERROR] Firestore listener error: ${error.message}", error)
                                 return@addSnapshotListener
                             }
                             if (snapshot != null) {
+                                val remoteDocCount = snapshot.documents.size
+                                Log.i("ProviderRepository", "[FIRESTORE_SNAPSHOT_RECEIVED] docCount=$remoteDocCount")
+                                Log.i("ProviderRepository", "[REMOTE_DOC_COUNT] $remoteDocCount")
                                 repositoryScope.launch {
                                     try {
-                                        if (!isCurrentUserPremium()) {
-                                            Log.d("ProviderRepository", "Free user - cloud multi-device sync is disabled.")
-                                            return@launch
-                                        }
                                         val persistentDeletedIds = preferencesRepository.getDeletedProviderIdsSync()
                                         val tombstonedIds = persistentDeletedIds + pendingDeletedProviderIds
                                         val remoteList = snapshot.documents.mapNotNull { it.data }
@@ -153,13 +156,21 @@ class ProviderRepositoryImpl @Inject constructor(
                                         remoteList.forEach { providerData ->
                                             val idStr = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull())?.toString() ?: return@forEach
                                             val idLong = idStr.toLongOrNull() ?: return@forEach
+                                            Log.i("ProviderRepository", "[REMOTE_PROVIDER_ID] idLong=$idLong localExists=${idStr in localIds} tombstoned=${idLong in tombstonedIds}")
                                             if (idStr !in localIds && idLong !in tombstonedIds) {
                                                 val typeStr = providerData["type"] as? String ?: return@forEach
-                                                val type = try { ProviderType.valueOf(typeStr) } catch (e: Exception) { return@forEach }
+                                                val type = try { ProviderType.valueOf(typeStr) } catch (e: Exception) { 
+                                                    Log.e("ProviderRepository", "Unknown provider type: $typeStr", e)
+                                                    return@forEach 
+                                                }
                                                 val rawRemotePassword = providerData["password"] as? String ?: ""
+                                                Log.i("ProviderRepository", "[E2EE_DECRYPT_START] id=$idLong isEncrypted=${rawRemotePassword.startsWith("enc:v2:")}")
                                                 val cleartextPassword = try {
-                                                    accountE2eeCrypto.decryptForAccount(rawRemotePassword, currentUid)
+                                                    val decrypted = accountE2eeCrypto.decryptForAccount(rawRemotePassword, currentUid)
+                                                    Log.i("ProviderRepository", "[E2EE_DECRYPT_SUCCESS] id=$idLong")
+                                                    decrypted
                                                 } catch (e: Exception) {
+                                                    Log.e("ProviderRepository", "[E2EE_DECRYPT_FAIL] id=$idLong error=${e.message}", e)
                                                     rawRemotePassword
                                                 }
                                                 val provider = Provider(
@@ -214,12 +225,20 @@ class ProviderRepositoryImpl @Inject constructor(
                                                     lastSyncedAt = providerData["lastSyncedAt"] as? Long ?: 0L,
                                                     createdAt = providerData["createdAt"] as? Long ?: System.currentTimeMillis()
                                                 )
-                                                providerDao.insert(provider.toSecureEntity())
+                                                Log.i("ProviderRepository", "[ROOM_UPSERT_START] id=$idLong accountUid=$currentUid name=${provider.name}")
+                                                try {
+                                                    providerDao.insert(provider.toSecureEntity())
+                                                    Log.i("ProviderRepository", "[ROOM_UPSERT_SUCCESS] id=$idLong")
+                                                } catch (e: Exception) {
+                                                    Log.e("ProviderRepository", "[ROOM_UPSERT_FAIL] id=$idLong error=${e.message}", e)
+                                                }
                                                 repositoryScope.launch {
                                                     syncManager.sync(provider.id, force = false)
                                                 }
                                             }
                                         }
+                                        val roomCount = providerDao.getAllForAccountSync(currentUid).size
+                                        Log.i("ProviderRepository", "[ROOM_PROVIDER_COUNT_FOR_UID] uid=$currentUid count=$roomCount")
                                     } catch (e: Exception) {
                                         Log.e("ProviderRepository", "Failed to sync local providers inside snapshot listener", e)
                                     }
@@ -236,7 +255,11 @@ class ProviderRepositoryImpl @Inject constructor(
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun getProviders(): Flow<List<Provider>> =
         currentAccountUidFlow.flatMapLatest { uid ->
-            providerDao.getAllForAccount(uid).map { entities -> entities.map { it.toPublicDomain() } }
+            providerDao.getAllForAccount(uid).map { entities ->
+                val providers = entities.map { it.toPublicDomain() }
+                Log.i("ProviderRepository", "[UI_PROVIDER_COUNT_FOR_UID] uid=$uid count=${providers.size}")
+                providers
+            }
         }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -1523,35 +1546,11 @@ class ProviderRepositoryImpl @Inject constructor(
         }
     }
 
-    private suspend fun isCurrentUserPremium(): Boolean {
-        val user = FirebaseAuth.getInstance().currentUser ?: return false
-        if (user.email == "kilicemre3437@gmail.com") return true
-        return try {
-            val userDoc = FirebaseFirestore.getInstance().collection("users").document(user.uid).get().await()
-            if (!userDoc.exists()) return false
-            val plan = userDoc.getString("premiumPlan")?.uppercase()
-            val isPremiumDoc = userDoc.getBoolean("isPremium") == true
-            val isAdminDoc = userDoc.getBoolean("isAdmin") == true || userDoc.getString("role")?.uppercase() == "ADMIN"
-            val premiumExpiresAt = userDoc.getLong("premiumExpiresAt") ?: 0L
-            val trialExpiresAt = userDoc.getLong("trialExpiresAt") ?: 0L
-            val now = System.currentTimeMillis()
-            
-            isAdminDoc || isPremiumDoc || (plan in listOf("YEARLY", "LIFETIME", "TRIAL", "PRO", "PREMIUM", "MONTHLY")) || (premiumExpiresAt > now) || (trialExpiresAt > now)
-        } catch (e: Exception) {
-            Log.w("ProviderRepository", "Failed to check premium status from Firestore", e)
-            false
-        }
-    }
-
     private suspend fun syncProviderToFirestore(provider: Provider) {
         val user = FirebaseAuth.getInstance().currentUser ?: return
         // Cloud Sync Guard: Strict ownership invariant
         if (provider.accountUid != null && provider.accountUid != user.uid) {
             Log.w("ProviderRepository", "Blocked cloud sync: Provider ${provider.id} owned by ${provider.accountUid}, but current user is ${user.uid}")
-            return
-        }
-        if (!isCurrentUserPremium()) {
-            Log.d("ProviderRepository", "Free user - skipping cloud upsert for provider ${provider.id}")
             return
         }
         val firestore = FirebaseFirestore.getInstance()
@@ -1620,9 +1619,9 @@ class ProviderRepositoryImpl @Inject constructor(
             firestore.collection("users").document(user.uid)
                 .collection("providers").document(provider.id.toString())
                 .set(data).await()
-            Log.d("ProviderRepository", "Synced provider ${provider.id} to Firestore")
+            Log.d("ProviderRepository", "Synced provider ${provider.id} to Firestore for uid=${user.uid}")
         } catch (e: Exception) {
-            Log.e("ProviderRepository", "Failed to sync provider to Firestore", e)
+            Log.e("ProviderRepository", "Failed to sync provider ${provider.id} to Firestore", e)
         }
     }
 
