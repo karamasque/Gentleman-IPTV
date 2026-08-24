@@ -94,7 +94,7 @@ internal fun shouldPreloadAdjacentChannel(
     }
 }
 
-fun PlayerViewModel.playNext() {
+fun PlayerViewModel.playNext(userInitiated: Boolean = true) {
     clearNumericChannelInput()
     if (currentContentType != ContentType.LIVE) {
         if (com.kaynanamtv.app.BuildConfig.DEBUG) {
@@ -105,10 +105,10 @@ fun PlayerViewModel.playNext() {
     if (channelList.isEmpty()) return
     val nextIndex = wrappedChannelIndex(1)
     if (nextIndex == -1) return
-    changeChannelDebounced(nextIndex)
+    changeChannelDebounced(nextIndex, userInitiated = userInitiated, source = "playNext")
 }
 
-fun PlayerViewModel.playPrevious() {
+fun PlayerViewModel.playPrevious(userInitiated: Boolean = true) {
     clearNumericChannelInput()
     if (currentContentType != ContentType.LIVE) {
         if (com.kaynanamtv.app.BuildConfig.DEBUG) {
@@ -119,14 +119,18 @@ fun PlayerViewModel.playPrevious() {
     if (channelList.isEmpty()) return
     val prevIndex = wrappedChannelIndex(-1)
     if (prevIndex == -1) return
-    changeChannelDebounced(prevIndex)
+    changeChannelDebounced(prevIndex, userInitiated = userInitiated, source = "playPrevious")
 }
 
-fun PlayerViewModel.changeChannelDebounced(index: Int) {
+fun PlayerViewModel.changeChannelDebounced(index: Int, userInitiated: Boolean = true, source: String = "debounced") {
     if (currentContentType != ContentType.LIVE) {
         if (com.kaynanamtv.app.BuildConfig.DEBUG) {
             android.util.Log.w("PlayerVM", "CHANNEL_ZAP_FORBIDDEN: changeChannelDebounced() called while contentType=$currentContentType")
         }
+        return
+    }
+    if (!userInitiated) {
+        android.util.Log.w("PlayerZapTrace", "[CHANNEL_ZAP_TRACE] source=$source old=$currentChannelIndex new=$index userInitiated=false (BLOCKED)")
         return
     }
     if (channelList.isEmpty() || index !in channelList.indices) return
@@ -151,25 +155,25 @@ fun PlayerViewModel.changeChannelDebounced(index: Int) {
 
     zapDebounceJob = viewModelScope.launch {
         delay(600)
-        executeChannelChange(index, isAutoFallback = false)
+        executeChannelChange(index, userInitiated = true, source = source)
     }
 }
 
-fun PlayerViewModel.zapToChannel(channelId: Long) {
+fun PlayerViewModel.zapToChannel(channelId: Long, userInitiated: Boolean = true) {
     clearNumericChannelInput()
     if (currentContentType != ContentType.LIVE || channelList.isEmpty()) return
     val index = channelList.indexOfFirst { it.id == channelId }
     if (index != -1) {
-        changeChannel(index)
+        changeChannel(index, userInitiated = userInitiated, source = "zapToChannel")
         closeOverlays()
     }
 }
 
-fun PlayerViewModel.zapToLastChannel() {
+fun PlayerViewModel.zapToLastChannel(userInitiated: Boolean = true) {
     clearNumericChannelInput()
     if (currentContentType != ContentType.LIVE || channelList.isEmpty()) return
     if (previousChannelIndex in channelList.indices && previousChannelIndex != currentChannelIndex) {
-        changeChannel(previousChannelIndex)
+        changeChannel(previousChannelIndex, userInitiated = userInitiated, source = "zapToLastChannel")
     }
 }
 
@@ -206,7 +210,7 @@ fun PlayerViewModel.commitNumericChannelInput() {
     // "0" committed alone after timeout → zap to last channel (standard IPTV remote behaviour)
     if (numericInputBuffer == "0" && hasLastChannel()) {
         clearNumericChannelInput()
-        zapToLastChannel()
+        zapToLastChannel(userInitiated = true)
         return
     }
 
@@ -214,7 +218,7 @@ fun PlayerViewModel.commitNumericChannelInput() {
     if (targetChannel != null) {
         val targetIndex = channelList.indexOfFirst { it.id == targetChannel.id }
         if (targetIndex != -1) {
-            changeChannel(targetIndex)
+            changeChannel(targetIndex, userInitiated = true, source = "numericInput")
         }
         clearNumericChannelInput()
         return
@@ -240,24 +244,34 @@ fun PlayerViewModel.clearNumericChannelInput() {
     numericChannelInputFlow.value = null
 }
 
-fun PlayerViewModel.changeChannel(index: Int, isAutoFallback: Boolean = false) {
+fun PlayerViewModel.changeChannel(index: Int, userInitiated: Boolean = true, source: String = "manual") {
     if (currentContentType != ContentType.LIVE) {
         if (com.kaynanamtv.app.BuildConfig.DEBUG) {
             android.util.Log.w("PlayerVM", "CHANNEL_ZAP_FORBIDDEN: changeChannel() called while contentType=$currentContentType")
         }
         return
     }
+    android.util.Log.d("PlayerZapTrace", "[CHANNEL_ZAP_TRACE] source=$source old=$currentChannelIndex new=$index userInitiated=$userInitiated")
+    if (!userInitiated) {
+        android.util.Log.w("PlayerZapTrace", "[CHANNEL_ZAP_TRACE] BLOCKED non-user initiated channel zap")
+        return
+    }
     zapDebounceJob?.cancel()
-    executeChannelChange(index, isAutoFallback)
+    executeChannelChange(index, userInitiated = userInitiated, source = source)
 }
 
-internal fun PlayerViewModel.executeChannelChange(index: Int, isAutoFallback: Boolean = false) {
+internal fun PlayerViewModel.executeChannelChange(index: Int, userInitiated: Boolean = true, source: String = "execute") {
     if (currentContentType != ContentType.LIVE) {
         if (com.kaynanamtv.app.BuildConfig.DEBUG) {
             android.util.Log.w("PlayerVM", "CHANNEL_ZAP_FORBIDDEN: executeChannelChange() called while contentType=$currentContentType")
         }
         return
     }
+    if (!userInitiated) {
+        android.util.Log.w("PlayerZapTrace", "[CHANNEL_ZAP_TRACE] BLOCKED non-user initiated executeChannelChange")
+        return
+    }
+    android.util.Log.d("PlayerZapTrace", "[CHANNEL_ZAP_TRACE] executing channel change to index=$index (channelId=${channelList.getOrNull(index)?.id}) source=$source")
     check(index in channelList.indices) {
         "executeChannelChange index=$index out of channelList bounds (size=${channelList.size})"
     }
@@ -271,6 +285,7 @@ internal fun PlayerViewModel.executeChannelChange(index: Int, isAutoFallback: Bo
         stopLiveTimeshift = playerEngine::stopLiveTimeshift,
         clearPreload = { playerEngine.preload(null) }
     )
+    resetTimeshiftUiState()
     currentResolvedPlaybackUrl = ""
     currentResolvedStreamInfo = null
     val channel = channelList[index]
@@ -324,7 +339,7 @@ internal fun PlayerViewModel.executeChannelChange(index: Int, isAutoFallback: Bo
 
     triedAlternativeStreams.clear()
     triedAlternativeStreams.add(channel.streamUrl)
-    if (currentContentType == ContentType.LIVE && !isAutoFallback) scheduleZapBufferWatchdog(index)
+    if (currentContentType == ContentType.LIVE) scheduleZapBufferWatchdog(index)
 }
 
 internal fun PlayerViewModel.preloadAdjacentChannel(currentIndex: Int) {

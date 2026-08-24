@@ -205,10 +205,13 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
                     status = LiveTimeshiftStatus.PREPARING,
                     message = "Preparing local live rewind…"
                 )
+                android.util.Log.d("LiveTimeshiftManager", "[TS_INSTANCE] managerHash=${System.identityHashCode(this@DefaultLiveTimeshiftManager)}")
+                android.util.Log.d("LiveTimeshiftManager", "[TS_START] channelId=$channelKey streamType=${support.streamType} backend=$backend sessionDir=${sessionDir.absolutePath}")
                 session.job = scope.launch {
                     try {
                         session.capture()
                     } catch (t: Throwable) {
+                        android.util.Log.e("LiveTimeshiftManager", "[TS_START] capture failed error=${t.message}", t)
                         _state.value = _state.value.copy(
                             enabled = true,
                             supported = true,
@@ -415,6 +418,7 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
                 currentOffsetFromLiveMs = 0L,
                 message = message ?: if (windowDurationMs > 0L) "Local live rewind ready." else "Preparing local live rewind…"
             )
+            android.util.Log.d("LiveTimeshiftManager", "[TS_ENGINE] BUFFER_DEPTH depthMs=$windowDurationMs")
         }
 
         protected fun resolveRelativeUrl(baseUrl: String, value: String): String {
@@ -505,11 +509,13 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
                 }
             }
             val durationMs = orderedChunks.sumOf { it.durationMs }
-            return LiveTimeshiftSnapshot(
+            val snapshot = LiveTimeshiftSnapshot(
                 url = snapshotFile.toURI().toString(),
                 durationMs = durationMs,
                 backend = backend
             )
+            android.util.Log.d("LiveTimeshiftManager", "[TS_SNAPSHOT] create=success path=${snapshot.url} durationMs=${snapshot.durationMs}")
+            return snapshot
         }
 
         private fun createChunk(): ActiveProgressiveChunk {
@@ -547,6 +553,8 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
                 runningChunkDurationMs
             }
             updateWindow(windowDuration)
+            android.util.Log.d("LiveTimeshiftManager", "[TS_CHUNK] file=${chunk.file?.name} bytes=${active.bytesWritten} durationMs=${chunk.durationMs}")
+            android.util.Log.d("LiveTimeshiftManager", "[TS_ENGINE] CHUNK_WRITTEN bytes=${active.bytesWritten} durationMs=${chunk.durationMs} totalWindowMs=$windowDuration chunkCount=${chunks.size}")
         }
 
         private fun ActiveProgressiveChunk.write(buffer: ByteArray, read: Int) {

@@ -31,51 +31,21 @@ fun Modifier.mouseClickable(
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier = composed {
-    val context = LocalContext.current
-    val isTv = remember(context) { context.isTelevisionDevice() }
+    if (!enabled) return@composed this
     var pressedFromPointer by remember { mutableStateOf(false) }
 
-    if (!isTv) {
-        if (!enabled) {
-            this
-        } else if (onLongClick != null) {
-            // Phone / tablet path with long-press support.
-            this.pointerInput(onClick, onLongClick) {
-                detectTapGestures(
-                    onTap = { _ -> onClick() },
-                    onLongPress = onLongClick?.let { lc -> { _ -> lc() } }
-                )
-            }
-        } else {
-            // Phone / tablet path for simple clicks. Interop receives the raw
-            // down/up pair before TV Material's focus-first touch handling.
-            this.pointerInteropFilter { event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN,
-                    MotionEvent.ACTION_BUTTON_PRESS -> {
-                        pressedFromPointer = true
-                        focusRequester?.requestFocus()
-                        true
-                    }
-                    MotionEvent.ACTION_UP,
-                    MotionEvent.ACTION_BUTTON_RELEASE -> {
-                        val shouldClick = pressedFromPointer
-                        pressedFromPointer = false
-                        if (shouldClick) onClick()
-                        shouldClick
-                    }
-                    MotionEvent.ACTION_CANCEL -> {
-                        pressedFromPointer = false
-                        false
-                    }
-                    else -> false
-                }
-            }
+    if (onLongClick != null) {
+        this.pointerInput(onClick, onLongClick) {
+            detectTapGestures(
+                onTap = { _ ->
+                    android.util.Log.d("LiveActionTrace", "[LIVE_ACTION_TRACE] input=TOUCH onTap firing onClick")
+                    onClick()
+                },
+                onLongPress = { _ -> onLongClick() }
+            )
         }
     } else {
-        // TV path: existing mouse / pointer-device interop filter.
         this.pointerInteropFilter { event ->
-            if (!enabled || !event.isMouseLikePrimaryPress()) return@pointerInteropFilter false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN,
                 MotionEvent.ACTION_BUTTON_PRESS -> {
@@ -87,7 +57,16 @@ fun Modifier.mouseClickable(
                 MotionEvent.ACTION_BUTTON_RELEASE -> {
                     val shouldClick = pressedFromPointer
                     pressedFromPointer = false
-                    if (shouldClick) onClick()
+                    if (shouldClick) {
+                        val inputType = when {
+                            event.isFromSource(InputDevice.SOURCE_MOUSE) -> "MOUSE"
+                            event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) -> "TOUCH"
+                            event.isFromSource(InputDevice.SOURCE_TOUCHPAD) -> "TOUCHPAD"
+                            else -> "POINTER"
+                        }
+                        android.util.Log.d("LiveActionTrace", "[LIVE_ACTION_TRACE] input=$inputType firing onClick")
+                        onClick()
+                    }
                     shouldClick
                 }
                 MotionEvent.ACTION_CANCEL -> {
@@ -97,23 +76,5 @@ fun Modifier.mouseClickable(
                 else -> false
             }
         }
-    }
-}
-
-private fun MotionEvent.isMouseLikePrimaryPress(): Boolean {
-    val isPointerSource = isFromSource(InputDevice.SOURCE_MOUSE) ||
-        isFromSource(InputDevice.SOURCE_TOUCHPAD) ||
-        isFromSource(InputDevice.SOURCE_STYLUS)
-
-    if (!isPointerSource) {
-        return false
-    }
-
-    return when (actionMasked) {
-        MotionEvent.ACTION_DOWN,
-        MotionEvent.ACTION_UP -> buttonState == 0 || buttonState and MotionEvent.BUTTON_PRIMARY != 0
-        MotionEvent.ACTION_BUTTON_PRESS,
-        MotionEvent.ACTION_BUTTON_RELEASE -> actionButton == MotionEvent.BUTTON_PRIMARY
-        else -> false
     }
 }

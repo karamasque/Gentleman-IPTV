@@ -1,8 +1,11 @@
 package com.kaynanamtv.app.ui.screens.player.overlay
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.basicMarquee
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,24 +19,60 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.SyncAlt
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.ViewSidebar
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
+import com.kaynanamtv.app.ui.model.isArchivePlayable
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.SyncAlt
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.ViewSidebar
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -46,24 +85,30 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import com.kaynanamtv.app.BuildConfig
 import com.kaynanamtv.app.R
 import com.kaynanamtv.app.ui.components.ChannelLogoBadge
-import com.kaynanamtv.app.ui.components.shell.StatusPill
 import com.kaynanamtv.app.ui.design.AppColors
 import com.kaynanamtv.app.ui.interaction.TvClickableSurface
-import com.kaynanamtv.app.ui.model.archivePlaybackCapability
-import com.kaynanamtv.app.ui.model.isArchivePlayable
 import com.kaynanamtv.app.ui.screens.player.PlayerTimeshiftUiState
 import com.kaynanamtv.app.ui.time.LocalAppTimeFormat
 import com.kaynanamtv.app.ui.time.createTimeFormat
 import com.kaynanamtv.domain.model.Channel
 import com.kaynanamtv.domain.model.Program
 import com.kaynanamtv.domain.model.RecordingStatus
-import com.kaynanamtv.player.timeshift.LiveTimeshiftStatus
+import kotlinx.coroutines.delay
 import java.util.Date
-import com.kaynanamtv.app.ui.design.AppColors.Brand as Primary
-import com.kaynanamtv.app.ui.design.AppColors.TextTertiary as OnSurfaceDim
+import java.util.Locale
 
+/**
+ * Premium Compact Live TV Floating Dock Controls (Canonical Runtime Renderer)
+ * - Directly renders the compact floating glass dock matching the VOD design language
+ * - Fully wires all 18 audited Live TV actions
+ * - Displays complete metadata: canonical live badge, channel info, resolution, current/next program, timeshift timeline, PVR/CC/Cast badges
+ * - Includes transient diagnostic runtime badge in DEBUG mode
+ */
 @Composable
 fun ChannelInfoOverlay(
     currentChannel: Channel?,
@@ -114,895 +159,772 @@ fun ChannelInfoOverlay(
     onCast: () -> Unit = {},
     onStopCasting: () -> Unit = {},
     onOpenChannelList: () -> Unit = {},
+    onSeekToPosition: (Long) -> Unit = {},
     timeshiftUiState: PlayerTimeshiftUiState = PlayerTimeshiftUiState(),
     onTransientPanelVisibilityChanged: (Boolean) -> Unit = {},
-    resolutionLabel: String? = null
+    resolutionLabel: String? = null,
+    isCatchUpPlayback: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     val appTimeFormat = LocalAppTimeFormat.current
-    var focusedButtonLabel by remember { mutableStateOf("") }
     val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
-    val showTimeshiftControls = timeshiftUiState.available && !isCastConnected
-    val archiveCapability = currentChannel?.archivePlaybackCapability()
-    val canBrowseArchive = archiveCapability?.canBuildReplayCandidate == true
-    val canRestartProgram = currentChannel != null &&
-        currentProgram != null &&
-        currentChannel.isArchivePlayable(currentProgram)
-    val hasCatchUpOptions = canBrowseArchive || canRestartProgram
-    var expandedPanel by remember { mutableStateOf<ChannelInfoPanel?>(null) }
-    val recordButtonFocusRequester = remember { FocusRequester() }
-    val catchUpButtonFocusRequester = remember { FocusRequester() }
-    val liveDvrPanelFocusRequester = remember { FocusRequester() }
-    val recordPanelFocusRequester = remember { FocusRequester() }
-    val catchUpPanelFocusRequester = remember { FocusRequester() }
+    val showTimeshiftControls = timeshiftUiState.available && timeshiftUiState.bufferDepthMs >= 10_000L && !isCastConnected
 
-    fun handleMainActionFocus(ownerPanel: ChannelInfoPanel?) {
-        onOverlayInteracted()
-        if (expandedPanel != null && expandedPanel != ownerPanel) {
-            expandedPanel = null
+    val isTimeshiftActive = showTimeshiftControls && timeshiftUiState.bufferedBehindLiveMs >= 60_000L
+    val liveState = when {
+        isCatchUpPlayback -> TvLiveState.ARCHIVE
+        isTimeshiftActive -> TvLiveState.TIMESHIFT
+        else -> TvLiveState.LIVE_EDGE
+    }
+
+    var liveDotVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(liveState) {
+        if (liveState == TvLiveState.LIVE_EDGE) {
+            while (true) {
+                delay(700L)
+                liveDotVisible = !liveDotVisible
+            }
+        } else {
+            liveDotVisible = true
         }
-    }
-
-    fun togglePanel(panel: ChannelInfoPanel) {
-        expandedPanel = if (expandedPanel == panel) null else panel
-    }
-
-    LaunchedEffect(showTimeshiftControls, hasCatchUpOptions) {
-        expandedPanel = when (expandedPanel) {
-            ChannelInfoPanel.LIVE_DVR -> expandedPanel.takeIf { showTimeshiftControls }
-            ChannelInfoPanel.CATCH_UP -> expandedPanel.takeIf { hasCatchUpOptions }
-            else -> expandedPanel
-        }
-    }
-
-    LaunchedEffect(expandedPanel) {
-        onTransientPanelVisibilityChanged(expandedPanel != null)
-    }
-
-    androidx.compose.runtime.DisposableEffect(Unit) {
-        onDispose { onTransientPanelVisibilityChanged(false) }
     }
 
     BackHandler {
-        if (expandedPanel != null) {
-            expandedPanel = null
-        } else {
-            onDismiss()
-        }
+        onDismiss()
     }
 
-    PlayerOverlayPanel(
-        modifier = Modifier
+    Box(
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 40.dp, vertical = 16.dp)
+            .padding(bottom = 16.dp),
+        contentAlignment = Alignment.BottomCenter
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Surface(
+            modifier = Modifier
+                .widthIn(max = 1100.dp)
+                .fillMaxWidth(0.80f),
+            shape = RoundedCornerShape(22.dp),
+            colors = SurfaceDefaults.colors(containerColor = Color(0xFF070B14).copy(alpha = 0.88f)),
+            border = Border(
+                border = BorderStroke(
+                    1.2.dp,
+                    Brush.linearGradient(
+                        listOf(
+                            Color(0xFF2563EB).copy(alpha = 0.50f),
+                            Color(0xFF6366F1).copy(alpha = 0.40f),
+                            Color(0xFF00E5FF).copy(alpha = 0.30f)
+                        )
+                    )
+                ),
+                shape = RoundedCornerShape(22.dp)
+            )
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
+                val canReturnToLive = showTimeshiftControls && timeshiftUiState.bufferedBehindLiveMs >= 60_000L
+                LaunchedEffect(showTimeshiftControls, timeshiftUiState.bufferDepthMs, timeshiftUiState.bufferedBehindLiveMs, canReturnToLive) {
+                    android.util.Log.d(
+                        "PlayerOverlayTrace",
+                        "[TS_STATE_UI] depthMs=${timeshiftUiState.bufferDepthMs} available=$showTimeshiftControls canReturnLive=$canReturnToLive offset=${timeshiftUiState.bufferedBehindLiveMs}"
+                    )
+                }
+                // TOP SECTION: Left Info Block + Right Timeshift/Status Area
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
                 ) {
-                    if (currentChannel != null) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, AppColors.Focus.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
-                        ) {
-                            ChannelLogoBadge(
-                                channelName = currentChannel.name,
-                                logoUrl = currentChannel.logoUrl,
-                                backgroundColor = AppColors.SurfaceEmphasis.copy(alpha = 0.46f),
-                                contentPadding = PaddingValues(6.dp),
-                                textStyle = MaterialTheme.typography.labelLarge,
-                                textColor = AppColors.TextSecondary,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
+                    // LEFT INFO BLOCK
                     Column(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1.15f),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        // Row 1: Canonical State Badge + Channel Info + Resolution Badge + Debug Badge
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (displayChannelNumber > 0) {
-                                StatusPill(
-                                    label = stringResource(R.string.player_live_channel, displayChannelNumber),
-                                    containerColor = AppColors.BrandMuted
-                                )
-                            }
-                            if (showTimeshiftControls) {
-                                StatusPill(
-                                    label = stringResource(R.string.player_live_rewind_badge),
-                                    containerColor = AppColors.SurfaceEmphasis
-                                )
-                            }
-                            if (currentRecordingStatus == RecordingStatus.RECORDING) {
-                                StatusPill(
-                                    label = stringResource(R.string.player_recording_badge),
-                                    containerColor = AppColors.Live
-                                )
-                            } else if (currentRecordingStatus == RecordingStatus.SCHEDULED) {
-                                StatusPill(
-                                    label = stringResource(R.string.player_recording_scheduled_badge),
-                                    containerColor = AppColors.BrandMuted
-                                )
-                            }
-                            if (currentChannel != null) {
-                                Text(
-                                    text = currentChannel.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = AppColors.TextPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .weight(1f, fill = false)
-                                        .basicMarquee(
-                                            iterations = Int.MAX_VALUE,
-                                            initialDelayMillis = 900,
-                                            repeatDelayMillis = 1200,
-                                            velocity = 24.dp
+                            // Canonical State Badge
+                            when (liveState) {
+                                TvLiveState.LIVE_EDGE -> {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier
+                                            .background(Color.Red.copy(alpha = 0.18f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(7.dp)
+                                                .background(
+                                                    color = Color.Red.copy(alpha = if (liveDotVisible) 1f else 0.25f),
+                                                    shape = CircleShape
+                                                )
                                         )
-                                )
-                            }
-                            resolutionLabel?.takeIf { it.isNotBlank() }?.let { label ->
-                                StatusPill(
-                                    label = label,
-                                    containerColor = AppColors.SurfaceEmphasis
-                                )
-                            }
-                            currentChannel?.currentVariant
-                                ?.takeIf { channelVariantCount > 1 }
-                                ?.attributes
-                                ?.toOverlayBadgeLabel()
-                                ?.takeIf { it.isNotBlank() }
-                                ?.let { variantLabel ->
-                                    StatusPill(
-                                        label = variantLabel,
-                                        containerColor = AppColors.SurfaceEmphasis
+                                        Text(
+                                            text = "CANLI",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFFFF4D4F)
+                                        )
+                                    }
+                                }
+                                TvLiveState.TIMESHIFT -> {
+                                    val offsetMin = (timeshiftUiState.bufferedBehindLiveMs / 60_000L).coerceAtLeast(1L)
+                                    Text(
+                                        text = "\u21B6 -$offsetMin dk",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFFB347),
+                                        modifier = Modifier
+                                            .background(Color(0xFFFFB347).copy(alpha = 0.18f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 7.dp, vertical = 3.dp)
                                     )
                                 }
-                            if (archiveCapability?.canBuildReplayCandidate == true) {
-                                StatusPill(
-                                    label = stringResource(R.string.player_catchup_badge),
-                                    containerColor = AppColors.Live
-                                )
+                                TvLiveState.ARCHIVE -> {
+                                    Text(
+                                        text = "ARŞİV",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = AppColors.NeonCyan,
+                                        modifier = Modifier
+                                            .background(AppColors.NeonCyan.copy(alpha = 0.18f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                                    )
+                                }
                             }
-                        }
 
-                        if (currentProgram != null) {
+                            // Channel Logo (if available)
+                            if (currentChannel != null && !currentChannel.logoUrl.isNullOrBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.White.copy(alpha = 0.06f))
+                                ) {
+                                    ChannelLogoBadge(
+                                        channelName = currentChannel.name,
+                                        logoUrl = currentChannel.logoUrl,
+                                        contentPadding = PaddingValues(2.dp),
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+
+                            // Channel Number & Name
+                            val channelLabel = currentChannel?.name ?: "Kanal"
+                            val channelNumberText = if (displayChannelNumber > 0) "Kanal $displayChannelNumber | " else ""
                             Text(
-                                text = currentProgram.title,
+                                text = "$channelNumberText$channelLabel",
                                 style = MaterialTheme.typography.titleSmall,
-                                color = AppColors.TextPrimary,
                                 fontWeight = FontWeight.Bold,
+                                color = Color.White,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+
+                            // Resolution Badge
+                            val resBadge = resolutionLabel?.takeIf { it.isNotBlank() }
+                                ?: when {
+                                    currentChannel?.name?.contains("4K", ignoreCase = true) == true -> "4K"
+                                    currentChannel?.name?.contains("FHD", ignoreCase = true) == true -> "FHD"
+                                    currentChannel?.name?.contains("HD", ignoreCase = true) == true -> "HD"
+                                    else -> "FHD"
+                                }
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFF4F46E5).copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                                    .border(0.8.dp, Color(0xFF818CF8).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = resBadge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFC7D2FE)
+                                )
+                            }
+
+                            // Runtime Debug Badge (only in DEBUG builds)
+                            if (BuildConfig.DEBUG) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(Color(0xFF10B981).copy(alpha = 0.90f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = "LIVE_UI=PREMIUM_COMPACT",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold
+                                        ),
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
+
+                        // Row 2: Current Program Title
+                        val progTitle = currentProgram?.title ?: currentChannel?.name ?: "Canlı Yayın"
+                        Text(
+                            text = progTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        // Row 3: Program Timing & Remaining Duration + Linear Progress Bar
+                        val progStart = currentProgram?.startTime ?: 0L
+                        val progEnd = currentProgram?.endTime ?: 0L
+                        val nowMs = System.currentTimeMillis()
+
+                        if (progStart > 0L && progEnd > 0L) {
+                            val remainMs = (progEnd - nowMs).coerceAtLeast(0L)
+                            val remainMin = remainMs / 60_000L
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.fillMaxWidth(0.95f),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = stringResource(
-                                        R.string.player_time_range_minutes,
-                                        timeFormat.format(Date(currentProgram.startTime)),
-                                        timeFormat.format(Date(currentProgram.endTime)),
-                                        currentProgram.durationMinutes
-                                    ),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = AppColors.TextSecondary,
-                                    maxLines = 1
+                                    text = "${timeFormat.format(Date(progStart))} - ${timeFormat.format(Date(progEnd))}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.65f)
                                 )
-                                val now = System.currentTimeMillis()
-                                val start = currentProgram.startTime
-                                val end = currentProgram.endTime
-                                if (start in 1..<end) {
-                                    val progress = (now - start).toFloat() / (end - start)
-                                    val remainingMin = ((end - now) / 60000).toInt().coerceAtLeast(0)
-                                    androidx.compose.material3.LinearProgressIndicator(
-                                        progress = { progress.coerceIn(0f, 1f) },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(4.dp)
-                                            .clip(RoundedCornerShape(999.dp)),
-                                        color = Primary,
-                                        trackColor = AppColors.SurfaceEmphasis.copy(alpha = 0.45f)
-                                    )
+                                if (remainMin > 0) {
                                     Text(
-                                        text = stringResource(R.string.player_minutes_remaining, remainingMin),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = OnSurfaceDim,
-                                        maxLines = 1
+                                        text = "$remainMin dk kaldı",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.65f),
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                             }
-                            if (nextProgram != null) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.player_next_label),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Primary
-                                    )
-                                    Text(
-                                        text = nextProgram.title,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = AppColors.TextSecondary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Text(
-                                        text = timeFormat.format(Date(nextProgram.startTime)),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = AppColors.TextTertiary
-                                    )
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = stringResource(R.string.player_no_guide_data),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = AppColors.TextSecondary,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+
+                            val progProgress = ((nowMs - progStart).toFloat() / (progEnd - progStart)).coerceIn(0f, 1f)
+                            LinearProgressIndicator(
+                                progress = { progProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth(0.95f)
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(99.dp)),
+                                color = Color(0xFF818CF8),
+                                trackColor = Color.White.copy(alpha = 0.12f)
                             )
                         }
-                    }
-                }
-            }
 
-            if (showTimeshiftControls && expandedPanel == ChannelInfoPanel.LIVE_DVR) {
-                CompactTimeshiftTransport(
-                    timeshiftUiState = timeshiftUiState,
-                    isPlaying = isPlaying,
-                    onOverlayInteracted = onOverlayInteracted,
-                    onTogglePlayPause = onTogglePlayPause,
-                    onSeekBackward = onSeekBackward,
-                    onSeekForward = onSeekForward,
-                    onSeekToLiveEdge = onSeekToLiveEdge,
-                    firstFocusRequester = liveDvrPanelFocusRequester,
-                    ownerFocusRequester = focusRequester
-                )
-            }
-
-            // Compact Quick Action Row (single row, all compact)
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                contentPadding = PaddingValues(end = 8.dp)
-            ) {
-                // Play/Pause
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_action_playback),
-                        label = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
-                        onClick = {
-                            if (showTimeshiftControls) togglePanel(ChannelInfoPanel.LIVE_DVR)
-                            else onTogglePlayPause()
-                        },
-                        compact = true,
-                        modifier = Modifier
-                            .focusRequester(focusRequester)
-                            .focusProperties {
-                                if (expandedPanel == ChannelInfoPanel.LIVE_DVR) {
-                                    up = liveDvrPanelFocusRequester
-                                }
-                            }
-                    )
-                }
-                // Mute
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_action_mute),
-                        label = if (isMuted) stringResource(R.string.player_unmute) else stringResource(R.string.player_mute),
-                        onClick = onToggleMute,
-                        compact = true
-                    )
-                }
-                // Subtitles
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_subs),
-                        label = stringResource(R.string.player_subs),
-                        onClick = onOpenSubtitleTracks,
-                        compact = true
-                    )
-                }
-                // Quality
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_action_quality),
-                        label = stringResource(R.string.player_quality_short),
-                        onClick = onOpenVideoTracks,
-                        compact = true
-                    )
-                }
-                // Audio
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_audio),
-                        label = stringResource(R.string.player_audio),
-                        onClick = onOpenAudioTracks,
-                        compact = true
-                    )
-                }
-                // Channel List
-                item {
-                    QuickActionButton(
-                        icon = "kanal",
-                        label = stringResource(R.string.channel_list),
-                        onClick = {
-                            expandedPanel = null
-                            onDismiss()
-                            onOpenChannelList()
-                        },
-                        compact = true
-                    )
-                }
-                // EPG
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_action_guide),
-                        label = stringResource(R.string.player_epg_short),
-                        onClick = {
-                            expandedPanel = null
-                            onDismiss()
-                            onOpenFullEpg()
-                        },
-                        compact = true
-                    )
-                }
-                // Split Screen / Multiview
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_action_split),
-                        label = stringResource(R.string.player_multiview_short),
-                        onClick = {
-                            expandedPanel = null
-                            onDismiss()
-                            onOpenSplitScreen()
-                        },
-                        compact = true,
-                        circular = true
-                    )
-                }
-                // Record
-                item {
-                    QuickActionButton(
-                        icon = "REC",
-                        label = stringResource(R.string.player_record),
-                        onClick = { togglePanel(ChannelInfoPanel.RECORD) },
-                        compact = true,
-                        circular = true,
-                        modifier = Modifier
-                            .focusRequester(recordButtonFocusRequester)
-                            .focusProperties {
-                                if (expandedPanel == ChannelInfoPanel.RECORD) {
-                                    up = recordPanelFocusRequester
-                                }
-                            }
-                    )
-                }
-                // Cast / Screen Share
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_action_cast),
-                        label = if (isCastConnected) stringResource(R.string.player_stop_casting) else stringResource(R.string.player_cast),
-                        onClick = {
-                            expandedPanel = null
-                            if (isCastConnected) onStopCasting() else onCast()
-                        },
-                        compact = true,
-                        circular = true
-                    )
-                }
-                // PiP
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_action_pip),
-                        label = stringResource(R.string.player_pip_short),
-                        onClick = {
-                            expandedPanel = null
-                            onEnterPictureInPicture()
-                        },
-                        compact = true,
-                        circular = true
-                    )
-                }
-                // Diagnostics
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_action_diagnostics),
-                        label = stringResource(R.string.player_stats),
-                        onClick = {
-                            expandedPanel = null
-                            onToggleDiagnostics()
-                        },
-                        compact = true,
-                        circular = true
-                    )
-                }
-                // Catchup
-                if (hasCatchUpOptions) {
-                    item {
-                        QuickActionButton(
-                            icon = "C-UP",
-                            label = stringResource(R.string.player_catchup_badge),
-                            onClick = { togglePanel(ChannelInfoPanel.CATCH_UP) },
-                            compact = true,
-                            circular = true,
-                            modifier = Modifier
-                                .focusRequester(catchUpButtonFocusRequester)
-                                .focusProperties {
-                                    if (expandedPanel == ChannelInfoPanel.CATCH_UP) {
-                                        up = catchUpPanelFocusRequester
-                                    }
-                                }
-                        )
-                    }
-                }
-                // Aspect Ratio
-                item {
-                    QuickActionButton(
-                        icon = stringResource(R.string.player_action_view),
-                        label = currentAspectRatio,
-                        onClick = {
-                            expandedPanel = null
-                            onToggleAspectRatio()
-                        },
-                        compact = true,
-                        circular = true
-                    )
-                }
-            }
-
-                        when (expandedPanel) {
-                ChannelInfoPanel.RECORD -> {
-                    ChannelInfoActionMenuTray(
-                        title = stringResource(R.string.player_record_options),
-                        actions = buildList {
-                            if (currentRecordingStatus == RecordingStatus.RECORDING || currentRecordingStatus == RecordingStatus.SCHEDULED) {
-                                add(
-                                    ChannelInfoMenuEntry(
-                                        label = if (currentRecordingStatus == RecordingStatus.SCHEDULED) {
-                                            stringResource(R.string.player_cancel_scheduled_recording)
-                                        } else {
-                                            stringResource(R.string.player_stop_recording)
-                                        }
-                                    ) {
-                                        expandedPanel = null
-                                        onStopRecording()
-                                    }
-                                )
-                            } else {
-                                add(
-                                    ChannelInfoMenuEntry(stringResource(R.string.player_record_now)) {
-                                        expandedPanel = null
-                                        onStartRecording()
-                                    }
-                                )
-                            }
-                            add(ChannelInfoMenuEntry(stringResource(R.string.player_schedule_recording)) {
-                                expandedPanel = null
-                                onScheduleRecording()
-                            })
-                            add(ChannelInfoMenuEntry(stringResource(R.string.player_schedule_daily_recording)) {
-                                expandedPanel = null
-                                onScheduleDailyRecording()
-                            })
-                            add(ChannelInfoMenuEntry(stringResource(R.string.player_schedule_weekly_recording)) {
-                                expandedPanel = null
-                                onScheduleWeeklyRecording()
-                            })
-                        },
-                        onInteraction = onOverlayInteracted,
-                        firstActionFocusRequester = recordPanelFocusRequester,
-                        ownerFocusRequester = recordButtonFocusRequester
-                    )
-                }
-
-                ChannelInfoPanel.CATCH_UP -> {
-                    ChannelInfoActionMenuTray(
-                        title = stringResource(R.string.player_catchup_options),
-                        actions = buildList {
-                            if (canRestartProgram) {
-                                add(ChannelInfoMenuEntry(stringResource(R.string.player_restart)) {
-                                    expandedPanel = null
-                                    onRestartProgram()
-                                    onDismiss()
-                                })
-                            }
-                            if (canBrowseArchive) {
-                                add(ChannelInfoMenuEntry(stringResource(R.string.player_browse_archive)) {
-                                    expandedPanel = null
-                                    onDismiss()
-                                    onOpenArchive()
-                                })
-                            }
-                            add(ChannelInfoMenuEntry(stringResource(R.string.player_browse_guide_catchup)) {
-                                expandedPanel = null
-                                onDismiss()
-                                onOpenFullEpg()
-                            })
-                        },
-                        onInteraction = onOverlayInteracted,
-                        firstActionFocusRequester = catchUpPanelFocusRequester,
-                        ownerFocusRequester = catchUpButtonFocusRequester
-                    )
-                }
-
-                ChannelInfoPanel.LIVE_DVR,
-                null -> Unit
-            }
-        }
-    }
-}
-
-private enum class ChannelInfoPanel {
-    LIVE_DVR,
-    RECORD,
-    CATCH_UP
-}
-
-private fun com.kaynanamtv.domain.model.LiveChannelVariantAttributes.toOverlayBadgeLabel(): String {
-    val parts = buildList {
-        resolutionLabel?.let(::add)
-        codecLabel?.takeIf { it == "HEVC" || it == "AV1" }?.let(::add)
-        frameRate?.takeIf { it >= 50 }?.let { add("${it}fps") }
-        if (isHdr) {
-            add("HDR")
-        }
-        sourceHint?.takeIf { it == "Backup" || it == "Alternate" || it == "Lite" || it == "Mobile" }?.let(::add)
-    }
-    return parts.joinToString(" ")
-}
-
-private data class ChannelInfoMenuEntry(
-    val label: String,
-    val onClick: () -> Unit
-)
-
-@Composable
-private fun CompactTimeshiftTransport(
-    timeshiftUiState: PlayerTimeshiftUiState,
-    isPlaying: Boolean,
-    onOverlayInteracted: () -> Unit,
-    onTogglePlayPause: () -> Unit,
-    onSeekBackward: () -> Unit,
-    onSeekForward: () -> Unit,
-    onSeekToLiveEdge: () -> Unit,
-    firstFocusRequester: FocusRequester,
-    ownerFocusRequester: FocusRequester
-) {
-    val transportReady = timeshiftUiState.bufferDepthMs > 1_000L &&
-        timeshiftUiState.engineState.status != LiveTimeshiftStatus.PREPARING
-    val behindLive = timeshiftUiState.bufferedBehindLiveMs.coerceAtLeast(0L)
-    val bufferDepth = timeshiftUiState.bufferDepthMs.coerceAtLeast(0L)
-    val liveProgress = if (bufferDepth > 0L) {
-        ((bufferDepth - behindLive).toFloat() / bufferDepth.toFloat()).coerceIn(0f, 1f)
-    } else {
-        1f
-    }
-    val statusLine = when {
-        !transportReady -> timeshiftUiState.statusMessage.ifBlank {
-            stringResource(R.string.player_live_timeshift_buffering)
-        }
-        behindLive > 1_000L -> stringResource(
-            R.string.player_live_offset,
-            formatTimeLabel(behindLive)
-        )
-        else -> stringResource(R.string.player_live_ready)
-    }
-    var lastTransportActionAtMs by remember { mutableStateOf(0L) }
-
-    fun runTransportAction(enabled: Boolean, action: () -> Unit) {
-        if (!enabled) return
-        val now = System.currentTimeMillis()
-        if (now - lastTransportActionAtMs < 240L) return
-        lastTransportActionAtMs = now
-        onOverlayInteracted()
-        action()
-    }
-
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        colors = SurfaceDefaults.colors(containerColor = Color.White.copy(alpha = 0.06f))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = SurfaceDefaults.colors(containerColor = Color.Black.copy(alpha = 0.22f))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.player_live_rewind_badge),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = Primary
-                        )
-                        Text(
-                            text = statusLine,
-                            style = MaterialTheme.typography.titleSmall.copy(fontSize = 20.sp),
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = stringResource(
-                                R.string.player_live_buffer_depth,
-                                formatTimeLabel(bufferDepth)
-                            ),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CompactTransportButton(
-                        topLabel = stringResource(R.string.player_rewind),
-                        mainLabel = stringResource(R.string.player_seek_back_10),
-                        enabled = transportReady,
-                        onInteraction = onOverlayInteracted,
-                        onClick = { runTransportAction(transportReady, onSeekBackward) },
-                        modifier = Modifier
-                            .focusRequester(firstFocusRequester)
-                            .focusProperties { down = ownerFocusRequester }
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    TvClickableSurface(
-                        onClick = { runTransportAction(transportReady, onTogglePlayPause) },
-                        enabled = transportReady,
-                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(999.dp)),
-                        colors = ClickableSurfaceDefaults.colors(
-                            containerColor = Primary.copy(alpha = 0.88f),
-                            focusedContainerColor = Primary,
-                            disabledContainerColor = Primary.copy(alpha = 0.28f)
-                        ),
-                        modifier = Modifier
-                            .size(52.dp)
-                            .focusProperties { down = ownerFocusRequester }
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isPlaying) {
+                        // Row 4: Next Program
+                        if (nextProgram != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
                                 Text(
-                                    text = "II",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    color = Color.White
+                                    text = "Sonraki:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF818CF8)
                                 )
-                            } else {
-                                androidx.tv.material3.Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = stringResource(R.string.player_play),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(26.dp)
+                                Text(
+                                    text = nextProgram.title,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.70f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    CompactTransportButton(
-                        topLabel = stringResource(R.string.player_forward),
-                        mainLabel = stringResource(R.string.player_seek_forward_10),
-                        enabled = transportReady && timeshiftUiState.canSeekToLive,
-                        onInteraction = onOverlayInteracted,
-                        onClick = { runTransportAction(transportReady && timeshiftUiState.canSeekToLive, onSeekForward) },
-                        modifier = Modifier.focusProperties { down = ownerFocusRequester }
+
+                    // RIGHT SECTION: Status Badges + Timeshift Indicator
+                    Column(
+                        modifier = Modifier.weight(0.85f),
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Top-right status icons: PVR, CC, Cast
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (currentRecordingStatus == RecordingStatus.RECORDING) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier
+                                        .background(Color(0xFFFF4D4F).copy(alpha = 0.20f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .background(Color(0xFFFF4D4F), CircleShape)
+                                    )
+                                    Text(
+                                        text = "Kayıt",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFFFF4D4F),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            if (subtitleTrackCount > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = "CC",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                            if (isCastConnected) {
+                                Icon(
+                                    imageVector = Icons.Default.CastConnected,
+                                    contentDescription = null,
+                                    tint = AppColors.NeonCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        // Timeshift Timeline Area
+                        if (showTimeshiftControls) {
+                            val bufferDepthMs = timeshiftUiState.bufferDepthMs.coerceAtLeast(1L)
+                            val bufferedBehindLive = timeshiftUiState.bufferedBehindLiveMs
+                            val oldestWallMs = timeshiftUiState.engineState.bufferStartMs
+                            val oldestLabel = when {
+                                oldestWallMs > 0L -> timeFormat.format(Date(oldestWallMs))
+                                bufferDepthMs >= 10_000L -> "-${formatTimeshiftDuration(bufferDepthMs)}"
+                                else -> ""
+                            }
+                            val offsetMin = (bufferedBehindLive / 60_000L)
+                            val offsetLabel = if (offsetMin >= 1L) "-$offsetMin dk" else "● CANLI"
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Replay,
+                                    contentDescription = null,
+                                    tint = Color(0xFF38BDF8),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = offsetLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (offsetMin >= 1L) Color(0xFF38BDF8) else Color(0xFFFF4D4F)
+                                )
+                            }
+
+                            var sliderValue by remember(bufferedBehindLive, bufferDepthMs) {
+                                mutableStateOf(1f - (bufferedBehindLive.toFloat() / bufferDepthMs.toFloat()).coerceIn(0f, 1f))
+                            }
+                            var isScrubbing by remember { mutableStateOf(false) }
+                            val latestSeekCallback by rememberUpdatedState(onSeekToPosition)
+                            LaunchedEffect(bufferedBehindLive, bufferDepthMs, isScrubbing) {
+                                if (!isScrubbing) {
+                                    sliderValue = 1f - (bufferedBehindLive.toFloat() / bufferDepthMs.toFloat()).coerceIn(0f, 1f)
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = oldestLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.55f)
+                                )
+                                Slider(
+                                    value = sliderValue,
+                                    onValueChange = { newValue ->
+                                        val clamped = newValue.coerceIn(0f, 1f)
+                                        isScrubbing = true
+                                        sliderValue = clamped
+                                    },
+                                    onValueChangeFinished = {
+                                        val targetOffset = ((1f - sliderValue) * bufferDepthMs.toFloat()).toLong()
+                                        if (targetOffset <= 2000L) {
+                                            onSeekToLiveEdge()
+                                        } else {
+                                            latestSeekCallback(targetOffset)
+                                        }
+                                        isScrubbing = false
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = SliderDefaults.colors(
+                                        activeTrackColor = AppColors.NeonCyan,
+                                        inactiveTrackColor = Color.White.copy(alpha = 0.15f),
+                                        thumbColor = Color.White
+                                    )
+                                )
+                                Text(
+                                    text = "CANLI",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (bufferedBehindLive <= 1_000L) Color.Red else Color.White.copy(alpha = 0.55f),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // HORIZONTALLY SCROLLABLE ACTIONS ROW (18 Actions)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(vertical = 4.dp, horizontal = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Spacer(modifier = Modifier.width(2.dp))
+
+                    // 1. Play / Pause (Primary Action)
+                    LiveActionButton(
+                        actionId = LiveActionId.PLAY_PAUSE,
+                        icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        label = if (isPlaying) "Duraklat" else "Oynat",
+                        isPrimary = true,
+                        onClick = onTogglePlayPause,
+                        onOverlayInteracted = onOverlayInteracted,
+                        modifier = Modifier.focusRequester(focusRequester)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    CompactTransportButton(
-                        topLabel = stringResource(R.string.player_live_ready),
-                        mainLabel = stringResource(R.string.player_jump_to_live_short),
-                        enabled = transportReady && timeshiftUiState.canSeekToLive,
-                        highlighted = !timeshiftUiState.canSeekToLive,
-                        onInteraction = onOverlayInteracted,
-                        onClick = { runTransportAction(transportReady && timeshiftUiState.canSeekToLive, onSeekToLiveEdge) },
-                        modifier = Modifier.focusProperties { down = ownerFocusRequester }
+
+                    // 2. Canlıya Dön
+                    val canReturnToLive = (showTimeshiftControls && timeshiftUiState.bufferedBehindLiveMs >= 60_000L) || isCatchUpPlayback
+                    LiveActionButton(
+                        actionId = LiveActionId.RETURN_LIVE,
+                        icon = Icons.Default.FiberManualRecord,
+                        label = "Canlıya Dön",
+                        enabled = canReturnToLive,
+                        accentColor = if (canReturnToLive) Color(0xFFFFB347) else Color.White.copy(alpha = 0.30f),
+                        onClick = onSeekToLiveEdge,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 3. Programı Baştan Başlat
+                    val canRestart = currentProgram != null && currentChannel?.isArchivePlayable(currentProgram) == true
+                    LiveActionButton(
+                        actionId = LiveActionId.RESTART_PROGRAM,
+                        icon = Icons.Default.Replay,
+                        label = "Baştan Başlat",
+                        enabled = canRestart,
+                        accentColor = if (canRestart) Color.White else Color.White.copy(alpha = 0.30f),
+                        onClick = onRestartProgram,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 4. Ses / Audio Tracks
+                    LiveActionButton(
+                        actionId = LiveActionId.AUDIO_TRACKS,
+                        icon = Icons.Default.VolumeUp,
+                        label = "Ses",
+                        badgeActive = audioTrackCount > 1,
+                        onClick = onOpenAudioTracks,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 5. Sessiz / Mute
+                    LiveActionButton(
+                        actionId = LiveActionId.MUTE,
+                        icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                        label = if (isMuted) "Sesi Aç" else "Sessiz",
+                        accentColor = if (isMuted) Color(0xFFFF6B6B) else Color.White,
+                        onClick = onToggleMute,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 6. Altyazılar
+                    LiveActionButton(
+                        actionId = LiveActionId.SUBTITLES,
+                        icon = Icons.Default.Subtitles,
+                        label = "Altyazılar",
+                        badgeActive = subtitleTrackCount > 0,
+                        onClick = onOpenSubtitleTracks,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 7. Video Kalitesi
+                    LiveActionButton(
+                        actionId = LiveActionId.QUALITY,
+                        icon = Icons.Default.HighQuality,
+                        label = "Kalite",
+                        badgeActive = videoQualityCount > 1,
+                        onClick = onOpenVideoTracks,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 8. Kanal Listesi
+                    LiveActionButton(
+                        actionId = LiveActionId.CHANNEL_LIST,
+                        icon = Icons.Default.Tv,
+                        label = "Kanal Listesi",
+                        onClick = onOpenChannelList,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 9. EPG / Rehber
+                    LiveActionButton(
+                        actionId = LiveActionId.EPG,
+                        icon = Icons.Default.ViewSidebar,
+                        label = "EPG",
+                        onClick = onOpenFullEpg,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 10. En-Boy Oranı
+                    LiveActionButton(
+                        actionId = LiveActionId.ASPECT_RATIO,
+                        icon = Icons.Default.AspectRatio,
+                        label = currentAspectRatio,
+                        onClick = onToggleAspectRatio,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 11. Cast / Ekrana Yansıt
+                    LiveActionButton(
+                        actionId = LiveActionId.CAST,
+                        icon = if (isCastConnected) Icons.Default.CastConnected else Icons.Default.Cast,
+                        label = if (isCastConnected) "Yansıtmayı Durdur" else "Yansıt",
+                        accentColor = if (isCastConnected) AppColors.NeonCyan else Color.White,
+                        onClick = if (isCastConnected) onStopCasting else onCast,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 12. Picture-in-Picture
+                    LiveActionButton(
+                        actionId = LiveActionId.PIP,
+                        icon = Icons.Default.PictureInPicture,
+                        label = "PiP",
+                        onClick = onEnterPictureInPicture,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 13. Kayıt (PVR Başlat/Durdur)
+                    val isRecActive = currentRecordingStatus == RecordingStatus.RECORDING
+                    LiveActionButton(
+                        actionId = LiveActionId.RECORD,
+                        icon = if (isRecActive) Icons.Default.Stop else Icons.Default.RadioButtonChecked,
+                        label = if (isRecActive) "Kaydı Durdur" else "Kayıt",
+                        accentColor = if (isRecActive) Color(0xFFFF4D4F) else Color.White,
+                        badgeActive = isRecActive,
+                        onClick = if (isRecActive) onStopRecording else onStartRecording,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 14. Zamanlanmış Kayıt
+                    LiveActionButton(
+                        actionId = LiveActionId.SCHEDULE_RECORDING,
+                        icon = Icons.Default.Schedule,
+                        label = "Zamanla Kayıt",
+                        onClick = onScheduleRecording,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 15. MultiView / Çoklu Ekran
+                    LiveActionButton(
+                        actionId = LiveActionId.MULTIVIEW,
+                        icon = Icons.Default.Dashboard,
+                        label = "MultiView",
+                        onClick = onOpenSplitScreen,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 16. Arşiv / Catch-Up
+                    LiveActionButton(
+                        actionId = LiveActionId.ARCHIVE,
+                        icon = Icons.Default.History,
+                        label = "Arşiv",
+                        onClick = onOpenArchive,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 17. Tanılama / Diagnostics
+                    LiveActionButton(
+                        actionId = LiveActionId.DIAGNOSTICS,
+                        icon = Icons.Default.Info,
+                        label = "Tanılama",
+                        onClick = onToggleDiagnostics,
+                        onOverlayInteracted = onOverlayInteracted
+                    )
+
+                    // 18. Ses/Görüntü Senkronizasyonu
+                    if (audioVideoSyncEnabled) {
+                        LiveActionButton(
+                            actionId = LiveActionId.AV_SYNC,
+                            icon = Icons.Default.SyncAlt,
+                            label = "A/V Sync",
+                            onClick = onOpenAudioVideoSync,
+                            onOverlayInteracted = onOverlayInteracted
+                        )
+                    }
+
+                    // Scroll indicator
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.35f),
+                        modifier = Modifier
+                            .size(20.dp)
+                            .padding(start = 2.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Remote Navigation Hints Bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "\u25C2\u25B8 Seç   |   OK Onayla   |   \u2630 Menü   |   \u21A9 Geri",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.40f)
                     )
                 }
-            }
-
-            androidx.compose.material3.LinearProgressIndicator(
-                progress = { liveProgress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(999.dp)),
-                color = Primary,
-                trackColor = Color.White.copy(alpha = 0.16f)
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.player_live_buffer_start),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.52f)
-                )
-                Text(
-                    text = if (behindLive > 1_000L) {
-                        stringResource(R.string.player_live_offset, formatTimeLabel(behindLive))
-                    } else {
-                        stringResource(R.string.player_live_ready)
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.76f)
-                )
-                Text(
-                    text = stringResource(R.string.player_live_buffer_end),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.52f)
-                )
             }
         }
     }
 }
 
+enum class LiveActionId {
+    PLAY_PAUSE,
+    RETURN_LIVE,
+    RESTART_PROGRAM,
+    AUDIO_TRACKS,
+    MUTE,
+    SUBTITLES,
+    QUALITY,
+    CHANNEL_LIST,
+    EPG,
+    ASPECT_RATIO,
+    CAST,
+    PIP,
+    RECORD,
+    SCHEDULE_RECORDING,
+    MULTIVIEW,
+    ARCHIVE,
+    DIAGNOSTICS,
+    AV_SYNC
+}
+
+/**
+ * TV-remote and Touch/Mouse-friendly Live TV control button matching the Premium Compact design language:
+ * - Uses TvClickableSurface with mouseClickable & touch tap support
+ * - 1.08x scale on focus + glowing luminous indigo border
+ * - Clean layout without clipping
+ * - Circular badge dot if active
+ * - Primary button (Play/Pause) is styled with prominent rounded container and distinct focus glow
+ */
 @Composable
-private fun CompactTransportButton(
-    topLabel: String,
-    mainLabel: String,
-    enabled: Boolean,
-    highlighted: Boolean = false,
-    onInteraction: () -> Unit,
+private fun LiveActionButton(
+    actionId: LiveActionId,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
     onClick: () -> Unit,
+    onOverlayInteracted: () -> Unit = {},
+    enabled: Boolean = true,
+    isPrimary: Boolean = false,
+    accentColor: Color = Color.White,
+    badgeActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    var isFocused by remember { mutableStateOf(false) }
+    val scaleAnim by animateFloatAsState(
+        targetValue = if (isFocused && enabled) 1.08f else 1.0f,
+        label = "liveCtrlScale"
+    )
+
     TvClickableSurface(
-        onClick = onClick,
+        onClick = {
+            android.util.Log.d("PlayerActionTrace", "[LIVE_ACTION_TRACE] action=${actionId.name} label=$label onClick invoked")
+            onOverlayInteracted()
+            onClick()
+        },
         enabled = enabled,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (highlighted) {
-                Primary.copy(alpha = 0.18f)
-            } else {
-                Color.White.copy(alpha = 0.08f)
-            },
-            focusedContainerColor = Primary.copy(alpha = 0.86f),
-            disabledContainerColor = Color.White.copy(alpha = 0.04f)
+            containerColor = if (isPrimary) Color(0xFF4F46E5).copy(alpha = 0.28f) else Color(0xFF0F172A).copy(alpha = 0.60f),
+            focusedContainerColor = if (isPrimary) Color(0xFF6366F1).copy(alpha = 0.45f) else Color(0xFF4338CA).copy(alpha = 0.35f)
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(1.dp, if (isPrimary) Color(0xFF6366F1).copy(alpha = 0.55f) else Color.White.copy(alpha = if (enabled) 0.10f else 0.04f)),
+                shape = RoundedCornerShape(12.dp)
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, if (isPrimary) Color(0xFFA5B4FC) else Color(0xFF818CF8)),
+                shape = RoundedCornerShape(12.dp)
+            )
         ),
         modifier = modifier
-            .widthIn(min = 68.dp)
-            .onFocusChanged {
-                if (it.isFocused) onInteraction()
-            }
+            .onFocusChanged { isFocused = it.isFocused }
+            .scale(scaleAnim)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(1.dp)
+            verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = topLabel,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                color = Color.White.copy(alpha = if (enabled) 0.72f else 0.32f)
-            )
-            Text(
-                text = mainLabel,
-                style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
-                color = if (enabled) Color.White else Color.White.copy(alpha = 0.32f),
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-private fun ChannelInfoActionMenuTray(
-    title: String,
-    actions: List<ChannelInfoMenuEntry>,
-    onInteraction: () -> Unit,
-    firstActionFocusRequester: FocusRequester,
-    ownerFocusRequester: FocusRequester
-) {
-    if (actions.isEmpty()) return
-
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        colors = SurfaceDefaults.colors(containerColor = Color.Black.copy(alpha = 0.22f))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = Primary,
-                fontWeight = FontWeight.Bold
-            )
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                itemsIndexed(actions) { index, action ->
-                    CompactMenuActionButton(
-                        text = action.label,
-                        onClick = action.onClick,
-                        onInteraction = onInteraction,
-                        modifier = (if (index == 0) Modifier.focusRequester(firstActionFocusRequester) else Modifier)
-                            .focusProperties { down = ownerFocusRequester }
+            Box(contentAlignment = Alignment.TopEnd) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (!enabled) Color.White.copy(alpha = 0.25f) else if (isFocused) Color.White else accentColor,
+                    modifier = Modifier.size(20.dp)
+                )
+                if (badgeActive && enabled) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .background(AppColors.NeonCyan, CircleShape)
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.sp,
+                    fontWeight = if (isPrimary || isFocused) FontWeight.Bold else FontWeight.Medium
+                ),
+                color = if (!enabled) Color(0xFF64748B).copy(alpha = 0.50f) else if (isFocused) Color.White else Color(0xFF94A3B8),
+                maxLines = 1
+            )
         }
     }
 }
 
-@Composable
-private fun CompactMenuActionButton(
-    text: String,
-    onClick: () -> Unit,
-    onInteraction: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    TvClickableSurface(
-        onClick = {
-            onInteraction()
-            onClick()
-        },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.White.copy(alpha = 0.08f),
-            focusedContainerColor = Color.White.copy(alpha = 0.16f)
-        ),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
-        border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White.copy(alpha = 0.75f))
-            )
-        ),
-        modifier = modifier
-            .onFocusChanged {
-                if (it.isFocused) onInteraction()
-            }
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-        )
+private fun formatTimeshiftDuration(ms: Long): String {
+    val totalSeconds = (ms / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0) {
+        String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
     }
 }

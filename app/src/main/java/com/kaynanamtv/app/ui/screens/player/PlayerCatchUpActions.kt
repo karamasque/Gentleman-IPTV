@@ -140,6 +140,7 @@ fun PlayerViewModel.playCatchUp(program: Program) {
             return@launch
         }
         if (!isActivePlaybackSession(requestVersion)) return@launch
+        android.util.Log.d("PlayerCatchUpTrace", "[CATCHUP] supported=${channel.isArchivePlayable(program)} urlResolved=${catchUpUrls.isNotEmpty()} urlCount=${catchUpUrls.size}")
         if (catchUpUrls.isNotEmpty()) {
             startCatchUpPlayback(
                 urls = catchUpUrls,

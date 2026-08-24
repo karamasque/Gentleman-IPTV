@@ -619,7 +619,7 @@ fun PlayerScreen(
                 if (showTrackSelection != null || showVariantSelection || showSpeedSelection || showAudioVideoOffsetDialog || showStopPlaybackTimerDialog || showIdleStandbyTimerDialog || showProgramHistory || showSplitDialog || showEpisodePicker) {
                     return@onPreviewKeyEvent false
                 }
-                if (showChannelInfoOverlay && channelInfoSubPanelOpen) {
+                if (showChannelInfoOverlay) {
                     return@onPreviewKeyEvent false
                 }
 
@@ -627,19 +627,13 @@ fun PlayerScreen(
                     KeyEvent.KEYCODE_DPAD_UP,
                     KeyEvent.KEYCODE_CHANNEL_UP,
                     KeyEvent.KEYCODE_DPAD_UP_RIGHT -> {
-                        if (showChannelInfoOverlay || showDiagnostics) {
-                            viewModel.onLiveOverlayInteraction()
-                        }
-                        viewModel.playNext()
+                        viewModel.playNext(userInitiated = true)
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_DOWN,
                     KeyEvent.KEYCODE_CHANNEL_DOWN,
                     KeyEvent.KEYCODE_DPAD_DOWN_LEFT -> {
-                        if (showChannelInfoOverlay || showDiagnostics) {
-                            viewModel.onLiveOverlayInteraction()
-                        }
-                        viewModel.playPrevious()
+                        viewModel.playPrevious(userInitiated = true)
                         true
                     }
                     else -> false
@@ -1082,7 +1076,7 @@ fun PlayerScreen(
 
         PlayerControlsOverlayHost(
             playerEngine = playerEngine,
-            visible = showControls,
+            visible = showControls && contentType != "LIVE",
             title = playbackTitle.ifBlank { title },
             contentType = contentType,
             isCatchUpPlayback = isCatchUpPlayback,
@@ -1105,7 +1099,7 @@ fun PlayerScreen(
             playButtonFocusRequester = playButtonFocusRequester,
             quickActionsFocusRequester = quickActionsFocusRequester,
             modifier = Modifier.fillMaxSize(),
-            onClose = viewModel::toggleControls,
+            onClose = onBack,
             onTogglePlayPause = { if (isPlaying) viewModel.pause() else viewModel.play() },
             onSeekBackward = viewModel::seekBackward,
             onSeekForward = viewModel::seekForward,
@@ -1155,6 +1149,8 @@ fun PlayerScreen(
             onSetScrubbingMode = viewModel::setScrubbingMode,
             seekPreview = seekPreview,
             onSeekPreviewPositionChanged = viewModel::updateSeekPreview,
+            nextProgram = nextProgram,
+            onToggleDiagnostics = viewModel::toggleDiagnostics,
             onOpenGuide = {
                 viewModel.openEpgOverlay()
             },
@@ -1459,7 +1455,10 @@ fun PlayerScreen(
                     onOpenArchive = { showProgramHistory = true },
                     onToggleAspectRatio = { viewModel.toggleAspectRatio() },
                     onToggleDiagnostics = { viewModel.toggleDiagnostics() },
-                    onTogglePlayPause = { if (isPlaying) viewModel.pause() else viewModel.play() },
+                    onTogglePlayPause = {
+                        android.util.Log.d("PlayerActionTrace", "[LIVE_PAUSE_TRACE] clickReceived=true isPlaying=$isPlaying")
+                        if (isPlaying) viewModel.pause() else viewModel.play()
+                    },
                     onSeekBackward = viewModel::seekBackward,
                     onSeekForward = viewModel::seekForward,
                     onSeekToLiveEdge = viewModel::seekToLiveEdge,
@@ -1488,9 +1487,11 @@ fun PlayerScreen(
                         viewModel.closeChannelInfoOverlay()
                         viewModel.openChannelListOverlay()
                     },
+                    onSeekToPosition = viewModel::seekTo,
                     timeshiftUiState = timeshiftUiState,
                     onTransientPanelVisibilityChanged = { channelInfoSubPanelOpen = it },
-                    resolutionLabel = videoFormat.resolutionLabel.takeIf { it.isNotBlank() && !videoFormat.isEmpty }
+                    resolutionLabel = videoFormat.resolutionLabel.takeIf { it.isNotBlank() && !videoFormat.isEmpty },
+                    isCatchUpPlayback = isCatchUpPlayback
                 )
             }
         }
@@ -1577,6 +1578,8 @@ private fun PlayerControlsOverlayHost(
     onSetScrubbingMode: (Boolean) -> Unit,
     seekPreview: SeekPreviewState,
     onSeekPreviewPositionChanged: (Long?) -> Unit,
+    nextProgram: com.kaynanamtv.domain.model.Program? = null,
+    onToggleDiagnostics: () -> Unit = {},
     onOpenGuide: () -> Unit = {},
     onUserInteraction: () -> Unit
 ) {
@@ -1590,6 +1593,7 @@ private fun PlayerControlsOverlayHost(
         isCatchUpPlayback = isCatchUpPlayback,
         isPlaying = isPlaying,
         currentProgram = currentProgram,
+        nextProgram = nextProgram,
         currentChannel = currentChannel,
         currentChannelName = currentChannelName,
         displayChannelNumber = displayChannelNumber,
@@ -1643,6 +1647,7 @@ private fun PlayerControlsOverlayHost(
         onSetScrubbingMode = onSetScrubbingMode,
         seekPreview = seekPreview,
         onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
+        onToggleDiagnostics = onToggleDiagnostics,
         onOpenGuide = onOpenGuide,
         onUserInteraction = onUserInteraction
     )

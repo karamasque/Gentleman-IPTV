@@ -60,22 +60,28 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material.icons.filled.PictureInPicture
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.ListAlt
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.ViewSidebar
 import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.ListAlt
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.PictureInPicture
-import androidx.compose.material.icons.filled.AspectRatio
 import com.kaynanamtv.app.R
 import com.kaynanamtv.app.ui.design.AppColors
 import com.kaynanamtv.app.ui.interaction.TvClickableSurface
 import java.util.Locale
+
+internal enum class TvLiveState {
+    LIVE_EDGE,
+    TIMESHIFT,
+    ARCHIVE
+}
 
 @Composable
 internal fun PlayerOverlayPanel(

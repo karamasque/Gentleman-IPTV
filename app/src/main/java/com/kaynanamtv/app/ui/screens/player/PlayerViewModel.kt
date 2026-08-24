@@ -435,19 +435,38 @@ class PlayerViewModel @Inject constructor(
             LiveTimeshiftBackend.MEMORY -> "Memory"
             LiveTimeshiftBackend.NONE -> ""
         }
-        val visibleForLiveUi = timeshiftConfig.enabled &&
+        val actualBufferMs = state.bufferedDurationMs.coerceAtLeast(0L)
+        val visibleForLiveUi = currentContentType == ContentType.LIVE &&
+            timeshiftConfig.enabled &&
+            state.enabled &&
             state.status != LiveTimeshiftStatus.DISABLED &&
             state.status != LiveTimeshiftStatus.UNSUPPORTED &&
-            state.status != LiveTimeshiftStatus.FAILED
+            state.status != LiveTimeshiftStatus.FAILED &&
+            actualBufferMs >= 10_000L
+
         _timeshiftUiState.value = PlayerTimeshiftUiState(
             available = visibleForLiveUi,
             enabledForSession = timeshiftConfig.enabled,
             backendLabel = backendLabel,
             bufferedBehindLiveMs = state.currentOffsetFromLiveMs,
-            bufferDepthMs = state.bufferedDurationMs.takeIf { it > 0L } ?: timeshiftConfig.depthMs,
+            bufferDepthMs = actualBufferMs,
             canSeekToLive = state.canSeekToLive,
             statusMessage = state.message.orEmpty(),
             engineState = state
+        )
+        val canReturnLive = state.currentOffsetFromLiveMs >= 60_000L
+        android.util.Log.d(
+            "PlayerTimeshiftTrace",
+            "[TS_STATE_VM] depthMs=$actualBufferMs available=$visibleForLiveUi canReturnLive=$canReturnLive offset=${state.currentOffsetFromLiveMs} status=${state.status}"
+        )
+    }
+
+    fun resetTimeshiftUiState() {
+        _timeshiftUiState.value = PlayerTimeshiftUiState(
+            available = false,
+            enabledForSession = timeshiftConfig.enabled,
+            bufferDepthMs = 0L,
+            bufferedBehindLiveMs = 0L
         )
     }
 
@@ -473,7 +492,9 @@ class PlayerViewModel @Inject constructor(
                 it.copy(
                     available = false,
                     enabledForSession = timeshiftConfig.enabled,
-                    statusMessage = "Local live rewind is unavailable for this stream."
+                    statusMessage = "Local live rewind is unavailable for this stream.",
+                    bufferDepthMs = 0L,
+                    bufferedBehindLiveMs = 0L
                 )
             }
             return
@@ -484,12 +505,14 @@ class PlayerViewModel @Inject constructor(
             ?: fallbackUrl
         _timeshiftUiState.update {
             it.copy(
-                available = true,
+                available = false,
                 enabledForSession = true,
                 statusMessage = "Preparing local live rewind…",
-                bufferDepthMs = timeshiftConfig.depthMs
+                bufferDepthMs = 0L,
+                bufferedBehindLiveMs = 0L
             )
         }
+        android.util.Log.d("PlayerTimeshiftTrace", "[TS_INSTANCE] viewModelHash=${System.identityHashCode(this)} engineHash=${System.identityHashCode(playerEngine)}")
         playerEngine.startLiveTimeshift(streamInfo, channelKey, timeshiftConfig)
     }
 
@@ -682,8 +705,7 @@ class PlayerViewModel @Inject constructor(
                 timeshiftConfig = config
                 _timeshiftUiState.update { current ->
                     current.copy(
-                        enabledForSession = config.enabled,
-                        bufferDepthMs = config.depthMs
+                        enabledForSession = config.enabled
                     )
                 }
                 maybeStartLiveTimeshift()
@@ -791,6 +813,19 @@ class PlayerViewModel @Inject constructor(
                         durationMs = 10_000L
                     )
                 }
+            }
+        }
+        viewModelScope.launch {
+            while (true) {
+                delay(5_000L)
+                val engState = playerEngine.timeshiftState.value
+                val uiState = _timeshiftUiState.value
+                val chId = currentChannel.value?.id ?: currentContentId
+                val canReturn = uiState.bufferedBehindLiveMs >= 60_000L
+                android.util.Log.d(
+                    "PlayerTimeshiftTrace",
+                    "[TS_TRACE] ch=$chId mgr=${engState.bufferedDurationMs} engine=${engState.bufferedDurationMs} vm=${uiState.bufferDepthMs} ui=${uiState.available} offset=${uiState.bufferedBehindLiveMs} canReturn=$canReturn status=${engState.status}"
+                )
             }
         }
     }
@@ -975,20 +1010,11 @@ class PlayerViewModel @Inject constructor(
                 "recovery-no-switch type=$recoveryType hasLastChannel=${hasLastChannel()}"
             )
 
-            if (fallbackToPreviousChannel("Recovery path exhausted for ${recoveryType.name.lowercase()}")) {
-                appendRecoveryAction("Son kanala geri dönüldü")
-                showPlayerNotice(
-                    message = "Bu yayında oynatma başarısız oldu. Son kanala geri dönüldü.",
-                    recoveryType = recoveryType,
-                    actions = buildRecoveryActions(recoveryType)
-                )
-            } else {
-                showPlayerNotice(
-                    message = resolvePlaybackErrorMessage(error),
-                    recoveryType = recoveryType,
-                    actions = buildRecoveryActions(recoveryType)
-                )
-            }
+            showPlayerNotice(
+                message = resolvePlaybackErrorMessage(error),
+                recoveryType = recoveryType,
+                actions = buildRecoveryActions(recoveryType)
+            )
         }
     }
 

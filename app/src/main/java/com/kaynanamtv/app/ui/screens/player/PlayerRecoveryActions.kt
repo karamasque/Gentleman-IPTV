@@ -93,15 +93,8 @@ internal suspend fun PlayerViewModel.isXtreamPlaybackSession(): Boolean {
 }
 
 internal fun PlayerViewModel.fallbackToPreviousChannel(reason: String): Boolean {
-    if (currentContentType != ContentType.LIVE) return false
-    val fallbackIndex = previousChannelIndex
-    if (fallbackIndex in channelList.indices && fallbackIndex != currentChannelIndex) {
-        android.util.Log.w("PlayerVM", "Falling back to previous channel: $reason")
-        val savedPrevious = previousChannelIndex
-        changeChannel(fallbackIndex, isAutoFallback = true)
-        previousChannelIndex = savedPrevious
-        return true
-    }
+    // Non-user initiated auto channel change is strictly blocked by invariant: BUFFERING != CHANNEL FAILURE
+    android.util.Log.d("PlayerZapTrace", "[CHANNEL_ZAP_TRACE] source=fallbackToPreviousChannel reason=$reason userInitiated=false (BLOCKED)")
     return false
 }
 
@@ -124,14 +117,10 @@ internal fun PlayerViewModel.scheduleZapBufferWatchdog(targetIndex: Int) {
         if (stillOnTarget && stalled) {
             markStreamFailure(currentStreamUrl)
             setLastFailureReason("Channel timed out in buffering state")
-            appendRecoveryAction("Buffer watchdog triggered")
-            val recovered = fallbackToPreviousChannel("Channel timed out in buffering state")
+            appendRecoveryAction("Buffer watchdog triggered (retrying current channel)")
+            // Stalled channel stays on current channel — reconnects instead of auto-zapping
             showPlayerNotice(
-                message = if (recovered) {
-                    "That channel stalled too long. Returned to the last channel."
-                } else {
-                    "That channel stalled too long. Try another source or open the guide."
-                },
+                message = "Yayın arabelleğe alınıyor. Bağlantı tekrar deneniyor.",
                 recoveryType = PlayerRecoveryType.BUFFER_TIMEOUT,
                 actions = buildRecoveryActions(PlayerRecoveryType.BUFFER_TIMEOUT)
             )
