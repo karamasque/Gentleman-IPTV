@@ -163,23 +163,27 @@ class RemoteConfigRepositoryImpl @Inject constructor(
             }
 
             // Always resolve effective versions prioritizing GitHub's newer release if available:
+            val isGitNameNewer = !cachedGitName.isNullOrBlank() && (
+                (cachedGitCode != null && cachedGitCode >= firestoreLatestCode) ||
+                compareVersionNames(cachedGitName, firestoreLatestName) >= 0
+            )
             val effectiveLatestCode = maxOf(firestoreLatestCode, cachedGitCode ?: 0, currentVersionCode)
             val effectiveMinVersion = maxOf(
                 firestoreMinVersion,
                 if (cachedGitCode != null && cachedGitCode > currentVersionCode) cachedGitCode else 0
             )
-            val effectiveLatestName = if (cachedGitCode != null && cachedGitCode >= firestoreLatestCode && !cachedGitName.isNullOrBlank()) {
+            val effectiveLatestName = if (isGitNameNewer && !cachedGitName.isNullOrBlank()) {
                 cachedGitName
             } else {
                 firestoreLatestName
             }
-            val effectiveApkUrl = if (cachedGitCode != null && cachedGitCode >= firestoreLatestCode && !cachedGitUrl.isNullOrBlank()) {
+            val effectiveApkUrl = if (isGitNameNewer && !cachedGitUrl.isNullOrBlank()) {
                 cachedGitUrl
             } else {
                 firestoreApkUrl
             }
             val effectiveNotes = if (!cachedGitNotes.isNullOrBlank()) cachedGitNotes else firestoreNotes
-            val effectiveForceUpdate = firestoreForceUpdate || (cachedGitCode != null && cachedGitCode > currentVersionCode)
+            val effectiveForceUpdate = firestoreForceUpdate || (cachedGitCode != null && cachedGitCode > currentVersionCode) || cachedBlocked
 
             val config = AppRemoteConfig(
                 minimumSupportedVersionCode = effectiveMinVersion,
@@ -255,4 +259,18 @@ class RemoteConfigRepositoryImpl @Inject constructor(
             updatedAt = 0L
         )
     }
+}
+
+private fun compareVersionNames(left: String, right: String): Int {
+    val leftParts = left.removePrefix("v").removePrefix("V").split('.')
+    val rightParts = right.removePrefix("v").removePrefix("V").split('.')
+    val length = maxOf(leftParts.size, rightParts.size)
+    for (index in 0 until length) {
+        val leftClean = leftParts.getOrNull(index)?.takeWhile { it.isDigit() }.orEmpty()
+        val rightClean = rightParts.getOrNull(index)?.takeWhile { it.isDigit() }.orEmpty()
+        val leftVal = leftClean.toIntOrNull() ?: 0
+        val rightVal = rightClean.toIntOrNull() ?: 0
+        if (leftVal != rightVal) return leftVal.compareTo(rightVal)
+    }
+    return 0
 }

@@ -289,10 +289,9 @@ class GitHubReleaseChecker @Inject constructor(
         }
 
         val name = normalizedTag.removePrefix("v").removePrefix("V").trim()
-        val codeFromTag = name.substringAfterLast('.').takeWhile { it.isDigit() }.toIntOrNull()
         return ParsedTagVersion(
             versionName = name,
-            versionCode = codeFromTag
+            versionCode = null
         )
     }
 

@@ -175,9 +175,7 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
                     remotePublishedAt = result.data.publishedAt
                 )
                 if (isNewer) {
-                    result.data.versionCode?.let { newCode ->
-                        preferencesRepository.setForceUpdateBlockedState(true, newCode)
-                    }
+                    preferencesRepository.setForceUpdateBlockedState(true, result.data.versionCode)
                 } else {
                     preferencesRepository.setForceUpdateBlockedState(false, null)
                 }
