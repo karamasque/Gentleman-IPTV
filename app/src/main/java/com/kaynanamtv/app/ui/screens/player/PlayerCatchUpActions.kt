@@ -2,6 +2,7 @@ package com.kaynanamtv.app.ui.screens.player
 
 import androidx.lifecycle.viewModelScope
 import com.kaynanamtv.app.ui.model.isArchivePlayable
+import com.kaynanamtv.app.ui.model.isCurrentProgramRestartable
 import com.kaynanamtv.data.security.CredentialDecryptionException
 import com.kaynanamtv.domain.model.ContentType
 import com.kaynanamtv.domain.model.Program
@@ -109,7 +110,9 @@ fun PlayerViewModel.playCatchUp(program: Program) {
     viewModelScope.launch {
         val requestVersion = prepareRequestVersion
         val channel = currentChannelFlow.value
-        if (channel == null || !channel.isArchivePlayable(program)) {
+        val isRestartable = channel?.isCurrentProgramRestartable(program) == true
+        val isArchived = channel?.isArchivePlayable(program) == true
+        if (channel == null || (!isRestartable && !isArchived)) {
             return@launch
         }
         val start = program.startTime / 1000L
@@ -140,7 +143,7 @@ fun PlayerViewModel.playCatchUp(program: Program) {
             return@launch
         }
         if (!isActivePlaybackSession(requestVersion)) return@launch
-        android.util.Log.d("PlayerCatchUpTrace", "[CATCHUP] supported=${channel.isArchivePlayable(program)} urlResolved=${catchUpUrls.isNotEmpty()} urlCount=${catchUpUrls.size}")
+        android.util.Log.d("PlayerCatchUpTrace", "[CATCHUP] supported=${isRestartable || isArchived} urlResolved=${catchUpUrls.isNotEmpty()} urlCount=${catchUpUrls.size}")
         if (catchUpUrls.isNotEmpty()) {
             startCatchUpPlayback(
                 urls = catchUpUrls,

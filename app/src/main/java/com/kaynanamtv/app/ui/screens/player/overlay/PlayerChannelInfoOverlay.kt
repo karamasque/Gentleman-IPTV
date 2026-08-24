@@ -46,13 +46,7 @@ import androidx.compose.material.icons.filled.ViewSidebar
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import com.kaynanamtv.app.ui.model.isArchivePlayable
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Subtitles
-import androidx.compose.material.icons.filled.SyncAlt
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.ViewSidebar
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
+import com.kaynanamtv.app.ui.model.isCurrentProgramRestartable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Slider
@@ -168,9 +162,9 @@ fun ChannelInfoOverlay(
 ) {
     val appTimeFormat = LocalAppTimeFormat.current
     val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
-    val showTimeshiftControls = timeshiftUiState.available && timeshiftUiState.bufferDepthMs >= 10_000L && !isCastConnected
+    val showTimeshiftControls = timeshiftUiState.available && !isCastConnected
 
-    val isTimeshiftActive = showTimeshiftControls && timeshiftUiState.bufferedBehindLiveMs >= 60_000L
+    val isTimeshiftActive = showTimeshiftControls && (timeshiftUiState.canSeekToLive || timeshiftUiState.bufferedBehindLiveMs > 1_000L)
     val liveState = when {
         isCatchUpPlayback -> TvLiveState.ARCHIVE
         isTimeshiftActive -> TvLiveState.TIMESHIFT
@@ -224,7 +218,7 @@ fun ChannelInfoOverlay(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
-                val canReturnToLive = showTimeshiftControls && timeshiftUiState.bufferedBehindLiveMs >= 60_000L
+                val canReturnToLive = (showTimeshiftControls && timeshiftUiState.canSeekToLive) || isCatchUpPlayback
                 LaunchedEffect(showTimeshiftControls, timeshiftUiState.bufferDepthMs, timeshiftUiState.bufferedBehindLiveMs, canReturnToLive) {
                     android.util.Log.d(
                         "PlayerOverlayTrace",
@@ -274,9 +268,10 @@ fun ChannelInfoOverlay(
                                     }
                                 }
                                 TvLiveState.TIMESHIFT -> {
-                                    val offsetMin = (timeshiftUiState.bufferedBehindLiveMs / 60_000L).coerceAtLeast(1L)
+                                    val offsetMs = timeshiftUiState.bufferedBehindLiveMs
+                                    val offsetLabel = if (offsetMs >= 60_000L) "-${offsetMs / 60_000L} dk" else "-${(offsetMs / 1000L).coerceAtLeast(1L)} sn"
                                     Text(
-                                        text = "\u21B6 -$offsetMin dk",
+                                        text = "\u21B6 $offsetLabel",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFFFB347),
@@ -609,7 +604,7 @@ fun ChannelInfoOverlay(
                     )
 
                     // 2. Canlıya Dön
-                    val canReturnToLive = (showTimeshiftControls && timeshiftUiState.bufferedBehindLiveMs >= 60_000L) || isCatchUpPlayback
+                    val canReturnToLive = (showTimeshiftControls && timeshiftUiState.canSeekToLive) || isCatchUpPlayback
                     LiveActionButton(
                         actionId = LiveActionId.RETURN_LIVE,
                         icon = Icons.Default.FiberManualRecord,
@@ -621,7 +616,7 @@ fun ChannelInfoOverlay(
                     )
 
                     // 3. Programı Baştan Başlat
-                    val canRestart = currentProgram != null && currentChannel?.isArchivePlayable(currentProgram) == true
+                    val canRestart = currentProgram != null && currentChannel?.isCurrentProgramRestartable(currentProgram) == true
                     LiveActionButton(
                         actionId = LiveActionId.RESTART_PROGRAM,
                         icon = Icons.Default.Replay,

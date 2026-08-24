@@ -150,4 +150,50 @@ class ArchivePlaybackTest {
         assertThat(capability.canBuildReplayCandidate).isTrue()
         assertThat(capability.windowDays).isEqualTo(3)
     }
+
+    @Test
+    fun `current live program is restartable on catchup enabled channel`() {
+        val now = 1_000_000L
+        val channel = Channel(
+            id = 42L,
+            name = "News",
+            providerId = 7L,
+            catchUpSupported = true,
+            catchUpDays = 3,
+            streamUrl = "xtream://7/live/42",
+            streamId = 42L
+        )
+        val currentLiveProgram = Program(
+            channelId = "news",
+            title = "Current Live Show",
+            startTime = now - 600_000L, // started 10 minutes ago
+            endTime = now + 1_800_000L  // ends in 30 minutes
+        )
+
+        // Historical archive requires endTime <= now, so isArchivePlayable returns false
+        assertThat(channel.isArchivePlayable(currentLiveProgram, now)).isFalse()
+        // But current program restart is explicitly permitted
+        assertThat(channel.isCurrentProgramRestartable(currentLiveProgram, now)).isTrue()
+    }
+
+    @Test
+    fun `current live program is NOT restartable on channel without catchup`() {
+        val now = 1_000_000L
+        val channel = Channel(
+            id = 42L,
+            name = "News",
+            providerId = 7L,
+            catchUpSupported = false,
+            catchUpDays = 0,
+            streamUrl = "http://example.com/live/42.m3u8"
+        )
+        val currentLiveProgram = Program(
+            channelId = "news",
+            title = "Current Live Show",
+            startTime = now - 600_000L,
+            endTime = now + 1_800_000L
+        )
+
+        assertThat(channel.isCurrentProgramRestartable(currentLiveProgram, now)).isFalse()
+    }
 }

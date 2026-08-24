@@ -2,6 +2,7 @@ package com.kaynanamtv.app.ui.screens.player
 
 import androidx.lifecycle.viewModelScope
 import com.kaynanamtv.app.ui.model.isArchivePlayable
+import com.kaynanamtv.app.ui.model.isCurrentProgramRestartable
 import com.kaynanamtv.domain.model.ContentType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -92,7 +93,7 @@ internal fun buildRetryNoticeMessage(
 fun PlayerViewModel.restartCurrentProgram() {
     val program = currentProgram.value ?: return
     val channel = currentChannelFlow.value ?: return
-    if (channel.isArchivePlayable(program)) {
+    if (channel.isCurrentProgramRestartable(program) || channel.isArchivePlayable(program)) {
         playCatchUp(program)
     }
 }

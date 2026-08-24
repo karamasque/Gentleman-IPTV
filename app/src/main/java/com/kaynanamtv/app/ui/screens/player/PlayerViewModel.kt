@@ -441,8 +441,7 @@ class PlayerViewModel @Inject constructor(
             state.enabled &&
             state.status != LiveTimeshiftStatus.DISABLED &&
             state.status != LiveTimeshiftStatus.UNSUPPORTED &&
-            state.status != LiveTimeshiftStatus.FAILED &&
-            actualBufferMs >= 10_000L
+            state.status != LiveTimeshiftStatus.FAILED
 
         _timeshiftUiState.value = PlayerTimeshiftUiState(
             available = visibleForLiveUi,
@@ -454,7 +453,7 @@ class PlayerViewModel @Inject constructor(
             statusMessage = state.message.orEmpty(),
             engineState = state
         )
-        val canReturnLive = state.currentOffsetFromLiveMs >= 60_000L
+        val canReturnLive = state.canSeekToLive || state.currentOffsetFromLiveMs > 0L
         android.util.Log.d(
             "PlayerTimeshiftTrace",
             "[TS_STATE_VM] depthMs=$actualBufferMs available=$visibleForLiveUi canReturnLive=$canReturnLive offset=${state.currentOffsetFromLiveMs} status=${state.status}"

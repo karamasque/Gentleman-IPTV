@@ -92,3 +92,21 @@ fun Channel.isArchivePlayable(
 
     return program.startTime >= catchUpWindowStart
 }
+
+fun Channel.isCurrentProgramRestartable(
+    program: Program,
+    now: Long = System.currentTimeMillis()
+): Boolean {
+    if (id <= 0L || providerId <= 0L) return false
+    if (program.startTime <= 0L || program.endTime <= program.startTime) return false
+    val capability = archivePlaybackCapability()
+    if (!capability.canBuildReplayCandidate) return false
+    if (!catchUpSupported && !capability.advertisedByProvider && !program.hasArchive) return false
+    val windowDays = capability.windowDays?.takeIf { it > 0 }
+    if (windowDays != null) {
+        val catchUpWindowStart = now - (windowDays.toLong() * MILLIS_PER_DAY)
+        if (program.startTime < catchUpWindowStart) return false
+    }
+    return true
+}
+
