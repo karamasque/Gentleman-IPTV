@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.ViewSidebar
@@ -89,7 +90,10 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
@@ -130,6 +134,38 @@ import java.util.Locale
 import com.kaynanamtv.app.ui.interaction.TvClickableSurface
 import com.kaynanamtv.app.ui.interaction.TvButton
 import com.kaynanamtv.app.ui.interaction.TvIconButton
+
+private val Replay10Icon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Replay10",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).addPath(
+        pathData = PathParser().parsePathString("M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z").toNodes(),
+        fill = SolidColor(Color.White)
+    ).addPath(
+        pathData = PathParser().parsePathString("M10.95 14.53h-.91v-3.41h-.04l-.84.6v-.76l.96-.69h.83v4.26zm3.92-2.14c0 .4-.07.74-.21 1.01s-.34.47-.6.6-.56.19-.9.19-.64-.06-.9-.19-.46-.33-.6-.6-.21-.61-.21-1.01v-.98c0-.4.07-.74.21-1.01s.34-.47.6-.6.56-.19.9-.19.64.06.9.19.46.33.6.6.21.61.21 1.01v.98zm-.89-.96c0-.3-.04-.54-.12-.71s-.19-.3-.33-.38-.3-.12-.47-.12-.33.04-.47.12-.25.21-.33.38-.12.41-.12.71v1.01c0 .3.04.54.12.71s.19.3.33.38.3.12.47.12.33-.04.47-.12.25-.21.33-.38.12-.41.12-.71v-1.01z").toNodes(),
+        fill = SolidColor(Color.White)
+    ).build()
+}
+
+private val Forward10Icon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Forward10",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).addPath(
+        pathData = PathParser().parsePathString("M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z").toNodes(),
+        fill = SolidColor(Color.White)
+    ).addPath(
+        pathData = PathParser().parsePathString("M10.95 14.53h-.91v-3.41h-.04l-.84.6v-.76l.96-.69h.83v4.26zm3.92-2.14c0 .4-.07.74-.21 1.01s-.34.47-.6.6-.56.19-.9.19-.64-.06-.9-.19-.46-.33-.6-.6-.21-.61-.21-1.01v-.98c0-.4.07-.74.21-1.01s.34-.47.6-.6.56-.19.9-.19.64.06.9.19.46.33.6.6.21.61.21 1.01v.98zm-.89-.96c0-.3-.04-.54-.12-.71s-.19-.3-.33-.38-.3-.12-.47-.12-.33.04-.47.12-.25.21-.33.38-.12.41-.12.71v1.01c0 .3.04.54.12.71s.19.3.33.38.3.12.47.12.33-.04.47-.12.25-.21.33-.38.12-.41.12-.71v-1.01z").toNodes(),
+        fill = SolidColor(Color.White)
+    ).build()
+}
 
 private data class PlayerActionSpec(
     val label: String,
@@ -232,6 +268,7 @@ fun PlayerControlsOverlay(
                 title = title,
                 contentType = contentType,
                 clockLabelOverride = clockLabelOverride,
+                mediaTitle = mediaTitle,
                 onClose = onClose,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
@@ -465,6 +502,7 @@ private fun PlayerTopBar(
     title: String,
     contentType: String,
     clockLabelOverride: String?,
+    mediaTitle: String? = null,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -473,9 +511,9 @@ private fun PlayerTopBar(
     val appTimeFormat = LocalAppTimeFormat.current
     val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
     val topBarHeight = when {
-        screenWidth < 700.dp -> 100.dp
-        !isTelevisionDevice && screenWidth < 1280.dp -> 116.dp
-        else -> 132.dp
+        screenWidth < 700.dp -> 96.dp
+        !isTelevisionDevice && screenWidth < 1280.dp -> 110.dp
+        else -> 124.dp
     }
     val horizontalPadding = when {
         screenWidth < 700.dp -> 18.dp
@@ -483,9 +521,9 @@ private fun PlayerTopBar(
         else -> 32.dp
     }
     val verticalPadding = when {
-        screenWidth < 700.dp -> 16.dp
-        !isTelevisionDevice && screenWidth < 1280.dp -> 20.dp
-        else -> 24.dp
+        screenWidth < 700.dp -> 14.dp
+        !isTelevisionDevice && screenWidth < 1280.dp -> 18.dp
+        else -> 22.dp
     }
     Box(
         modifier = modifier
@@ -493,7 +531,7 @@ private fun PlayerTopBar(
             .height(topBarHeight)
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(Color.Black.copy(alpha = 0.8f), Color.Transparent)
+                    colors = listOf(Color.Black.copy(alpha = 0.82f), Color.Transparent)
                 )
             )
             .padding(horizontal = horizontalPadding, vertical = verticalPadding)
@@ -503,39 +541,57 @@ private fun PlayerTopBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                PlayerMetaPill(
-                    text = when (contentType) {
-                        "LIVE" -> stringResource(R.string.nav_live_tv)
-                        "MOVIE" -> stringResource(R.string.player_type_movie)
-                        else -> stringResource(R.string.player_type_series)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                color = if (contentType == "LIVE") Color.Red else Color(0xFF4F46E5),
+                                shape = RoundedCornerShape(999.dp)
+                            )
+                            .padding(horizontal = 14.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = when (contentType) {
+                                "LIVE" -> "Canlı"
+                                "MOVIE" -> "Film"
+                                else -> "Dizi"
+                            },
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White
+                        )
                     }
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-                if (contentType != "LIVE") {
+
                     Text(
-                        text = if (contentType == "MOVIE") {
-                            stringResource(R.string.player_type_movie)
-                        } else {
-                            stringResource(R.string.player_type_series)
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.6f)
+                        text = "|",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White.copy(alpha = 0.35f)
+                    )
+
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                        maxLines = 1
+                    )
+                }
+
+                if (!mediaTitle.isNullOrBlank()) {
+                    Text(
+                        text = mediaTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.65f),
+                        modifier = Modifier.padding(start = 4.dp)
                     )
                 }
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val currentTime = remember(clockLabelOverride, timeFormat) {
-                    mutableStateOf(
-                        clockLabelOverride ?: timeFormat.format(Date())
-                    )
+                    mutableStateOf(clockLabelOverride ?: timeFormat.format(Date()))
                 }
                 LaunchedEffect(clockLabelOverride, timeFormat) {
                     if (clockLabelOverride == null) {
@@ -549,9 +605,9 @@ private fun PlayerTopBar(
                 }
                 Text(
                     text = currentTime.value,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(end = 16.dp)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(end = 18.dp)
                 )
 
                 TvClickableSurface(
@@ -559,14 +615,36 @@ private fun PlayerTopBar(
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(999.dp)),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = Color.White.copy(alpha = 0.12f),
-                        focusedContainerColor = Primary.copy(alpha = 0.9f)
+                        focusedContainerColor = Color(0xFF4F46E5).copy(alpha = 0.85f)
+                    ),
+                    border = ClickableSurfaceDefaults.border(
+                        border = Border(
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                            shape = RoundedCornerShape(999.dp)
+                        ),
+                        focusedBorder = Border(
+                            border = BorderStroke(2.dp, Color(0xFF818CF8)),
+                            shape = RoundedCornerShape(999.dp)
+                        )
                     )
                 ) {
-                    Text(
-                        text = stringResource(R.string.player_close),
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.player_close),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }
@@ -636,61 +714,46 @@ private fun PlayerBottomBar(
     onOpenGuide: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val isVod = contentType != "LIVE" || isCatchUpPlayback
-    val bottomBarWidthFraction = if (isVod) 0.78f else 1f
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.84f))
+    if (contentType == "LIVE") {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.84f))
+                    )
+                )
+                .padding(horizontal = 32.dp, vertical = 24.dp)
+        ) {
+            val borderBrush = Brush.linearGradient(
+                colors = listOf(
+                    Primary.copy(alpha = 0.55f),
+                    AppColors.NeonCyan.copy(alpha = 0.55f),
+                    Primary.copy(alpha = 0.12f)
                 )
             )
-            .padding(
-                horizontal = if (isVod) 14.dp else 32.dp,
-                vertical = if (isVod) 10.dp else 24.dp
-            )
-    ) {
-        val borderBrush = Brush.linearGradient(
-            colors = listOf(
-                Primary.copy(alpha = 0.55f),
-                AppColors.NeonCyan.copy(alpha = 0.55f),
-                Primary.copy(alpha = 0.12f)
-            )
-        )
-        Surface(
-            modifier = if (isVod) {
-                Modifier
-                    .fillMaxWidth(bottomBarWidthFraction)
-                    .widthIn(max = 980.dp)
-                    .align(Alignment.Center)
-            } else {
-                Modifier.fillMaxWidth()
-            },
-            shape = RoundedCornerShape(if (isVod) 20.dp else 28.dp),
-            colors = SurfaceDefaults.colors(containerColor = Color(0xFF060B12).copy(alpha = 0.86f)),
-            border = Border(
-                border = BorderStroke(1.2.dp, borderBrush),
-                shape = RoundedCornerShape(if (isVod) 20.dp else 28.dp)
-            )
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(
-                                Primary.copy(alpha = 0.10f),
-                                Color.Transparent
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = SurfaceDefaults.colors(containerColor = Color(0xFF060B12).copy(alpha = 0.86f)),
+                border = Border(
+                    border = BorderStroke(1.2.dp, borderBrush),
+                    shape = RoundedCornerShape(28.dp)
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Primary.copy(alpha = 0.10f),
+                                    Color.Transparent
+                                )
                             )
                         )
-                    )
-                    .padding(
-                        horizontal = if (isVod) 14.dp else 24.dp,
-                        vertical = if (isVod) 12.dp else 22.dp
-                    )
-            ) {
-                if (contentType == "LIVE") {
+                        .padding(horizontal = 24.dp, vertical = 22.dp)
+                ) {
                     PlayerLiveInfo(
                         currentProgram = currentProgram,
                         currentChannel = currentChannel,
@@ -742,50 +805,57 @@ private fun PlayerBottomBar(
                         isCatchUpPlayback = isCatchUpPlayback,
                         onOpenGuide = onOpenGuide
                     )
-                } else {
-                    PlayerVodInfo(
-                        title = title,
-                        contentType = contentType,
-                        isPlaying = isPlaying,
-                        currentPosition = currentPosition,
-                        duration = duration,
-                        aspectRatioLabel = aspectRatioLabel,
-                        subtitleTrackCount = subtitleTrackCount,
-                        audioTrackCount = audioTrackCount,
-                        videoQualityCount = videoQualityCount,
-                        isMuted = isMuted,
-                        playbackSpeed = playbackSpeed,
-                        sleepTimerUiState = sleepTimerUiState,
-                        playButtonFocusRequester = playButtonFocusRequester,
-                        quickActionsFocusRequester = quickActionsFocusRequester,
-                        onSeekToPosition = onSeekToPosition,
-                        onSetScrubbingMode = onSetScrubbingMode,
-                        onToggleAspectRatio = onToggleAspectRatio,
-                        onOpenSubtitleTracks = onOpenSubtitleTracks,
-                        onOpenAudioTracks = onOpenAudioTracks,
-                        onOpenVideoTracks = onOpenVideoTracks,
-                        onOpenPlaybackSpeed = onOpenPlaybackSpeed,
-                        onOpenStopPlaybackTimer = onOpenStopPlaybackTimer,
-                        onOpenIdleStandbyTimer = onOpenIdleStandbyTimer,
-                        onOpenAudioVideoSync = onOpenAudioVideoSync,
-                        audioVideoSyncEnabled = audioVideoSyncEnabled,
-                        showEpisodesAction = showEpisodesAction,
-                        onOpenEpisodes = onOpenEpisodes,
-                        onEnterPictureInPicture = onEnterPictureInPicture,
-                        onToggleMute = onToggleMute,
-                        isCastConnected = isCastConnected,
-                        onCast = onCast,
-                        onStopCasting = onStopCasting,
-                        onTogglePlayPause = onTogglePlayPause,
-                        onSeekBackward = onSeekBackward,
-                        onSeekForward = onSeekForward,
-                        seekPreview = seekPreview,
-                        onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
-                        showExternalPlayerAction = showExternalPlayerAction,
-                        onOpenExternalPlayer = onOpenExternalPlayer
-                    )
                 }
             }
+        }
+    } else {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            PlayerVodInfo(
+                title = title,
+                contentType = contentType,
+                isPlaying = isPlaying,
+                currentPosition = currentPosition,
+                duration = duration,
+                aspectRatioLabel = aspectRatioLabel,
+                subtitleTrackCount = subtitleTrackCount,
+                audioTrackCount = audioTrackCount,
+                videoQualityCount = videoQualityCount,
+                isMuted = isMuted,
+                playbackSpeed = playbackSpeed,
+                sleepTimerUiState = sleepTimerUiState,
+                playButtonFocusRequester = playButtonFocusRequester,
+                quickActionsFocusRequester = quickActionsFocusRequester,
+                onSeekToPosition = onSeekToPosition,
+                onSetScrubbingMode = onSetScrubbingMode,
+                onToggleAspectRatio = onToggleAspectRatio,
+                onOpenSubtitleTracks = onOpenSubtitleTracks,
+                onOpenAudioTracks = onOpenAudioTracks,
+                onOpenVideoTracks = onOpenVideoTracks,
+                onOpenPlaybackSpeed = onOpenPlaybackSpeed,
+                onOpenStopPlaybackTimer = onOpenStopPlaybackTimer,
+                onOpenIdleStandbyTimer = onOpenIdleStandbyTimer,
+                onOpenAudioVideoSync = onOpenAudioVideoSync,
+                audioVideoSyncEnabled = audioVideoSyncEnabled,
+                showEpisodesAction = showEpisodesAction,
+                onOpenEpisodes = onOpenEpisodes,
+                onEnterPictureInPicture = onEnterPictureInPicture,
+                onToggleMute = onToggleMute,
+                isCastConnected = isCastConnected,
+                onCast = onCast,
+                onStopCasting = onStopCasting,
+                onTogglePlayPause = onTogglePlayPause,
+                onSeekBackward = onSeekBackward,
+                onSeekForward = onSeekForward,
+                seekPreview = seekPreview,
+                onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
+                showExternalPlayerAction = showExternalPlayerAction,
+                onOpenExternalPlayer = onOpenExternalPlayer
+            )
         }
     }
 }
@@ -1129,7 +1199,7 @@ private fun PlayerVodInfo(
     isMuted: Boolean,
     playbackSpeed: Float,
     sleepTimerUiState: SleepTimerUiState,
-    audioVideoSyncEnabled: Boolean,
+    audioVideoSyncEnabled: Boolean = false,
     playButtonFocusRequester: FocusRequester,
     quickActionsFocusRequester: FocusRequester,
     onSeekToPosition: (Long) -> Unit,
@@ -1141,42 +1211,23 @@ private fun PlayerVodInfo(
     onOpenPlaybackSpeed: () -> Unit,
     onOpenStopPlaybackTimer: () -> Unit,
     onOpenIdleStandbyTimer: () -> Unit,
-    onOpenAudioVideoSync: () -> Unit,
-    showEpisodesAction: Boolean,
-    onOpenEpisodes: () -> Unit,
-    onEnterPictureInPicture: () -> Unit,
-    onToggleMute: () -> Unit,
-    isCastConnected: Boolean,
-    onCast: () -> Unit,
-    onStopCasting: () -> Unit,
+    onOpenAudioVideoSync: () -> Unit = {},
+    showEpisodesAction: Boolean = false,
+    onOpenEpisodes: () -> Unit = {},
+    onEnterPictureInPicture: () -> Unit = {},
+    onToggleMute: () -> Unit = {},
+    isCastConnected: Boolean = false,
+    onCast: () -> Unit = {},
+    onStopCasting: () -> Unit = {},
     onTogglePlayPause: () -> Unit,
     onSeekBackward: () -> Unit,
     onSeekForward: () -> Unit,
     seekPreview: SeekPreviewState,
     onSeekPreviewPositionChanged: (Long?) -> Unit,
-    showExternalPlayerAction: Boolean,
-    onOpenExternalPlayer: () -> Unit
+    showExternalPlayerAction: Boolean = false,
+    onOpenExternalPlayer: () -> Unit = {}
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val isTelevisionDevice = rememberIsTelevisionDevice()
-    val compactControls = screenWidth < 700.dp
-    val tabletControls = !isTelevisionDevice && screenWidth >= 700.dp && screenWidth < 1280.dp
-    val transportButtonSize = when {
-        compactControls -> 42.dp
-        tabletControls -> 46.dp
-        else -> 50.dp
-    }
-    val seekPreviewWidth = when {
-        compactControls -> 148.dp
-        tabletControls -> 168.dp
-        else -> 188.dp
-    }
-    val outerSpacing = when {
-        compactControls -> 8.dp
-        tabletControls -> 10.dp
-        else -> 12.dp
-    }
-
     val playbackLabel = stringResource(R.string.player_playback_label)
 
     var sliderValue by remember(duration, currentPosition) {
@@ -1203,77 +1254,59 @@ private fun PlayerVodInfo(
         }
     }
 
-    // Title / Meta Info Row
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        PlayerMetaPill(
-            text = if (contentType == "MOVIE") {
-                stringResource(R.string.player_type_movie)
-            } else {
-                stringResource(R.string.player_type_series)
-            },
-            accent = true
-        )
-        if (isMuted) {
-            PlayerMetaPill(text = stringResource(R.string.player_muted_badge))
+        // Seek preview thumbnail if active
+        AnimatedVisibility(visible = seekPreview.visible) {
+            PlayerSeekPreviewCard(
+                preview = seekPreview,
+                previewHeight = if (screenWidth < 700.dp) 96.dp else 114.dp,
+                modifier = Modifier
+                    .width(if (screenWidth < 700.dp) 148.dp else 180.dp)
+                    .padding(bottom = 8.dp)
+            )
         }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.82f),
-            maxLines = 1
+
+        // ── Floating Control Dock (72-78% width, max 23-25% height) ──
+        val dockBorderBrush = Brush.linearGradient(
+            colors = listOf(
+                Color(0xFF3860FF).copy(alpha = 0.55f),
+                Color(0xFF6366F1).copy(alpha = 0.45f),
+                Color(0xFF00E5FF).copy(alpha = 0.30f)
+            )
         )
-    }
-
-    Spacer(modifier = Modifier.height(10.dp))
-
-    // Unified VOD Player bar (Pill surface container)
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        colors = SurfaceDefaults.colors(containerColor = Color(0xFF0D1426).copy(alpha = 0.65f)),
-        border = Border(
-            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.12f)),
-            shape = RoundedCornerShape(18.dp)
-        ),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(if (screenWidth < 700.dp) 0.94f else 0.76f)
+                .widthIn(max = 940.dp),
+            shape = RoundedCornerShape(22.dp),
+            colors = SurfaceDefaults.colors(containerColor = Color(0xFF090D1A).copy(alpha = 0.88f)),
+            border = Border(
+                border = BorderStroke(1.2.dp, dockBorderBrush),
+                shape = RoundedCornerShape(22.dp)
+            )
         ) {
-            // Seek bar Slider section
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                AnimatedVisibility(visible = seekPreview.visible) {
-                    PlayerSeekPreviewCard(
-                        preview = seekPreview,
-                        previewHeight = when {
-                            compactControls -> 96.dp
-                            tabletControls -> 106.dp
-                            else -> 118.dp
-                        },
-                        modifier = Modifier.width(seekPreviewWidth)
-                    )
-                }
-
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // 1. Single Continuous Timeline: 01:25:05 ━━━━━●━━━━━ 02:28:23
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = formatDuration(
-                            if (isScrubbing && duration > 0) {
-                                (sliderValue * duration).toLong()
-                            } else {
-                                currentPosition
-                            }
+                            if (isScrubbing && duration > 0) (sliderValue * duration).toLong() else currentPosition
                         ),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                         color = Color.White
                     )
-                    // D-pad seek: 10 seconds per step, confirm with Center/OK
-                    val seekStepMs = 10_000L
+
                     Slider(
                         value = sliderValue,
                         onValueChange = { newValue ->
@@ -1299,7 +1332,7 @@ private fun PlayerVodInfo(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 12.dp)
+                            .padding(horizontal = 14.dp)
                             .focusProperties { down = playButtonFocusRequester }
                             .semantics { contentDescription = playbackLabel }
                             .onPreviewKeyEvent { event ->
@@ -1308,12 +1341,11 @@ private fun PlayerVodInfo(
                                 val repeat = native.repeatCount
                                 val stepMs = when {
                                     repeat == 0 -> 10_000L
-                                    repeat < 5 -> 15_000L
+                                    repeat < 5 -> 20_000L
                                     repeat < 10 -> 30_000L
                                     else -> 60_000L
                                 }
                                 when {
-                                    // RIGHT arrow -> seek forward
                                     event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight -> {
                                         val currentMs = (sliderValue * duration).toLong()
                                         val newMs = (currentMs + stepMs).coerceIn(0L, duration)
@@ -1326,7 +1358,6 @@ private fun PlayerVodInfo(
                                         latestSeekPreviewPositionChanged(newMs)
                                         true
                                     }
-                                    // LEFT arrow -> seek backward
                                     event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft -> {
                                         val currentMs = (sliderValue * duration).toLong()
                                         val newMs = (currentMs - stepMs).coerceIn(0L, duration)
@@ -1339,7 +1370,6 @@ private fun PlayerVodInfo(
                                         latestSeekPreviewPositionChanged(newMs)
                                         true
                                     }
-                                    // Center / OK -> commit seek
                                     event.type == KeyEventType.KeyUp &&
                                         (event.key == Key.DirectionCenter || event.key == Key.Enter) &&
                                         isScrubbing -> {
@@ -1354,116 +1384,221 @@ private fun PlayerVodInfo(
                             },
                         enabled = duration > 0,
                         colors = SliderDefaults.colors(
-                            activeTrackColor = AppColors.NeonCyan,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.12f)
+                            activeTrackColor = Color(0xFF6366F1),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.16f),
+                            thumbColor = Color.White
                         )
                     )
+
                     Text(
                         text = formatDuration(duration),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                         color = Color.White
                     )
                 }
-            }
 
-            // TV-First VOD Control Buttons Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 1. -10 sn Rewind
-                TvLiveControlButton(
-                    icon = Icons.Default.Replay,
-                    label = "-10 sn",
-                    onClick = onSeekBackward,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 2. Play / Pause (Primary)
-                TvLiveControlButton(
-                    icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    label = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
-                    onClick = onTogglePlayPause,
-                    isPrimary = true,
+                // 2. Control Row: ↶10 | PLAY/PAUSE | 10↷ | Altyazılar | Ses | Video Kalitesi | 1x | Fit
+                Row(
                     modifier = Modifier
-                        .focusRequester(playButtonFocusRequester)
-                        .focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 3. +10 sn Forward
-                TvLiveControlButton(
-                    icon = Icons.Default.Replay,
-                    label = "+10 sn",
-                    onClick = onSeekForward,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 4. Altyazı
-                TvLiveControlButton(
-                    icon = Icons.Default.Subtitles,
-                    label = stringResource(R.string.player_subs),
-                    onClick = onOpenSubtitleTracks,
-                    badgeActive = subtitleTrackCount > 0,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 5. Ses (Audio Tracks & Mute Indicator)
-                TvLiveControlButton(
-                    icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                    label = if (isMuted) stringResource(R.string.player_muted_badge) else stringResource(R.string.player_audio),
-                    onClick = onOpenAudioTracks,
-                    accentColor = if (isMuted) Color(0xFFFF6B6B) else Color.White,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 6. Görüntü Kalitesi
-                TvLiveControlButton(
-                    icon = Icons.Default.HighQuality,
-                    label = stringResource(R.string.player_video_quality),
-                    onClick = onOpenVideoTracks,
-                    badgeActive = videoQualityCount > 1,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 7. Oynatma Hızı
-                TvLiveControlButton(
-                    icon = Icons.Default.Speed,
-                    label = formatPlaybackSpeedLabel(playbackSpeed),
-                    onClick = onOpenPlaybackSpeed,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 8. Bölümler (Dizi ise)
-                if (showEpisodesAction) {
-                    TvLiveControlButton(
-                        icon = Icons.Default.Tv,
-                        label = stringResource(R.string.player_episodes),
-                        onClick = onOpenEpisodes,
-                        accentColor = AppColors.NeonCyan,
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 1. ↶10 (-10 sn)
+                    TvVodControlButton(
+                        icon = Replay10Icon,
+                        label = "-10 sn",
+                        onClick = onSeekBackward,
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
-                }
 
-                // 9. En-Boy Oranı
-                TvLiveControlButton(
-                    icon = Icons.Default.AspectRatio,
-                    label = aspectRatioLabel,
-                    onClick = onToggleAspectRatio,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 10. Harici Oynatıcı (opsiyonel)
-                if (showExternalPlayerAction) {
-                    TvLiveControlButton(
-                        icon = Icons.Default.Cast,
-                        label = stringResource(R.string.player_open_in_external_player),
-                        onClick = onOpenExternalPlayer,
+                    // 2. PLAY / PAUSE (Primary)
+                    TvVodControlButton(
+                        icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        label = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
+                        onClick = onTogglePlayPause,
+                        isPrimary = true,
+                        focusRequester = playButtonFocusRequester,
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
+
+                    // 3. 10↷ (+10 sn)
+                    TvVodControlButton(
+                        icon = Forward10Icon,
+                        label = "+10 sn",
+                        onClick = onSeekForward,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 4. Altyazılar
+                    TvVodControlButton(
+                        icon = Icons.Default.Subtitles,
+                        label = stringResource(R.string.player_subs),
+                        onClick = onOpenSubtitleTracks,
+                        badgeActive = subtitleTrackCount > 0,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 5. Ses
+                    TvVodControlButton(
+                        icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                        label = if (isMuted) stringResource(R.string.player_muted_badge) else stringResource(R.string.player_audio),
+                        onClick = onOpenAudioTracks,
+                        accentColor = if (isMuted) Color(0xFFFF6B6B) else Color.White,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 6. Video Kalitesi
+                    TvVodControlButton(
+                        icon = Icons.Default.HighQuality,
+                        label = stringResource(R.string.player_video_quality),
+                        onClick = onOpenVideoTracks,
+                        badgeActive = videoQualityCount > 1,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 7. 1x (Hız)
+                    TvVodControlButton(
+                        icon = Icons.Default.Speed,
+                        label = formatPlaybackSpeedLabel(playbackSpeed),
+                        onClick = onOpenPlaybackSpeed,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 8. Fit (Aspect Ratio)
+                    TvVodControlButton(
+                        icon = Icons.Default.AspectRatio,
+                        label = aspectRatioLabel.ifBlank { "Fit" },
+                        onClick = onToggleAspectRatio,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 9. Bölümler (Dizi ise)
+                    if (showEpisodesAction) {
+                        TvVodControlButton(
+                            icon = Icons.Default.Tv,
+                            label = stringResource(R.string.player_episodes),
+                            onClick = onOpenEpisodes,
+                            accentColor = AppColors.NeonCyan,
+                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                        )
+                    }
+
+                    // 10. Harici Oynatıcı (opsiyonel)
+                    if (showExternalPlayerAction) {
+                        TvVodControlButton(
+                            icon = Icons.Default.Cast,
+                            label = stringResource(R.string.player_open_in_external_player),
+                            onClick = onOpenExternalPlayer,
+                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                        )
+                    }
                 }
+            }
+        }
+
+        // ── Alt Kumanda İpuçları ──────────────────────────────────────
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "\u2725 Seç   |   \u2194 10 sn ileri/geri   |   \u2630 Menü   |   \u21A9 Geri",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.50f)
+            )
+        }
+    }
+}
+
+/**
+ * TV-remote-first VOD control button matching the reference design:
+ * - 1.08x scale on focus + glowing luminous purple/indigo border
+ * - Clean layout without jumps
+ * - Circular badge dot if active
+ * - Primary button (Play/Pause) is styled with prominent rounded container and distinct focus glow
+ */
+@Composable
+private fun TvVodControlButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    isPrimary: Boolean = false,
+    accentColor: Color = Color.White,
+    badgeActive: Boolean = false,
+    focusRequester: FocusRequester? = null,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val scaleAnim by animateFloatAsState(
+        targetValue = if (isFocused) 1.08f else 1.0f,
+        label = "vodCtrlScale"
+    )
+    val focusColor = if (isPrimary) Color(0xFF6366F1) else accentColor
+
+    val surfaceModifier = modifier
+        .scale(scaleAnim)
+        .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
+        .onFocusChanged { isFocused = it.isFocused }
+        .semantics { this.contentDescription = label }
+
+    TvClickableSurface(
+        onClick = onClick,
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (isPrimary) Color(0xFF4F46E5).copy(alpha = 0.22f) else Color.White.copy(alpha = 0.05f),
+            focusedContainerColor = focusColor.copy(alpha = 0.30f)
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(
+                    1.dp,
+                    if (isPrimary) Color(0xFF6366F1).copy(alpha = 0.50f) else Color.White.copy(alpha = 0.10f)
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.2.dp, if (isPrimary) Color(0xFF818CF8) else focusColor),
+                shape = RoundedCornerShape(16.dp)
+            )
+        ),
+        modifier = surfaceModifier
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Column(
+                modifier = Modifier.padding(
+                    horizontal = if (isPrimary) 22.dp else 14.dp,
+                    vertical = if (isPrimary) 13.dp else 10.dp
+                ),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (isFocused) focusColor else Color.White.copy(alpha = 0.90f),
+                        modifier = Modifier.size(if (isPrimary) 26.dp else 22.dp)
+                    )
+                    if (badgeActive) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(6.dp)
+                                .background(Color(0xFF818CF8), RoundedCornerShape(99.dp))
+                        )
+                    }
+                }
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = if (isFocused || isPrimary) FontWeight.Bold else FontWeight.Medium
+                    ),
+                    color = if (isFocused) focusColor else Color.White.copy(alpha = 0.75f),
+                    maxLines = 1
+                )
             }
         }
     }
