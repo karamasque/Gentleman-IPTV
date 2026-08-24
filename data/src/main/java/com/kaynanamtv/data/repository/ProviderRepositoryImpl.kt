@@ -578,16 +578,17 @@ class ProviderRepositoryImpl @Inject constructor(
         }
         val tAuthStart = System.currentTimeMillis()
         onProgress?.invoke("1/4 • Sunucu doğrulanıyor…")
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
         val existingProvider = if (id != null) {
             // Edit path: check that the new normalized identity does not collide with a
             // different provider before we commit the update.
-            val collision = providerDao.getByUrlAndUser(resolvedServerUrl, normalizedUsername)
+            val collision = providerDao.getByUrlAndUserForAccount(resolvedServerUrl, normalizedUsername, accountUid = currentUid)
             if (collision != null && collision.id != id) {
                 return Result.error("A provider with this server URL and username already exists.")
             }
             providerDao.getById(id)
         } else {
-            providerDao.getByUrlAndUser(resolvedServerUrl, normalizedUsername)
+            providerDao.getByUrlAndUserForAccount(resolvedServerUrl, normalizedUsername, accountUid = currentUid)
         }
         val effectivePassword = try {
             password.takeIf { it.isNotBlank() }
@@ -613,6 +614,7 @@ class ProviderRepositoryImpl @Inject constructor(
                     onProgress?.invoke("1/4 • Sağlayıcı güncelleniyor…")
                     val updated = authResult.data.copy(
                         id = existingProvider.id,
+                        accountUid = existingProvider.accountUid ?: currentUid,
                         name = normalizedName.ifBlank { existingProvider.name },
                         serverUrl = resolvedServerUrl,
                         username = normalizedUsername,
@@ -635,6 +637,7 @@ class ProviderRepositoryImpl @Inject constructor(
                     updated.copy(password = "")
                 } else {
                     val newData = authResult.data.copy(
+                        accountUid = currentUid,
                         name = normalizedName.ifBlank { authResult.data.name },
                         httpUserAgent = httpUserAgent,
                         httpHeaders = httpHeaders,
@@ -703,20 +706,22 @@ class ProviderRepositoryImpl @Inject constructor(
             normalizedUrl.substringAfterLast("/").substringBefore("?").ifBlank { "M3U Playlist" }
         }
 
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
         val existingProvider = if (id != null) {
             // Edit path: check that the new normalized URL does not collide with a different
             // provider before we commit the update.
-            val collision = providerDao.getByUrlAndUser(normalizedUrl, "")
+            val collision = providerDao.getByUrlAndUserForAccount(normalizedUrl, "", accountUid = currentUid)
             if (collision != null && collision.id != id) {
                 return Result.error("A playlist provider with this URL already exists.")
             }
             providerDao.getById(id)
         } else {
-            providerDao.getByUrlAndUser(normalizedUrl, "")
+            providerDao.getByUrlAndUserForAccount(normalizedUrl, "", accountUid = currentUid)
         }
 
         val providerData = if (existingProvider != null) {
             val updated = existingProvider.copy(
+                accountUid = existingProvider.accountUid ?: currentUid,
                 name = if (normalizedName.isNotBlank()) normalizedName else existingProvider.name,
                 serverUrl = normalizedUrl,
                 m3uUrl = normalizedUrl,
@@ -736,6 +741,7 @@ class ProviderRepositoryImpl @Inject constructor(
             updated.toPublicDomain()
         } else {
             val provider = Provider(
+                accountUid = currentUid,
                 name = providerName,
                 type = ProviderType.M3U,
                 serverUrl = normalizedUrl,
@@ -791,10 +797,12 @@ class ProviderRepositoryImpl @Inject constructor(
                 is Result.Error -> return Result.error(res.message, res.exception)
                 is Result.Loading -> return Result.error("Unexpected loading state")
             }
+            val currentUid = FirebaseAuth.getInstance().currentUser?.uid
             val existingProvider = if (id != null) providerDao.getById(id)?.toDomain() else null
             val providerData = if (existingProvider != null) {
                 onProgress?.invoke("Updating existing provider...")
                 val updated = existingProvider.copy(
+                    accountUid = existingProvider.accountUid ?: currentUid,
                     name = providerName, serverUrl = normalizedServerUrl, username = normalizedUsername,
                     password = authResult, m3uUrl = "", epgUrl = "", httpUserAgent = "", httpHeaders = "",
                     isActive = false, status = ProviderStatus.PARTIAL, lastSyncedAt = 0
@@ -803,7 +811,7 @@ class ProviderRepositoryImpl @Inject constructor(
                 syncProviderIdToFirestore(updated.id)
                 updated.copy(password = "")
             } else {
-                val provider = Provider(name = providerName, type = ProviderType.JELLYFIN,
+                val provider = Provider(accountUid = currentUid, name = providerName, type = ProviderType.JELLYFIN,
                     serverUrl = normalizedServerUrl, username = normalizedUsername, password = authResult,
                     isActive = false, status = ProviderStatus.PARTIAL)
                  val newId = insertProvider(provider)
@@ -859,8 +867,10 @@ class ProviderRepositoryImpl @Inject constructor(
     private suspend fun saveJellyfinProvider(
         providerName: String, serverUrl: String, username: String, password: String, existingProvider: Provider?
     ): Provider {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
         return if (existingProvider != null) {
             val updated = existingProvider.copy(
+                accountUid = existingProvider.accountUid ?: currentUid,
                 name = providerName.ifBlank { existingProvider.name }, type = ProviderType.JELLYFIN,
                 serverUrl = serverUrl, username = username, password = password,
                 m3uUrl = "", epgUrl = "", httpUserAgent = "", httpHeaders = "",
@@ -870,7 +880,7 @@ class ProviderRepositoryImpl @Inject constructor(
             syncProviderIdToFirestore(updated.id)
             updated.copy(password = "")
         } else {
-            val provider = Provider(name = providerName, type = ProviderType.JELLYFIN,
+            val provider = Provider(accountUid = currentUid, name = providerName, type = ProviderType.JELLYFIN,
                 serverUrl = serverUrl, username = username, password = password,
                 isActive = false, status = ProviderStatus.PARTIAL)
             val newId = insertProvider(provider)
@@ -930,16 +940,17 @@ class ProviderRepositoryImpl @Inject constructor(
         }
 
         onProgress?.invoke("Authenticating...")
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
         val existingProvider = if (id != null) {
             // Edit path: check that the new normalized identity does not collide with a
             // different provider before we commit the update.
-            val collision = providerDao.getByUrlAndUser(resolvedPortalUrl, normalizedUsername, normalizedMacAddress)
+            val collision = providerDao.getByUrlAndUserForAccount(resolvedPortalUrl, normalizedUsername, normalizedMacAddress, accountUid = currentUid)
             if (collision != null && collision.id != id) {
                 return Result.error("A Stalker provider with this portal URL and identity already exists.")
             }
             providerDao.getById(id)
         } else {
-            providerDao.getByUrlAndUser(resolvedPortalUrl, normalizedUsername, normalizedMacAddress)
+            providerDao.getByUrlAndUserForAccount(resolvedPortalUrl, normalizedUsername, normalizedMacAddress, accountUid = currentUid)
         }
         val effectivePassword = try {
             password.takeIf { it.isNotBlank() }
@@ -974,6 +985,7 @@ class ProviderRepositoryImpl @Inject constructor(
                     onProgress?.invoke("Updating existing provider...")
                     val updated = authResult.data.copy(
                         id = existingProvider.id,
+                        accountUid = existingProvider.accountUid ?: currentUid,
                         name = normalizedName.ifBlank { existingProvider.name },
                         serverUrl = resolvedPortalUrl,
                         username = normalizedUsername,
@@ -1005,6 +1017,7 @@ class ProviderRepositoryImpl @Inject constructor(
                     updated.copy(password = "")
                 } else {
                     val newData = authResult.data.copy(
+                        accountUid = currentUid,
                         name = normalizedName.ifBlank { authResult.data.name },
                         serverUrl = resolvedPortalUrl,
                         username = normalizedUsername,
@@ -1789,8 +1802,14 @@ class ProviderRepositoryImpl @Inject constructor(
     }
 
     private suspend fun insertProvider(provider: Provider): Long {
-        val deterministicId = generateDeterministicId(provider)
-        val providerWithId = provider.copy(id = deterministicId)
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
+        val boundProvider = if (provider.accountUid == null && currentUid != null) {
+            provider.copy(accountUid = currentUid)
+        } else {
+            provider
+        }
+        val deterministicId = generateDeterministicId(boundProvider)
+        val providerWithId = boundProvider.copy(id = deterministicId)
         return providerDao.insert(providerWithId.toSecureEntity())
     }
 }

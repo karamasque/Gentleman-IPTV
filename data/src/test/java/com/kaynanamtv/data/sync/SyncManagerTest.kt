@@ -130,6 +130,12 @@ class SyncManagerTest {
             username: String,
             stalkerMacAddress: String
         ): ProviderEntity? = null
+        override suspend fun getByUrlAndUserForAccount(
+            serverUrl: String,
+            username: String,
+            stalkerMacAddress: String,
+            accountUid: String?
+        ): ProviderEntity? = null
         override fun getAllForAccount(accountUid: String?) = kotlinx.coroutines.flow.flowOf(listOfNotNull(provider))
         override suspend fun getAllForAccountSync(accountUid: String?): List<ProviderEntity> = listOfNotNull(provider)
         override fun getActiveForAccount(accountUid: String?) = kotlinx.coroutines.flow.flowOf(provider)

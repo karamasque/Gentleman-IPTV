@@ -39,6 +39,14 @@ abstract class ProviderDao {
     @Query("SELECT * FROM providers WHERE is_active = 1 AND ((:accountUid IS NOT NULL AND account_uid = :accountUid) OR (:accountUid IS NULL AND account_uid IS NULL)) LIMIT 1")
     abstract fun getActiveForAccount(accountUid: String?): Flow<ProviderEntity?>
 
+    @Query("SELECT * FROM providers WHERE server_url = :serverUrl AND username = :username AND stalker_mac_address = :stalkerMacAddress AND ((:accountUid IS NOT NULL AND account_uid = :accountUid) OR (:accountUid IS NULL AND account_uid IS NULL)) LIMIT 1")
+    abstract suspend fun getByUrlAndUserForAccount(
+        serverUrl: String,
+        username: String,
+        stalkerMacAddress: String = "",
+        accountUid: String? = null
+    ): ProviderEntity?
+
     @Query("SELECT * FROM providers WHERE server_url = :serverUrl AND username = :username AND stalker_mac_address = :stalkerMacAddress")
     abstract suspend fun getByUrlAndUser(
         serverUrl: String,

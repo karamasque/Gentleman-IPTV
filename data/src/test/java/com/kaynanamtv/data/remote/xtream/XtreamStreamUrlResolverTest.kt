@@ -693,6 +693,12 @@ class XtreamStreamUrlResolverTest {
         override fun getActiveForAccount(accountUid: String?) = flowOf(provider)
         override suspend fun deactivateAllForAccount(accountUid: String?) = Unit
         override suspend fun getByUrlAndUser(serverUrl: String, username: String, stalkerMacAddress: String): ProviderEntity? = null
+        override suspend fun getByUrlAndUserForAccount(
+            serverUrl: String,
+            username: String,
+            stalkerMacAddress: String,
+            accountUid: String?
+        ): ProviderEntity? = null
         override suspend fun getById(id: Long): ProviderEntity? = provider?.takeIf { it.id == id }
         override suspend fun getByIds(ids: List<Long>): List<ProviderEntity> =
             listOfNotNull(provider).filter { it.id in ids }
