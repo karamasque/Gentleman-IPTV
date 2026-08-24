@@ -50,7 +50,7 @@ import com.kaynanamtv.data.local.entity.*
         XtreamLiveOnboardingStateEntity::class,
         DownloadEntity::class
     ],
-    version = 63,
+    version = 64,
     exportSchema = true   // ← was false; schema JSON now tracked in version control
 )
 @TypeConverters(RoomEnumConverters::class)
@@ -2705,6 +2705,21 @@ abstract class KaynanamTVDatabase : RoomDatabase() {
         val MIGRATION_62_63 = object : Migration(62, 63) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("CREATE INDEX IF NOT EXISTS index_channels_provider_id_number ON channels(provider_id, number)")
+            }
+        }
+
+        val MIGRATION_63_64 = object : Migration(63, 64) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                addColumnIfMissing(
+                    database,
+                    tableName = "providers",
+                    columnName = "account_uid",
+                    columnDefinition = "TEXT"
+                )
+                database.execSQL("DROP INDEX IF EXISTS index_providers_server_url_username_stalker_mac_address")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_providers_server_url_username_stalker_mac_address_account_uid ON providers(server_url, username, stalker_mac_address, account_uid)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_providers_account_uid ON providers(account_uid)")
+                validateForeignKeys(database, "providers")
             }
         }
 

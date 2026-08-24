@@ -27,8 +27,17 @@ abstract class ProviderDao {
     @Query("SELECT * FROM providers ORDER BY created_at DESC")
     abstract suspend fun getAllSync(): List<ProviderEntity>
 
+    @Query("SELECT * FROM providers WHERE (:accountUid IS NOT NULL AND account_uid = :accountUid) OR (:accountUid IS NULL AND account_uid IS NULL) ORDER BY created_at DESC")
+    abstract fun getAllForAccount(accountUid: String?): Flow<List<ProviderEntity>>
+
+    @Query("SELECT * FROM providers WHERE (:accountUid IS NOT NULL AND account_uid = :accountUid) OR (:accountUid IS NULL AND account_uid IS NULL) ORDER BY created_at DESC")
+    abstract suspend fun getAllForAccountSync(accountUid: String?): List<ProviderEntity>
+
     @Query("SELECT * FROM providers WHERE is_active = 1 LIMIT 1")
     abstract fun getActive(): Flow<ProviderEntity?>
+
+    @Query("SELECT * FROM providers WHERE is_active = 1 AND ((:accountUid IS NOT NULL AND account_uid = :accountUid) OR (:accountUid IS NULL AND account_uid IS NULL)) LIMIT 1")
+    abstract fun getActiveForAccount(accountUid: String?): Flow<ProviderEntity?>
 
     @Query("SELECT * FROM providers WHERE server_url = :serverUrl AND username = :username AND stalker_mac_address = :stalkerMacAddress")
     abstract suspend fun getByUrlAndUser(
@@ -58,6 +67,9 @@ abstract class ProviderDao {
     @Query("UPDATE providers SET is_active = 0")
     abstract suspend fun deactivateAll()
 
+    @Query("UPDATE providers SET is_active = 0 WHERE (:accountUid IS NOT NULL AND account_uid = :accountUid) OR (:accountUid IS NULL AND account_uid IS NULL)")
+    abstract suspend fun deactivateAllForAccount(accountUid: String?)
+
     @Query("UPDATE providers SET is_active = 1 WHERE id = :id")
     abstract suspend fun activate(id: Long)
 
@@ -73,7 +85,7 @@ abstract class ProviderDao {
     @Transaction
     open suspend fun insert(provider: ProviderEntity): Long {
         if (provider.isActive) {
-            deactivateAll()
+            deactivateAllForAccount(provider.accountUid)
         }
         return insertDirect(provider)
     }
@@ -81,16 +93,22 @@ abstract class ProviderDao {
     @Transaction
     open suspend fun update(provider: ProviderEntity) {
         if (provider.isActive) {
-            deactivateAll()
+            deactivateAllForAccount(provider.accountUid)
         }
         updateDirect(provider)
     }
 
-    /** Atomically deactivates all providers then activates the given one. */
+    /** Atomically deactivates all providers for the same account then activates the given one. */
     @Transaction
     open suspend fun setActive(id: Long) {
-        deactivateAll()
-        activate(id)
+        val provider = getById(id)
+        if (provider != null) {
+            deactivateAllForAccount(provider.accountUid)
+            activate(id)
+        } else {
+            deactivateAll()
+            activate(id)
+        }
     }
 }
 

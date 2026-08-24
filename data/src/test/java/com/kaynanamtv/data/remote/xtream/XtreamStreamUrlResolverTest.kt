@@ -687,7 +687,11 @@ class XtreamStreamUrlResolverTest {
     ) : ProviderDao() {
         override fun getAll() = flowOf(listOfNotNull(provider))
         override suspend fun getAllSync(): List<ProviderEntity> = listOfNotNull(provider)
+        override fun getAllForAccount(accountUid: String?) = flowOf(listOfNotNull(provider))
+        override suspend fun getAllForAccountSync(accountUid: String?): List<ProviderEntity> = listOfNotNull(provider)
         override fun getActive() = flowOf(provider)
+        override fun getActiveForAccount(accountUid: String?) = flowOf(provider)
+        override suspend fun deactivateAllForAccount(accountUid: String?) = Unit
         override suspend fun getByUrlAndUser(serverUrl: String, username: String, stalkerMacAddress: String): ProviderEntity? = null
         override suspend fun getById(id: Long): ProviderEntity? = provider?.takeIf { it.id == id }
         override suspend fun getByIds(ids: List<Long>): List<ProviderEntity> =

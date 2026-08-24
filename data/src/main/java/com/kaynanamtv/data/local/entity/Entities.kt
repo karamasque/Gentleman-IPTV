@@ -24,11 +24,15 @@ import com.kaynanamtv.domain.model.ProviderXtreamLiveSyncMode
 
 @Entity(
     tableName = "providers",
-    indices = [Index(value = ["server_url", "username", "stalker_mac_address"], unique = true)]
+    indices = [
+        Index(value = ["server_url", "username", "stalker_mac_address", "account_uid"], unique = true),
+        Index(value = ["account_uid"])
+    ]
 )
 data class ProviderEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    @ColumnInfo(name = "account_uid") val accountUid: String? = null,
     val name: String,
     val type: ProviderType,
     @ColumnInfo(name = "server_url") val serverUrl: String,

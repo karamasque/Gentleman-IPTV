@@ -64,11 +64,13 @@ fun ProviderEntity.toDomain() = Provider(
     m3uVodClassificationEnabled = m3uVodClassificationEnabled,
     status = status,
     lastSyncedAt = lastSyncedAt,
-    createdAt = createdAt
+    createdAt = createdAt,
+    accountUid = accountUid
 )
 
 fun Provider.toEntity() = ProviderEntity(
     id = id,
+    accountUid = accountUid,
     name = name,
     type = type,
     serverUrl = serverUrl,

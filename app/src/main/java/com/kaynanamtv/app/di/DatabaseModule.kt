@@ -103,7 +103,8 @@ object DatabaseModule {
                 KaynanamTVDatabase.MIGRATION_59_60,
                 KaynanamTVDatabase.MIGRATION_60_61,
                 KaynanamTVDatabase.MIGRATION_61_62,
-                KaynanamTVDatabase.MIGRATION_62_63
+                KaynanamTVDatabase.MIGRATION_62_63,
+                KaynanamTVDatabase.MIGRATION_63_64
             )
             .build()
 

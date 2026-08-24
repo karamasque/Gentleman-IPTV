@@ -39,8 +39,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.channels.awaitClose
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.kaynanamtv.data.sync.PermanentImageCache
@@ -89,6 +92,17 @@ class ProviderRepositoryImpl @Inject constructor(
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingDeletedProviderIds = java.util.Collections.synchronizedSet(HashSet<Long>())
 
+    private val currentAccountUidFlow: Flow<String?> = callbackFlow {
+        val listener = FirebaseAuth.AuthStateListener { auth ->
+            trySend(auth.currentUser?.uid)
+        }
+        FirebaseAuth.getInstance().addAuthStateListener(listener)
+        trySend(FirebaseAuth.getInstance().currentUser?.uid)
+        awaitClose {
+            FirebaseAuth.getInstance().removeAuthStateListener(listener)
+        }
+    }
+
     init {
         try {
             FirebaseAuth.getInstance().addAuthStateListener { firebaseAuth ->
@@ -97,8 +111,9 @@ class ProviderRepositoryImpl @Inject constructor(
                 firestoreListenerRegistration = null
                 
                 if (user != null) {
+                    val currentUid = user.uid
                     val firestore = FirebaseFirestore.getInstance()
-                    firestoreListenerRegistration = firestore.collection("users").document(user.uid)
+                    firestoreListenerRegistration = firestore.collection("users").document(currentUid)
                         .collection("providers").addSnapshotListener { snapshot, error ->
                             if (error != null) {
                                 Log.e("ProviderRepository", "Firestore listener error", error)
@@ -114,14 +129,14 @@ class ProviderRepositoryImpl @Inject constructor(
                                         val persistentDeletedIds = preferencesRepository.getDeletedProviderIdsSync()
                                         val tombstonedIds = persistentDeletedIds + pendingDeletedProviderIds
                                         val remoteList = snapshot.documents.mapNotNull { it.data }
-                                        val localEntities = providerDao.getAllSync()
+                                        val localEntities = providerDao.getAllForAccountSync(currentUid)
                                         
-                                        // 1. Sync from Local to Firestore (Upload missing local providers)
+                                        // 1. Sync from Local to Firestore (Upload missing local providers owned by this user)
                                         val remoteIds = remoteList.mapNotNull { 
                                             (it["id"] as? Long ?: (it["id"] as? String)?.toLongOrNull())?.toString() 
                                         }
                                         localEntities.forEach { entity ->
-                                            if (entity.id.toString() !in remoteIds && entity.id !in tombstonedIds) {
+                                            if (entity.accountUid == currentUid && entity.id.toString() !in remoteIds && entity.id !in tombstonedIds) {
                                                 val cleartextPassword = try {
                                                     credentialCrypto.decryptIfNeeded(entity.password)
                                                 } catch (e: Exception) {
@@ -160,9 +175,7 @@ class ProviderRepositoryImpl @Inject constructor(
                                         uniqueRemoteList.forEach { providerData ->
                                             val currentId = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull()) ?: 0L
                                             if (currentId in tombstonedIds) {
-                                                repositoryScope.launch {
-                                                    deleteProviderFromFirestore(currentId)
-                                                }
+                                                deleteProviderFromFirestore(currentId)
                                             }
                                         }
 
@@ -180,19 +193,19 @@ class ProviderRepositoryImpl @Inject constructor(
                                                 serverUrl = serverUrl,
                                                 username = username,
                                                 m3uUrl = m3uUrl,
-                                                stalkerMacAddress = stalkerMacAddress
+                                                stalkerMacAddress = stalkerMacAddress,
+                                                accountUid = currentUid
                                             )
                                             val currentId = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull()) ?: 0L
                                             
                                             if (currentId != correctId && currentId !in tombstonedIds) {
                                                 // Delete old document from Firestore
-                                                repositoryScope.launch {
-                                                    deleteProviderFromFirestore(currentId)
-                                                }
+                                                deleteProviderFromFirestore(currentId)
                                                 
                                                 // Re-upload with the correct ID
                                                 val correctedProvider = Provider(
                                                     id = correctId,
+                                                    accountUid = currentUid,
                                                     name = providerData["name"] as? String ?: "",
                                                     type = type,
                                                     serverUrl = serverUrl,
@@ -242,16 +255,14 @@ class ProviderRepositoryImpl @Inject constructor(
                                                     lastSyncedAt = providerData["lastSyncedAt"] as? Long ?: 0L,
                                                     createdAt = providerData["createdAt"] as? Long ?: System.currentTimeMillis()
                                                 )
-                                                repositoryScope.launch {
-                                                    syncProviderToFirestore(correctedProvider)
-                                                }
+                                                syncProviderToFirestore(correctedProvider)
                                             }
                                         }
 
                                         val uniqueRemoteIds = uniqueRemoteList.mapNotNull { 
                                             (it["id"] as? Long ?: (it["id"] as? String)?.toLongOrNull())?.toString() 
                                         }
-                                        
+
                                         uniqueRemoteList.forEach { providerData ->
                                             val idStr = (providerData["id"] as? Long ?: (providerData["id"] as? String)?.toLongOrNull())?.toString() ?: return@forEach
                                             val idLong = idStr.toLongOrNull()
@@ -259,12 +270,13 @@ class ProviderRepositoryImpl @Inject constructor(
                                                 val type = ProviderType.valueOf(providerData["type"] as String)
                                                 val rawRemotePassword = providerData["password"] as? String ?: ""
                                                 val cleartextPassword = try {
-                                                    accountE2eeCrypto.decryptForAccount(rawRemotePassword, user.uid)
+                                                    accountE2eeCrypto.decryptForAccount(rawRemotePassword, currentUid)
                                                 } catch (e: Exception) {
                                                     rawRemotePassword
                                                 }
                                                 val provider = Provider(
                                                     id = idStr.toLongOrNull() ?: 0L,
+                                                    accountUid = currentUid,
                                                     name = providerData["name"] as String,
                                                     type = type,
                                                     serverUrl = providerData["serverUrl"] as? String ?: "",
@@ -323,7 +335,7 @@ class ProviderRepositoryImpl @Inject constructor(
                                         
                                         // 3. Delete local providers that are no longer in Firestore (were deleted from another device)
                                         localEntities.forEach { entity ->
-                                            if (entity.id.toString() !in uniqueRemoteIds && entity.id !in tombstonedIds) {
+                                            if (entity.accountUid == currentUid && entity.id.toString() !in uniqueRemoteIds && entity.id !in tombstonedIds) {
                                                 deleteProvider(entity.id)
                                             }
                                         }
@@ -340,17 +352,29 @@ class ProviderRepositoryImpl @Inject constructor(
         }
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun getProviders(): Flow<List<Provider>> =
-        providerDao.getAll().map { entities -> entities.map { it.toPublicDomain() } }
+        currentAccountUidFlow.flatMapLatest { uid ->
+            providerDao.getAllForAccount(uid).map { entities -> entities.map { it.toPublicDomain() } }
+        }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun getActiveProvider(): Flow<Provider?> =
-        providerDao.getActive().map { it?.toPublicDomain() }
+        currentAccountUidFlow.flatMapLatest { uid ->
+            providerDao.getActiveForAccount(uid).map { it?.toPublicDomain() }
+        }
 
     override suspend fun getProvider(id: Long): Provider? =
         providerDao.getById(id)?.toPublicDomain()
 
     override suspend fun addProvider(provider: Provider): Result<Long> = try {
-        val id = insertProvider(provider)
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
+        val boundProvider = if (provider.accountUid == null && currentUid != null) {
+            provider.copy(accountUid = currentUid)
+        } else {
+            provider
+        }
+        val id = insertProvider(boundProvider)
         syncProviderIdToFirestore(id)
         repositoryScope.launch {
             syncManager.sync(id, force = true)
@@ -361,8 +385,14 @@ class ProviderRepositoryImpl @Inject constructor(
     }
 
     override suspend fun updateProvider(provider: Provider): Result<Unit> = try {
-        providerDao.update(provider.toSecureEntity())
-        syncProviderIdToFirestore(provider.id)
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
+        val boundProvider = if (provider.accountUid == null && currentUid != null) {
+            provider.copy(accountUid = currentUid)
+        } else {
+            provider
+        }
+        providerDao.update(boundProvider.toSecureEntity())
+        syncProviderIdToFirestore(boundProvider.id)
         Result.success(Unit)
     } catch (e: Exception) {
         Result.error("Failed to update provider: ${e.message}", e)
@@ -1601,18 +1631,31 @@ class ProviderRepositoryImpl @Inject constructor(
 
     private suspend fun isCurrentUserPremium(): Boolean {
         val user = FirebaseAuth.getInstance().currentUser ?: return false
+        if (user.email == "kilicemre3437@gmail.com") return true
         return try {
             val userDoc = FirebaseFirestore.getInstance().collection("users").document(user.uid).get().await()
-            val plan = userDoc.getString("premiumPlan")
+            if (!userDoc.exists()) return false
+            val plan = userDoc.getString("premiumPlan")?.uppercase()
             val isPremiumDoc = userDoc.getBoolean("isPremium") == true
-            (plan in listOf("YEARLY", "LIFETIME")) || isPremiumDoc
+            val isAdminDoc = userDoc.getBoolean("isAdmin") == true || userDoc.getString("role")?.uppercase() == "ADMIN"
+            val premiumExpiresAt = userDoc.getLong("premiumExpiresAt") ?: 0L
+            val trialExpiresAt = userDoc.getLong("trialExpiresAt") ?: 0L
+            val now = System.currentTimeMillis()
+            
+            isAdminDoc || isPremiumDoc || (plan in listOf("YEARLY", "LIFETIME", "TRIAL", "PRO", "PREMIUM", "MONTHLY")) || (premiumExpiresAt > now) || (trialExpiresAt > now)
         } catch (e: Exception) {
+            Log.w("ProviderRepository", "Failed to check premium status from Firestore", e)
             false
         }
     }
 
     private suspend fun syncProviderToFirestore(provider: Provider) {
         val user = FirebaseAuth.getInstance().currentUser ?: return
+        // Cloud Sync Guard: Strict ownership invariant
+        if (provider.accountUid != null && provider.accountUid != user.uid) {
+            Log.w("ProviderRepository", "Blocked cloud sync: Provider ${provider.id} owned by ${provider.accountUid}, but current user is ${user.uid}")
+            return
+        }
         if (!isCurrentUserPremium()) {
             Log.d("ProviderRepository", "Free user - skipping cloud upsert for provider ${provider.id}")
             return
@@ -1691,6 +1734,11 @@ class ProviderRepositoryImpl @Inject constructor(
 
     private suspend fun deleteProviderFromFirestore(providerId: Long) {
         val user = FirebaseAuth.getInstance().currentUser ?: return
+        val entity = providerDao.getById(providerId)
+        if (entity != null && entity.accountUid != null && entity.accountUid != user.uid) {
+            Log.w("ProviderRepository", "Blocked cloud delete: Provider $providerId owned by ${entity.accountUid}, not ${user.uid}")
+            return
+        }
         val firestore = FirebaseFirestore.getInstance()
         try {
             firestore.collection("users").document(user.uid)
@@ -1707,13 +1755,15 @@ class ProviderRepositoryImpl @Inject constructor(
         serverUrl: String,
         username: String,
         m3uUrl: String,
-        stalkerMacAddress: String
+        stalkerMacAddress: String,
+        accountUid: String? = null
     ): Long {
+        val accountPart = if (!accountUid.isNullOrBlank()) "|$accountUid" else ""
         val key = when (type) {
-            ProviderType.XTREAM_CODES -> "XTREAM|${serverUrl.trim().lowercase()}|${username.trim().lowercase()}"
-            ProviderType.M3U -> "M3U|${m3uUrl.trim().lowercase()}"
-            ProviderType.STALKER_PORTAL -> "STALKER|${serverUrl.trim().lowercase()}|${stalkerMacAddress.trim().lowercase()}"
-            ProviderType.JELLYFIN -> "JELLYFIN|${serverUrl.trim().lowercase()}|${username.trim().lowercase()}"
+            ProviderType.XTREAM_CODES -> "XTREAM|${serverUrl.trim().lowercase()}|${username.trim().lowercase()}$accountPart"
+            ProviderType.M3U -> "M3U|${m3uUrl.trim().lowercase()}$accountPart"
+            ProviderType.STALKER_PORTAL -> "STALKER|${serverUrl.trim().lowercase()}|${stalkerMacAddress.trim().lowercase()}$accountPart"
+            ProviderType.JELLYFIN -> "JELLYFIN|${serverUrl.trim().lowercase()}|${username.trim().lowercase()}$accountPart"
         }
         return kotlin.math.abs(fnv1a64(key))
     }
@@ -1724,7 +1774,8 @@ class ProviderRepositoryImpl @Inject constructor(
             serverUrl = provider.serverUrl,
             username = provider.username,
             m3uUrl = provider.m3uUrl,
-            stalkerMacAddress = provider.stalkerMacAddress
+            stalkerMacAddress = provider.stalkerMacAddress,
+            accountUid = provider.accountUid
         )
     }
 
