@@ -32,7 +32,7 @@ def get_token():
 
 TOKEN = get_token()
 REPO = "karamasque/Gentleman-IPTV"
-TAG = "v1.1.4"
+TAG = "v1.1.7"
 
 headers = {
     "Authorization": f"token {TOKEN}",
