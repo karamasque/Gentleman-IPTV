@@ -80,6 +80,7 @@ class CloudUserStateSyncManager @Inject constructor(
 
             // 2. Multi-device Cloud Sync (Async, event-driven)
             val user = FirebaseAuth.getInstance().currentUser ?: return@launch
+            if (user.isAnonymous) return@launch
             val progressKey = "$providerId|$contentType|$contentId"
             val lastSynced = lastSyncedProgressKeys[progressKey] ?: 0L
 
@@ -119,6 +120,7 @@ class CloudUserStateSyncManager @Inject constructor(
         isFavorite: Boolean
     ) {
         val user = FirebaseAuth.getInstance().currentUser ?: return
+        if (user.isAnonymous) return
         syncScope.launch {
             runCatching {
                 val firestore = FirebaseFirestore.getInstance()
@@ -147,7 +149,15 @@ class CloudUserStateSyncManager @Inject constructor(
      */
     fun reconcileFromCloud() {
         val user = FirebaseAuth.getInstance().currentUser ?: return
+        if (user.isAnonymous) return
         syncScope.launch {
+            // Validate server auth session with forceRefresh to avoid stale/expired token PERMISSION_DENIED
+            val token = runCatching { user.getIdToken(true).await() }.getOrNull()
+            if (token == null || token.token.isNullOrBlank()) {
+                Log.d(TAG, "Skipping cloud user state reconcile: active server auth session is not valid")
+                return@launch
+            }
+
             // 1. Reconcile Watch History
             runCatching {
                 val firestore = FirebaseFirestore.getInstance()
