@@ -55,6 +55,7 @@ class EpgRepositoryImplTest {
     private val xmltvParser: XmltvParser = mock()
     private val epgSourceRepository: EpgSourceRepository = mock()
     private val preferencesRepository: PreferencesRepository = mock()
+    private val epgHttpCacheStore: com.kaynanamtv.data.epg.EpgHttpCacheStore = mock()
     private val transactionRunner = object : DatabaseTransactionRunner {
         override suspend fun <T> inTransaction(block: suspend () -> T): T = block()
     }
@@ -103,7 +104,8 @@ class EpgRepositoryImplTest {
             okHttpClient = okHttpClientReturningXml(),
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val result = repository.searchPrograms(7L, "sports", 0L, 100L).first()
@@ -139,7 +141,8 @@ class EpgRepositoryImplTest {
             okHttpClient = okHttpClientReturningXml(),
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val result = repository.getResolvedProgramsForPlaybackChannel(
@@ -186,7 +189,8 @@ class EpgRepositoryImplTest {
             okHttpClient = okHttpClientReturningXml(),
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val result = repository.getResolvedProgramsForPlaybackChannel(
@@ -249,7 +253,8 @@ class EpgRepositoryImplTest {
             okHttpClient = okHttpClientReturningXml(),
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val firstRefresh = async { repository.refreshEpg(7L, "https://example.com/epg.xml") }
@@ -292,7 +297,8 @@ class EpgRepositoryImplTest {
             ),
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val result = repository.refreshEpg(7L, "https://example.com/epg.xml.gz")
@@ -324,7 +330,8 @@ class EpgRepositoryImplTest {
             ),
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val result = repository.refreshEpg(7L, "https://example.com/epg.xml.gz")
@@ -348,7 +355,8 @@ class EpgRepositoryImplTest {
             ),
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val result = repository.refreshEpg(7L, "https://example.com/epg.xml")
@@ -390,6 +398,7 @@ class EpgRepositoryImplTest {
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
             preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore,
             externalScope = backgroundScope
         )
 
@@ -460,6 +469,7 @@ class EpgRepositoryImplTest {
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
             preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore,
             externalScope = backgroundScope
         )
 
@@ -512,7 +522,8 @@ class EpgRepositoryImplTest {
             okHttpClient = okHttpClientReturningXml(),
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val result = repository.getProgramsForChannelsSnapshot(
@@ -549,7 +560,8 @@ class EpgRepositoryImplTest {
             okHttpClient = okHttpClientReturningXml(),
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val result = repository.refreshEpg(7L, "https://example.com/epg.xml")
@@ -606,7 +618,8 @@ class EpgRepositoryImplTest {
             okHttpClient = okHttpClientReturningXml(),
             transactionRunner = trackingTransactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val result = repository.refreshEpg(7L, "https://example.com/epg.xml")
@@ -654,7 +667,8 @@ class EpgRepositoryImplTest {
             okHttpClient = okHttpClientReturningXml(),
             transactionRunner = transactionRunner,
             epgSourceRepository = epgSourceRepository,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
         )
 
         val result = repository.refreshEpg(7L, "https://example.com/epg.xml")
@@ -686,6 +700,152 @@ class EpgRepositoryImplTest {
                     .build()
             }
             .build()
+
+    @Test
+    fun `refreshEpg stores ETag and Last-Modified on successful 200 response`() = runTest {
+        val repository = EpgRepositoryImpl(
+            programDao = programDao,
+            providerDao = providerDao,
+            xmltvParser = xmltvParser,
+            okHttpClient = okHttpClientReturningBody(
+                body = "<tv></tv>".toByteArray(Charsets.UTF_8),
+                headers = mapOf(
+                    "ETag" to "\"epg-tag-12345\"",
+                    "Last-Modified" to "Tue, 25 Aug 2026 00:00:00 GMT"
+                )
+            ),
+            transactionRunner = transactionRunner,
+            epgSourceRepository = epgSourceRepository,
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
+        )
+
+        val result = repository.refreshEpg(7L, "https://example.com/epg.xml")
+
+        assertThat(result.isSuccess).isTrue()
+        verify(epgHttpCacheStore).putCache(
+            eq(7L),
+            eq("https://example.com/epg.xml"),
+            eq("\"epg-tag-12345\""),
+            eq("Tue, 25 Aug 2026 00:00:00 GMT")
+        )
+    }
+
+    @Test
+    fun `refreshEpg sends If-None-Match and If-Modified-Since when cached headers exist`() = runTest {
+        whenever(epgHttpCacheStore.getCache(7L, "https://example.com/epg.xml")).thenReturn(
+            com.kaynanamtv.data.epg.EpgHttpCacheStore.CacheEntry(
+                url = "https://example.com/epg.xml",
+                etag = "\"epg-tag-12345\"",
+                lastModified = "Tue, 25 Aug 2026 00:00:00 GMT"
+            )
+        )
+
+        val capturedRequest = java.util.concurrent.atomic.AtomicReference<Request>()
+        val repository = EpgRepositoryImpl(
+            programDao = programDao,
+            providerDao = providerDao,
+            xmltvParser = xmltvParser,
+            okHttpClient = okHttpClientReturningBody(
+                body = "<tv></tv>".toByteArray(Charsets.UTF_8),
+                onRequest = { capturedRequest.set(it) }
+            ),
+            transactionRunner = transactionRunner,
+            epgSourceRepository = epgSourceRepository,
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
+        )
+
+        val result = repository.refreshEpg(7L, "https://example.com/epg.xml")
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(capturedRequest.get()?.header("If-None-Match")).isEqualTo("\"epg-tag-12345\"")
+        assertThat(capturedRequest.get()?.header("If-Modified-Since")).isEqualTo("Tue, 25 Aug 2026 00:00:00 GMT")
+    }
+
+    @Test
+    fun `refreshEpg skips parser and preserves Room programs on 304 Not Modified`() = runTest {
+        whenever(epgHttpCacheStore.getCache(7L, "https://example.com/epg.xml")).thenReturn(
+            com.kaynanamtv.data.epg.EpgHttpCacheStore.CacheEntry(
+                url = "https://example.com/epg.xml",
+                etag = "\"epg-tag-12345\"",
+                lastModified = null
+            )
+        )
+
+        val client304 = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(304)
+                    .message("Not Modified")
+                    .build()
+            }
+            .build()
+
+        val repository = EpgRepositoryImpl(
+            programDao = programDao,
+            providerDao = providerDao,
+            xmltvParser = xmltvParser,
+            okHttpClient = client304,
+            transactionRunner = transactionRunner,
+            epgSourceRepository = epgSourceRepository,
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
+        )
+
+        val result = repository.refreshEpg(7L, "https://example.com/epg.xml")
+
+        assertThat(result.isSuccess).isTrue()
+        // Parser is NOT invoked on 304
+        verify(xmltvParser, never()).parseStreaming(any(), anyOrNull(), any())
+        // Staging swap is NOT performed on 304 (existing Room programs are untouched)
+        verify(programDao, never()).moveToProvider(any(), any())
+        verify(programDao, never()).deleteByProvider(eq(7L))
+    }
+
+    @Test
+    fun `refreshEpg gracefully falls back when server returns 200 without ETag`() = runTest {
+        whenever(epgHttpCacheStore.getCache(7L, "https://example.com/epg.xml")).thenReturn(null)
+
+        val repository = EpgRepositoryImpl(
+            programDao = programDao,
+            providerDao = providerDao,
+            xmltvParser = xmltvParser,
+            okHttpClient = okHttpClientReturningBody(
+                body = "<tv></tv>".toByteArray(Charsets.UTF_8)
+            ),
+            transactionRunner = transactionRunner,
+            epgSourceRepository = epgSourceRepository,
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
+        )
+
+        val result = repository.refreshEpg(7L, "https://example.com/epg.xml")
+
+        assertThat(result.isSuccess).isTrue()
+        verify(epgHttpCacheStore).putCache(eq(7L), eq("https://example.com/epg.xml"), eq(null), eq(null))
+        verify(programDao).moveToProvider(-7L, 7L)
+    }
+
+    @Test
+    fun `onProviderDeleted clears EPG HTTP cache for provider`() = runTest {
+        val repository = EpgRepositoryImpl(
+            programDao = programDao,
+            providerDao = providerDao,
+            xmltvParser = xmltvParser,
+            okHttpClient = okHttpClientReturningXml(),
+            transactionRunner = transactionRunner,
+            epgSourceRepository = epgSourceRepository,
+            preferencesRepository = preferencesRepository,
+            epgHttpCacheStore = epgHttpCacheStore
+        )
+
+        repository.onProviderDeleted(7L)
+
+        verify(epgHttpCacheStore).clearCache(7L)
+    }
 
     private fun gzip(bytes: ByteArray): ByteArray {
         val output = ByteArrayOutputStream()

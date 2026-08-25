@@ -58,6 +58,7 @@ class EpgRepositoryImpl @Inject constructor(
     private val transactionRunner: DatabaseTransactionRunner,
     private val epgSourceRepository: EpgSourceRepository,
     private val preferencesRepository: PreferencesRepository,
+    private val epgHttpCacheStore: com.kaynanamtv.data.epg.EpgHttpCacheStore,
     private val externalScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) : EpgRepository {
 
@@ -284,15 +285,27 @@ class EpgRepositoryImpl @Inject constructor(
                     yield()
                 }
                 var programsParsed = 0
+                var responseEtag: String? = null
+                var responseLastModified: String? = null
                 try {
                     val providerRequestProfile = providerDao.getById(providerId)
                         ?.toGenericRequestProfile(ownerTag = "provider:$providerId/epg")
                         ?: HttpRequestProfile(ownerTag = "provider:$providerId/epg")
+                    val cacheEntry = epgHttpCacheStore.getCache(providerId, epgUrl)
                     val request = Request.Builder()
                         .url(epgUrl)
+                        .apply {
+                            cacheEntry?.etag?.let { header("If-None-Match", it) }
+                            cacheEntry?.lastModified?.let { header("If-Modified-Since", it) }
+                        }
                         .build()
                         .withRequestProfile(providerRequestProfile)
                     epgHttpClient.newCall(request).execute().use { response ->
+                        if (response.code == 304) {
+                            Log.i("EpgRepository", "[EPG_304] Provider $providerId EPG unchanged, skipping download and parse.")
+                            return@withLock Result.success(Unit)
+                        }
+
                         if (!response.isSuccessful) {
                             Log.w(
                                 "EpgRepository",
@@ -307,6 +320,8 @@ class EpgRepositoryImpl @Inject constructor(
                         }
 
                         val body = response.body ?: return@withLock Result.error("Empty EPG response")
+                        responseEtag = response.header("ETag")
+                        responseLastModified = response.header("Last-Modified")
 
                         transactionRunner.inTransaction {
                             programDao.deleteByProvider(stagingProviderId)
@@ -347,6 +362,8 @@ class EpgRepositoryImpl @Inject constructor(
                         programDao.moveToProvider(stagingProviderId, providerId)
                     }
 
+                    epgHttpCacheStore.putCache(providerId, epgUrl, responseEtag, responseLastModified)
+
                     Result.success(Unit)
                 } catch (e: Exception) {
                     if (programsParsed > 0) {
@@ -356,6 +373,7 @@ class EpgRepositoryImpl @Inject constructor(
                             programDao.deleteByProvider(providerId)
                             programDao.moveToProvider(stagingProviderId, providerId)
                         }
+                        epgHttpCacheStore.putCache(providerId, epgUrl, responseEtag, responseLastModified)
                         Result.success(Unit)
                     } else {
                         programDao.deleteByProvider(stagingProviderId)
@@ -375,6 +393,7 @@ class EpgRepositoryImpl @Inject constructor(
 
     override fun onProviderDeleted(providerId: Long) {
         providerRefreshMutexes.remove(providerId)
+        epgHttpCacheStore.clearCache(providerId)
     }
 
     override suspend fun getResolvedProgramsForChannels(
