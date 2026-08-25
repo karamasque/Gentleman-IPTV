@@ -49,12 +49,12 @@ def init_firebase():
         return None
 
 def update_config(
-    latest_code=108,
-    latest_name="1.1.8",
-    min_supported_code=108,
+    latest_code=109,
+    latest_name="1.1.9",
+    min_supported_code=109,
     force_update=True,
-    apk_url="https://github.com/karamasque/Gentleman-IPTV/releases/download/v1.1.8/KaynanamTV.apk",
-    release_notes="KaynanamTV v1.1.8\n\n- Sürüm güncellemesi ve genel stabilite optimizasyonları yapıldı.\n- EPG HTTP ETag / 304 koşullu istek desteği ile gereksiz ağ trafiği ve arka plan ayrıştırma yükü azaltıldı.\n- IPTV sağlayıcı hesap eşitleme ve temiz kurulum geri yükleme kararlılığı güvenceye alındı.\n- Performans ve bellek optimizasyonları uygulandı."
+    apk_url="https://github.com/karamasque/Gentleman-IPTV/releases/download/v1.1.9/KaynanamTV.apk",
+    release_notes="KaynanamTV v1.1.9\n\n- Canlı TV kanal açılış ve zap performansı optimize edildi.\n- Arabelleğe alma ve ilk kare akışı ağ koşullarına göre dengelendi.\n- Hızlı kanal geçişlerinde kaynak temizleme ve tek canlı bağlantı kuralı güvenceye alındı.\n- Playback recovery ve MediaCodec kararlılığı iyileştirildi.\n- Unit test altyapısı stabilize edildi (1200/1200 test PASS)."
 ):
     db = init_firebase()
     if not db:
