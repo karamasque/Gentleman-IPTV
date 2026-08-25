@@ -662,7 +662,15 @@ class SyncManager @Inject constructor(
         epgSyncModeOverride: ProviderEpgSyncMode? = null,
         onProgress: ((String) -> Unit)? = null,
         trackInitialLiveOnboarding: Boolean = false
-    ): com.kaynanamtv.domain.model.Result<Unit> = withProviderLock(providerId) lock@{
+    ): com.kaynanamtv.domain.model.Result<Unit> {
+        val isAlreadyRunning = syncAdmissionMutex.withLock {
+            providerSyncMutexes[providerId]?.isLocked == true
+        }
+        if (!force && isAlreadyRunning) {
+            Log.i(TAG, "[SYNC_SKIPPED_ALREADY_RUNNING] providerId=$providerId")
+            return com.kaynanamtv.domain.model.Result.success(Unit)
+        }
+        return withProviderLock(providerId) lock@{
         try {
             val providerEntity = providerDao.getById(providerId)
                 ?: return@lock com.kaynanamtv.domain.model.Result.error("Provider $providerId not found")
@@ -734,6 +742,7 @@ class SyncManager @Inject constructor(
             // D7 — reset systematique du bus a la fin du cycle (succes, exception, abort low-memory)
             // pour eviter qu'un ecran ulterieur n'herite d'un etat de progression obsolete.
             syncProgressBus.reset()
+        }
         }
     }
 

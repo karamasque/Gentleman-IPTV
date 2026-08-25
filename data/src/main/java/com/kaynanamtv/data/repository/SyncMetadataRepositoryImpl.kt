@@ -1,5 +1,6 @@
 package com.kaynanamtv.data.repository
 
+import com.kaynanamtv.data.local.dao.ProviderDao
 import com.kaynanamtv.data.local.dao.SyncMetadataDao
 import com.kaynanamtv.data.mapper.toDomain
 import com.kaynanamtv.data.mapper.toEntity
@@ -12,7 +13,8 @@ import javax.inject.Singleton
 
 @Singleton
 class SyncMetadataRepositoryImpl @Inject constructor(
-    private val dao: SyncMetadataDao
+    private val dao: SyncMetadataDao,
+    private val providerDao: ProviderDao
 ) : SyncMetadataRepository {
 
     override fun observeMetadata(providerId: Long): Flow<SyncMetadata?> {
@@ -24,7 +26,9 @@ class SyncMetadataRepositoryImpl @Inject constructor(
     }
 
     override suspend fun updateMetadata(metadata: SyncMetadata) {
-        dao.insertOrUpdate(metadata.toEntity())
+        if (providerDao.getById(metadata.providerId) != null) {
+            dao.insertOrUpdate(metadata.toEntity())
+        }
     }
 
     override suspend fun clearMetadata(providerId: Long) {
