@@ -356,7 +356,8 @@ class ProviderSetupViewModelTest {
 
         val error = viewModel.uiState.value.error
         assertThat(error).doesNotContain("Could not validate playlist")
-        assertThat(error).contains("saved")
+        // ViewModel maps this prefix to a Turkish UX message; assert the actual localized output.
+        assertThat(error).contains("kaydedildi")
     }
 
     @Test
@@ -386,6 +387,7 @@ class ProviderSetupViewModelTest {
 
         val error = viewModel.uiState.value.error
         assertThat(error).doesNotContain("initial sync failed. The provider was saved")
-        assertThat(error).contains("sync failed")
+        // ViewModel maps this prefix to a Turkish UX message; assert the actual localized output.
+        assertThat(error).contains("senkronizasyon")
     }
 }

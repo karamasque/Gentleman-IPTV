@@ -62,6 +62,11 @@ class EpgRepositoryImplTest {
 
     @Before
     fun setUp() {
+        // StalkerTrafficCoordinator is a JVM singleton object; reset it before every EPG test
+        // to prevent state leakage from StalkerTrafficCoordinatorTest's notePlaybackStarted(7L)
+        // calls causing refreshEpg to defer (and return error) instead of proceeding.
+        com.kaynanamtv.data.remote.stalker.StalkerTrafficCoordinator.resetForTests()
+
         whenever(xmltvParser.maybeDecompressGzip(any(), any())).thenAnswer { invocation ->
             invocation.getArgument(1)
         }
@@ -775,11 +780,15 @@ class EpgRepositoryImplTest {
 
         val client304 = OkHttpClient.Builder()
             .addInterceptor { chain ->
+                // OkHttp 4.x RealInterceptorChain validates that application interceptors
+                // always return a response with a non-null body. 304 responses have no payload,
+                // but we must still provide an empty body to satisfy this check.
                 Response.Builder()
                     .request(chain.request())
                     .protocol(Protocol.HTTP_1_1)
                     .code(304)
                     .message("Not Modified")
+                    .body("".toResponseBody(null))
                     .build()
             }
             .build()
