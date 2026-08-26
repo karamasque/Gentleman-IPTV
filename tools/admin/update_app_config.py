@@ -49,12 +49,12 @@ def init_firebase():
         return None
 
 def update_config(
-    latest_code=109,
-    latest_name="1.1.9",
-    min_supported_code=109,
+    latest_code=112,
+    latest_name="1.1.12",
+    min_supported_code=112,
     force_update=True,
-    apk_url="https://github.com/karamasque/Gentleman-IPTV/releases/download/v1.1.9/KaynanamTV.apk",
-    release_notes="KaynanamTV v1.1.9\n\n- Canlı TV kanal açılış ve zap performansı optimize edildi.\n- Arabelleğe alma ve ilk kare akışı ağ koşullarına göre dengelendi.\n- Hızlı kanal geçişlerinde kaynak temizleme ve tek canlı bağlantı kuralı güvenceye alındı.\n- Playback recovery ve MediaCodec kararlılığı iyileştirildi.\n- Unit test altyapısı stabilize edildi (1200/1200 test PASS)."
+    apk_url="https://github.com/karamasque/Gentleman-IPTV/releases/download/v1.1.12/KaynanamTV.apk",
+    release_notes="KaynanamTV v1.1.12\n\n- Renk teması seçiminin sıfırlanma sorunu tekil senkron SharedPreferences diski ve StateFlow ile kökten çözüldü.\n- Orijinal KaynanamTV maskotu şeffaf alfa kanalı ile üst bara entegre edildi.\n- Yeni GPU dostu sinematik Streaming & Broadcast Ambience hareketli arka planı eklendi.\n- Renkli ve responsive üst navigasyon bar ikonları güncellendi.\n- Genel performans, stabilite ve EPG kontrast iyileştirmeleri yapıldı."
 ):
     db = init_firebase()
     if not db:
