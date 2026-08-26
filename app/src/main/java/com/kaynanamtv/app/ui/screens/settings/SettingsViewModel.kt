@@ -132,7 +132,11 @@ class SettingsViewModel @Inject constructor(
     private val exportBackup = ExportBackup(backupManager)
     private val importBackup = ImportBackup(backupManager)
 
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(
+            appColorTheme = preferencesRepository.getAppColorThemeSynchronously()
+        )
+    )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     val playerLiveStreamFormatMode: StateFlow<LiveStreamFormatMode> =
         preferencesRepository.playerLiveStreamFormatMode.stateIn(
@@ -341,6 +345,9 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setAppColorTheme(theme: com.kaynanamtv.domain.model.AppColorTheme) {
+        _uiState.update { it.copy(appColorTheme = theme) }
+        com.kaynanamtv.app.ui.design.AppColors.currentPalette =
+            com.kaynanamtv.app.ui.design.AppColorPalette.forTheme(theme)
         viewModelScope.launch {
             preferencesRepository.setAppColorTheme(theme)
         }

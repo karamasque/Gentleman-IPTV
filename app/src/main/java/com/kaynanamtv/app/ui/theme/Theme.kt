@@ -22,6 +22,9 @@ fun KaynanamTVTheme(
 ) {
     val palette = remember(colorTheme) { AppColorPalette.forTheme(colorTheme) }
     com.kaynanamtv.app.ui.design.AppColors.currentPalette = palette
+    androidx.compose.runtime.SideEffect {
+        com.kaynanamtv.app.ui.design.AppColors.currentPalette = palette
+    }
     val colorScheme = remember(palette) {
         darkColorScheme(
             primary = palette.Brand,

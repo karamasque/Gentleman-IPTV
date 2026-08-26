@@ -656,7 +656,7 @@ fun ProgramItem(
             Text(
                 text = program.title,
                 style = titleStyle,
-                color = if (isFocused) TextPrimary else if (isCurrent) Primary else OnSurface,
+                color = if (isFocused) TextPrimary else OnSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -664,7 +664,7 @@ fun ProgramItem(
                 Text(
                     text = "$startStr - $endStr",
                     style = timeStyle,
-                    color = if (isFocused) TextSecondary else OnSurfaceDim,
+                    color = if (isFocused) TextPrimary.copy(alpha = 0.85f) else TextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

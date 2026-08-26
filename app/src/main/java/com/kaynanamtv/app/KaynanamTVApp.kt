@@ -81,6 +81,14 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
         CrashReportStore.install(this)
         runtimeDiagnosticsManager.start()
 
+        try {
+            val savedTheme = preferencesRepository.getAppColorThemeSynchronously()
+            com.kaynanamtv.app.ui.design.AppColors.currentPalette =
+                com.kaynanamtv.app.ui.design.AppColorPalette.forTheme(savedTheme)
+            android.util.Log.i("KaynanamTV_Theme", "[THEME_APPLY] applied=${savedTheme.name} in KaynanamTVApp.onCreate")
+        } catch (e: Exception) {
+            android.util.Log.e("KaynanamTV_Theme", "[THEME_APPLY_ERR] failed to apply theme on app start", e)
+        }
         applicationScope.launch {
             TimeshiftDiskManager(applicationContext).cleanupStaleDirectories(activeSessionDir = null)
         }

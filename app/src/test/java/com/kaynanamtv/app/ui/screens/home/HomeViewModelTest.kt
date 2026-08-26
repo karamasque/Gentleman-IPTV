@@ -676,4 +676,37 @@ class HomeViewModelTest {
         assertThat(collected.map(Channel::id)).containsExactly(2L, 3L).inOrder()
         assertThat(collected.map(Channel::name)).containsExactly("Alpha", "Zulu").inOrder()
     }
+
+    @Test
+    fun `when activeProvider is null but getProviders has fallback, automatically recovers fallback provider`() = runTest {
+        val fallbackProvider = Provider(id = 42L, name = "Fallback IPTV", type = ProviderType.XTREAM_CODES, serverUrl = "http://fb")
+        whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(null))
+        whenever(combinedM3uRepository.getActiveLiveSource()).thenReturn(flowOf(null))
+        whenever(providerRepository.getProviders()).thenReturn(flowOf(listOf(fallbackProvider)))
+        whenever(channelRepository.getCategories(fallbackProvider.id)).thenReturn(flowOf(emptyList()))
+        whenever(getCustomCategories.invoke(eq(fallbackProvider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
+        whenever(favoriteRepository.getFavorites(fallbackProvider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
+
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        verify(combinedM3uRepository, atLeastOnce()).setActiveLiveSource(ActiveLiveSource.ProviderSource(fallbackProvider.id))
+        verify(providerRepository, atLeastOnce()).setActiveProvider(fallbackProvider.id)
+    }
+
+    @Test
+    fun `when activeSource is null and allProviders is truly empty, uiState sets provider to null and not loading`() = runTest {
+        whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(null))
+        whenever(combinedM3uRepository.getActiveLiveSource()).thenReturn(flowOf(null))
+        whenever(providerRepository.getProviders()).thenReturn(flowOf(emptyList()))
+
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertThat(state.provider).isNull()
+        assertThat(state.isLoading).isFalse()
+        assertThat(state.hasChannels).isFalse()
+    }
 }
+

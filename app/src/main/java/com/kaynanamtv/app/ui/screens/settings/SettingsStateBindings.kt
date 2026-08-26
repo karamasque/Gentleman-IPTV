@@ -46,7 +46,7 @@ internal fun observeSettingsPreferenceSnapshot(
             parentalControlLevel = level,
             hasParentalPin = hasParentalPin,
             appLanguage = "system",
-            appColorTheme = AppColorTheme.DEFAULT,
+            appColorTheme = preferencesRepository.getAppColorThemeSynchronously(),
             appLandingDestination = AppLandingDestination.HOME,
             appTopLevelDestinations = AppTopLevelDestination.defaultOrder,
             appHomeDashboardShelves = AppHomeDashboardShelf.defaultOrder,

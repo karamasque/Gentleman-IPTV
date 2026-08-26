@@ -135,10 +135,19 @@ fun DashboardScreen(
             showScreenHeader = false
         ) {
             if (provider == null) {
-                EmptyDashboard(
-                    onAddProvider = onAddProvider,
-                    onOpenSettings = { onNavigate(Routes.SETTINGS) }
-                )
+                if (uiState.isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Primary)
+                    }
+                } else {
+                    EmptyDashboard(
+                        onAddProvider = onAddProvider,
+                        onOpenSettings = { onNavigate(Routes.SETTINGS) }
+                    )
+                }
                 return@AppScreenScaffold
             }
             val orderedSections = rememberDashboardSections(uiState)

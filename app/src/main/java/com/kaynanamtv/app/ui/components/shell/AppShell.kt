@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
@@ -42,6 +43,16 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Subscriptions
+import androidx.compose.material.icons.outlined.Tv
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -638,9 +649,8 @@ private fun TopNavigationBar(
 ) {
     val items = rememberDestinationItems()
     val scrollState = rememberScrollState()
-
     val focusRequesters = remember { mutableMapOf<String, FocusRequester>() }
-    
+
     Surface(
         modifier = modifier.focusProperties {
             onEnter = {
@@ -648,36 +658,59 @@ private fun TopNavigationBar(
                 focusRequesters[activeItem?.route] ?: FocusRequester.Default
             }
         },
-        shape = RoundedCornerShape(18.dp),
-        colors = SurfaceDefaults.colors(containerColor = AppColors.Surface.copy(alpha = 0.9f))
+        shape = RoundedCornerShape(20.dp),
+        border = Border(
+            border = BorderStroke(1.dp, Color(0xFF242834)),
+            shape = RoundedCornerShape(20.dp)
+        ),
+        colors = SurfaceDefaults.colors(
+            containerColor = Color(0xF212141A)
+        )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .height(58.dp)
+                .padding(horizontal = 14.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleSmall,
-                color = AppColors.TextPrimary,
-                modifier = Modifier.wrapContentWidth(Alignment.Start)
-            )
-            Spacer(modifier = Modifier.width(32.dp)) // Increased spacing to prevent overlap
+            // Brand Logo & Name
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(start = 2.dp, end = 12.dp)
+            ) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.kaynanamtv_brand_logo),
+                    contentDescription = stringResource(R.string.app_name),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                    modifier = Modifier.size(36.dp)
+                )
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.3.sp
+                    ),
+                    color = AppColors.TextPrimary
+                )
+            }
+
+            // Navigation Tabs with smooth horizontal scroll support for all form factors
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .horizontalScroll(scrollState)
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 items.forEach { item ->
                     val requester = focusRequesters.getOrPut(item.route) { FocusRequester() }
                     TopNavigationButton(
                         label = stringResource(item.labelRes),
                         icon = item.icon,
+                        accentColor = item.accentColor,
                         selected = currentRoute.startsWith(item.route),
                         focusRequester = requester,
                         onClick = {
@@ -688,10 +721,12 @@ private fun TopNavigationBar(
                     )
                 }
             }
+
             if (actions != null) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 6.dp),
                     content = actions
                 )
             }
@@ -733,6 +768,7 @@ fun AppTopBarCloseAction(
 private fun TopNavigationButton(
     label: String,
     icon: ImageVector,
+    accentColor: Color,
     selected: Boolean,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
@@ -741,65 +777,116 @@ private fun TopNavigationButton(
     var isFocused by remember { mutableStateOf(false) }
     val sounds = rememberTvInteractionSounds()
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) FocusSpec.FocusedScale else 1f,
-        animationSpec = AppMotion.FocusSpec,
+        targetValue = if (isFocused) 1.04f else 1f,
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
         label = "topNavScale"
     )
 
-    Surface(
-        onClick = {
-            sounds.playSelect()
-            onClick()
-        },
+    Column(
         modifier = modifier
-            .focusRequester(focusRequester)
-            .mouseClickable(
-                focusRequester = focusRequester,
-                onClick = {
-                    sounds.playSelect()
-                    onClick()
-                }
-            )
-            .zIndex(if (isFocused) 1f else 0f) // Keep focused button on top
+            .zIndex(if (isFocused) 2f else if (selected) 1f else 0f)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-            }
-            .onFocusChanged {
-                if (it.isFocused && !isFocused) {
-                    sounds.playNavigate()
-                }
-                isFocused = it.isFocused
             },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (selected) AppColors.BrandMuted else Color.Transparent,
-            focusedContainerColor = AppColors.SurfaceEmphasis
-        ),
-        border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(
-                border = BorderStroke(FocusSpec.BorderWidth, AppColors.Focus),
-                shape = RoundedCornerShape(14.dp)
-            )
-        )
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Surface(
+            onClick = {
+                sounds.playSelect()
+                onClick()
+            },
+            modifier = Modifier
+                .focusRequester(focusRequester)
+                .mouseClickable(
+                    focusRequester = focusRequester,
+                    onClick = {
+                        sounds.playSelect()
+                        onClick()
+                    }
+                )
+                .onFocusChanged {
+                    if (it.isFocused && !isFocused) {
+                        sounds.playNavigate()
+                    }
+                    isFocused = it.isFocused
+                },
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = if (isFocused) {
+                    if (selected) accentColor.copy(alpha = 0.24f) else accentColor.copy(alpha = 0.12f)
+                } else if (selected) {
+                    accentColor.copy(alpha = 0.14f)
+                } else {
+                    Color.Transparent
+                },
+                focusedContainerColor = if (selected) accentColor.copy(alpha = 0.24f) else accentColor.copy(alpha = 0.12f)
+            ),
+            border = ClickableSurfaceDefaults.border(
+                border = if (selected && !isFocused) {
+                    Border(
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.30f)),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                } else {
+                    Border.None
+                },
+                focusedBorder = Border(
+                    border = BorderStroke(1.5.dp, AppColors.Focus),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            )
         ) {
-            val iconColor = getNavigationIconColor(label)
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (selected) iconColor else iconColor.copy(alpha = 0.55f),
-                modifier = Modifier.size(14.dp)
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (selected) AppColors.TextPrimary else AppColors.TextSecondary
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val iconTint = if (selected || isFocused) {
+                    accentColor
+                } else {
+                    accentColor.copy(alpha = 0.85f)
+                }
+
+                val textTint = if (selected || isFocused) {
+                    AppColors.TextPrimary
+                } else {
+                    AppColors.TextSecondary
+                }
+
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = iconTint,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                    ),
+                    color = textTint,
+                    maxLines = 1
+                )
+            }
+        }
+
+        // Active indicator bar at bottom
+        Box(
+            modifier = Modifier
+                .height(3.dp)
+                .padding(top = 1.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 18.dp, height = 2.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(accentColor)
+                )
+            }
         }
     }
 }
@@ -1139,8 +1226,8 @@ private fun RailButton(
     var isFocused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) FocusSpec.FocusedScale else 1f,
-        animationSpec = AppMotion.FocusSpec,
+        targetValue = if (isFocused) 1.05f else 1f,
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
         label = "railButtonScale"
     )
 
@@ -1158,15 +1245,29 @@ private fun RailButton(
                 scaleY = scale
             }
             .onFocusChanged { isFocused = it.isFocused },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (selected) AppColors.BrandMuted else Color.Transparent,
-            focusedContainerColor = AppColors.SurfaceEmphasis
+            containerColor = if (isFocused) {
+                if (selected) AppColors.Brand.copy(alpha = 0.28f) else AppColors.SurfaceEmphasis
+            } else if (selected) {
+                AppColors.Brand.copy(alpha = 0.16f)
+            } else {
+                Color.Transparent
+            },
+            focusedContainerColor = if (selected) AppColors.Brand.copy(alpha = 0.28f) else AppColors.SurfaceEmphasis
         ),
         border = ClickableSurfaceDefaults.border(
+            border = if (selected && !isFocused) {
+                Border(
+                    border = BorderStroke(1.dp, AppColors.Brand.copy(alpha = 0.35f)),
+                    shape = RoundedCornerShape(16.dp)
+                )
+            } else {
+                Border.None
+            },
             focusedBorder = Border(
-                border = BorderStroke(FocusSpec.BorderWidth, AppColors.Focus),
-                shape = RoundedCornerShape(18.dp)
+                border = BorderStroke(1.5.dp, AppColors.Focus),
+                shape = RoundedCornerShape(16.dp)
             )
         )
     ) {
@@ -1176,12 +1277,18 @@ private fun RailButton(
                 .padding(vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) {
-            val iconColor = getNavigationIconColor(label)
+            val iconTint = if (selected) {
+                AppColors.Brand
+            } else if (isFocused) {
+                AppColors.TextPrimary
+            } else {
+                AppColors.TextSecondary
+            }
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = if (isFocused) Color.White else (if (selected) iconColor else iconColor.copy(alpha = 0.55f)),
-                modifier = Modifier.size(24.dp)
+                tint = iconTint,
+                modifier = Modifier.size(22.dp)
             )
         }
     }
@@ -1190,7 +1297,8 @@ private fun RailButton(
 private data class DestinationItem(
     val route: String,
     @param:StringRes val labelRes: Int,
-    val icon: ImageVector
+    val icon: ImageVector,
+    val accentColor: Color
 )
 
 private fun findActiveDestinationItem(
@@ -1219,16 +1327,16 @@ private fun rememberDestinationItems(): List<DestinationItem> {
 }
 
 private fun AppTopLevelDestination.toDestinationItem(): DestinationItem = when (this) {
-    AppTopLevelDestination.HOME -> DestinationItem(Routes.HOME, R.string.nav_home, Icons.Default.Home)
-    AppTopLevelDestination.LIVE_TV -> DestinationItem(Routes.LIVE_TV, R.string.nav_live_tv, Icons.Default.PlayArrow)
-    AppTopLevelDestination.MOVIES -> DestinationItem(Routes.MOVIES, R.string.nav_movies, Icons.Default.Star)
-    AppTopLevelDestination.SERIES -> DestinationItem(Routes.SERIES, R.string.nav_series, Icons.Default.Menu)
-    AppTopLevelDestination.COMMUNITY_CHAT -> DestinationItem(Routes.COMMUNITY_CHAT, R.string.nav_chat, Icons.Default.Forum)
-    AppTopLevelDestination.DOWNLOADS -> DestinationItem(Routes.DOWNLOADS, R.string.nav_downloads, Icons.Default.Download)
-    AppTopLevelDestination.GUIDE -> DestinationItem(Routes.EPG, R.string.nav_epg, Icons.Default.Info)
-    AppTopLevelDestination.SEARCH -> DestinationItem(Routes.SEARCH, R.string.search_title, Icons.Default.Search)
-    AppTopLevelDestination.PLUGINS -> DestinationItem(Routes.PLUGINS, R.string.nav_plugins, PluginBlocksIcon)
-    AppTopLevelDestination.SETTINGS -> DestinationItem(Routes.SETTINGS, R.string.nav_settings, Icons.Default.Settings)
+    AppTopLevelDestination.HOME -> DestinationItem(Routes.HOME, R.string.nav_home, Icons.Outlined.Home, Color(0xFF7C83FF))
+    AppTopLevelDestination.LIVE_TV -> DestinationItem(Routes.LIVE_TV, R.string.nav_live_tv, Icons.Outlined.Tv, Color(0xFF38BDF8))
+    AppTopLevelDestination.MOVIES -> DestinationItem(Routes.MOVIES, R.string.nav_movies, Icons.Outlined.Movie, Color(0xFFFBBF24))
+    AppTopLevelDestination.SERIES -> DestinationItem(Routes.SERIES, R.string.nav_series, Icons.Outlined.Subscriptions, Color(0xFFF472B6))
+    AppTopLevelDestination.COMMUNITY_CHAT -> DestinationItem(Routes.COMMUNITY_CHAT, R.string.nav_chat, Icons.Outlined.Forum, Color(0xFF2DD4BF))
+    AppTopLevelDestination.DOWNLOADS -> DestinationItem(Routes.DOWNLOADS, R.string.nav_downloads, Icons.Outlined.Download, Color(0xFF34D399))
+    AppTopLevelDestination.GUIDE -> DestinationItem(Routes.EPG, R.string.nav_epg, Icons.Outlined.Info, Color(0xFFFB923C))
+    AppTopLevelDestination.SEARCH -> DestinationItem(Routes.SEARCH, R.string.search_title, Icons.Outlined.Search, Color(0xFF60A5FA))
+    AppTopLevelDestination.PLUGINS -> DestinationItem(Routes.PLUGINS, R.string.nav_plugins, Icons.Outlined.Extension, Color(0xFFC084FC))
+    AppTopLevelDestination.SETTINGS -> DestinationItem(Routes.SETTINGS, R.string.nav_settings, Icons.Outlined.Settings, Color(0xFFA78BFA))
 }
 
 private fun Context.findMainActivity(): MainActivity? {
@@ -1238,55 +1346,6 @@ private fun Context.findMainActivity(): MainActivity? {
         current = current.baseContext
     }
     return null
-}
-
-private val PluginBlocksIcon: ImageVector
-    get() {
-        if (_pluginBlocksIcon != null) return _pluginBlocksIcon!!
-        _pluginBlocksIcon = ImageVector.Builder(
-            name = "PluginBlocks",
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f
-        ).apply {
-            path(fill = SolidColor(Color.Black)) {
-                moveTo(3f, 4f)
-                horizontalLineTo(10f)
-                verticalLineTo(11f)
-                horizontalLineTo(3f)
-                close()
-                moveTo(14f, 4f)
-                horizontalLineTo(21f)
-                verticalLineTo(11f)
-                horizontalLineTo(14f)
-                close()
-                moveTo(8.5f, 13f)
-                horizontalLineTo(15.5f)
-                verticalLineTo(20f)
-                horizontalLineTo(8.5f)
-                close()
-            }
-        }.build()
-        return _pluginBlocksIcon!!
-    }
-
-private var _pluginBlocksIcon: ImageVector? = null
-
-private fun getNavigationIconColor(label: String): Color {
-    val term = label.lowercase(java.util.Locale.getDefault()).trim()
-    return when {
-        term.contains("ana sayfa") || term.contains("home") -> Color(0xFF00D2FF) // Neon Cyan
-        term.contains("canlı") || term.contains("live") -> Color(0xFFFF416C) // Neon Red
-        term.contains("film") || term.contains("movie") -> Color(0xFFFFD700) // Gold/Yellow
-        term.contains("dizi") || term.contains("series") -> Color(0xFFEC4899) // Neon Pink
-        term.contains("indir") || term.contains("download") -> Color(0xFF10B981) // Emerald Green
-        term.contains("rehber") || term.contains("guide") || term.contains("epg") -> Color(0xFFF59E0B) // Amber Orange
-        term.contains("ara") || term.contains("search") -> Color(0xFF60A5FA) // Sky Blue
-        term.contains("eklenti") || term.contains("plugin") -> Color(0xFF8B5CF6) // Violet Purple
-        term.contains("ayar") || term.contains("settings") -> Color(0xFF06B6D4) // Teal
-        else -> Color(0xFF00D2FF)
-    }
 }
 
 private tailrec fun Context.findActivity(): android.app.Activity? = when (this) {

@@ -13,9 +13,10 @@ kotlin {
 
 tasks.test {
     useJUnit()
-    jvmArgs("-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8")
-    systemProperty("file.encoding", "UTF-8")
-    systemProperty("sun.jnu.encoding", "UTF-8")
+    val testClasses = tasks.compileTestKotlin.flatMap { it.destinationDirectory }
+    val mainClasses = tasks.compileKotlin.flatMap { it.destinationDirectory }
+    testClassesDirs = files(testClasses)
+    classpath = files(testClasses, mainClasses) + configurations.getByName("testRuntimeClasspath")
 }
 
 dependencies {

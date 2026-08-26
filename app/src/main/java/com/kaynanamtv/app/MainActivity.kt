@@ -175,10 +175,12 @@ class MainActivity : ComponentActivity() {
             (application as? KaynanamTVApp)?.checkForAppUpdates(force = true)
             remoteConfigRepository.checkRemoteConfig(force = true)
         }
+        val initialTheme = preferencesRepository.getAppColorThemeSynchronously()
+        android.util.Log.i("KaynanamTV_Theme", "[THEME_APPLY] applied=${initialTheme.name} in MainActivity.onCreate")
         setContent {
             val appLanguage by preferencesRepository.appLanguage.collectAsState(initial = "system")
             val appTimeFormat by preferencesRepository.appTimeFormat.collectAsState(initial = com.kaynanamtv.domain.model.AppTimeFormat.SYSTEM)
-            val appColorTheme by preferencesRepository.appColorTheme.collectAsState(initial = com.kaynanamtv.domain.model.AppColorTheme.DEFAULT)
+            val appColorTheme by preferencesRepository.appColorTheme.collectAsState(initial = initialTheme)
             val forceUpdateDecision by remoteConfigRepository.forceUpdateDecisionFlow
                 .collectAsState(initial = com.kaynanamtv.domain.model.ForceUpdateDecision.ALLOWED)
             val currentContext = LocalContext.current

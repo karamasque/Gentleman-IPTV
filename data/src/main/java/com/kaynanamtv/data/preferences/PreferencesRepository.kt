@@ -15,6 +15,10 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.merge
 import com.kaynanamtv.data.local.dao.ChannelPreferenceDao
 import com.kaynanamtv.data.local.dao.SearchHistoryDao
 import com.kaynanamtv.domain.model.GroupedChannelLabelMode
@@ -322,14 +326,40 @@ class PreferencesRepository @Inject constructor(
         return deletedProviderIds.first()
     }
 
-    val appColorTheme: Flow<AppColorTheme> = context.dataStore.data.map { preferences ->
-        AppColorTheme.fromName(preferences[PreferencesKeys.APP_COLOR_THEME])
+    private val themeCachePrefs: SharedPreferences by lazy {
+        context.getSharedPreferences("kaynanamtv_theme_cache", Context.MODE_PRIVATE)
     }
 
+    private val _themeStateFlow by lazy {
+        MutableStateFlow(getAppColorThemeSynchronously())
+    }
+
+    val appColorTheme: Flow<AppColorTheme>
+        get() = _themeStateFlow.asStateFlow()
+
     suspend fun setAppColorTheme(theme: AppColorTheme) {
-        context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.APP_COLOR_THEME] = theme.name
+        Log.i("KaynanamTV_Theme", "[THEME_WRITE] requested=${theme.name}")
+        themeCachePrefs.edit().putString("app_color_theme", theme.name).commit()
+        _themeStateFlow.value = theme
+        try {
+            context.dataStore.edit { preferences ->
+                preferences[PreferencesKeys.APP_COLOR_THEME] = theme.name
+            }
+        } catch (e: Exception) {
+            Log.w("KaynanamTV_Theme", "DataStore background write skipped", e)
         }
+        Log.i("KaynanamTV_Theme", "[THEME_WRITE] stored=${theme.name}")
+    }
+
+    fun getAppColorThemeSynchronously(): AppColorTheme {
+        val cached = themeCachePrefs.getString("app_color_theme", null)
+        val resolved = AppColorTheme.fromName(cached)
+        Log.i("KaynanamTV_Theme", "[THEME_READ] stored=$resolved (sync_cache=$cached)")
+        return resolved
+    }
+
+    suspend fun getAppColorTheme(): AppColorTheme {
+        return getAppColorThemeSynchronously()
     }
 
     val activeLiveSource: Flow<ActiveLiveSource?> = context.dataStore.data.map { preferences ->

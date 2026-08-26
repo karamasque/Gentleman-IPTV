@@ -250,6 +250,13 @@ class HomeViewModel @Inject constructor(
                         preferencesRepository.setLastActiveProviderId(provider.id)
                     }
                     null -> {
+                        val allProviders = providerRepository.getProviders().first()
+                        val fallback = allProviders.firstOrNull()
+                        if (fallback != null) {
+                            combinedM3uRepository.setActiveLiveSource(ActiveLiveSource.ProviderSource(fallback.id))
+                            providerRepository.setActiveProvider(fallback.id)
+                            return@collectLatest
+                        }
                         clearPreview()
                         recentChannelsJob?.cancel()
                         recentChannelsJob = null

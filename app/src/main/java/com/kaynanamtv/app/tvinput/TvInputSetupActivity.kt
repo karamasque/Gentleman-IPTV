@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,13 +62,18 @@ import kotlinx.coroutines.launch
 class TvInputSetupActivity : ComponentActivity() {
     private val viewModel: TvInputSetupViewModel by viewModels()
 
+    @javax.inject.Inject
+    lateinit var preferencesRepository: com.kaynanamtv.data.preferences.PreferencesRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val inputId = intent.getStringExtra(TvInputInfo.EXTRA_INPUT_ID)
             ?: ComponentName(this, KaynanamTVTvInputService::class.java).flattenToShortString()
         viewModel.startSetup(inputId)
         setContent {
-            KaynanamTVTheme {
+            val appColorTheme by preferencesRepository.appColorTheme
+                .collectAsState(initial = preferencesRepository.getAppColorThemeSynchronously())
+            KaynanamTVTheme(colorTheme = appColorTheme) {
                 TvInputSetupRoute(
                     onOpenProviderSetup = {
                         startActivity(

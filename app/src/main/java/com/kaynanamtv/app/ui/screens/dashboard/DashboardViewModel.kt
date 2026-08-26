@@ -112,28 +112,42 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 combinedM3uRepository.getActiveLiveSource(),
-                providerRepository.getActiveProvider()
-            ) { activeSource, activeProvider ->
-                Pair(activeSource ?: activeProvider?.id?.let { ActiveLiveSource.ProviderSource(it) }, activeProvider)
+                providerRepository.getActiveProvider(),
+                providerRepository.getProviders()
+            ) { activeSource, activeProvider, allProviders ->
+                val resolvedSource = when {
+                    activeSource is ActiveLiveSource.CombinedM3uSource -> activeSource
+                    activeSource is ActiveLiveSource.ProviderSource -> activeSource
+                    activeProvider != null -> ActiveLiveSource.ProviderSource(activeProvider.id)
+                    allProviders.isNotEmpty() -> ActiveLiveSource.ProviderSource(allProviders.first().id)
+                    else -> null
+                }
+                Triple(resolvedSource, activeProvider, allProviders)
             }
                 .distinctUntilChanged { old, new ->
-                    old.first == new.first && old.second?.id == new.second?.id
+                    old.first == new.first && old.second?.id == new.second?.id && old.third.map { it.id } == new.third.map { it.id }
                 }
-                .flatMapLatest { (activeSource, activeProvider) ->
+                .flatMapLatest { (activeSource, activeProvider, allProviders) ->
                     flow {
-                        if (activeSource == null && activeProvider == null) {
-                            emit(DashboardUiState(isLoading = false))
+                        if (allProviders.isEmpty() && activeSource == null && activeProvider == null) {
+                            emit(DashboardUiState(isLoading = false, provider = null))
                             return@flow
                         }
 
                         when (activeSource) {
                             is ActiveLiveSource.ProviderSource -> {
-                                val provider = activeProvider?.takeIf { it.id == activeSource.providerId }
+                                var provider = activeProvider?.takeIf { it.id == activeSource.providerId }
                                     ?: providerRepository.getProvider(activeSource.providerId)
-                                    ?: run {
-                                        emit(DashboardUiState(isLoading = false))
-                                        return@flow
-                                    }
+                                if (provider == null && allProviders.isNotEmpty()) {
+                                    val fallback = allProviders.first()
+                                    provider = fallback
+                                    combinedM3uRepository.setActiveLiveSource(ActiveLiveSource.ProviderSource(fallback.id))
+                                    providerRepository.setActiveProvider(fallback.id)
+                                }
+                                if (provider == null) {
+                                    emit(DashboardUiState(isLoading = false, provider = null))
+                                    return@flow
+                                }
                                 emitAll(observeDashboard(provider, listOf(provider.id), combinedProfileId = null))
                             }
 
@@ -144,16 +158,28 @@ class DashboardViewModel @Inject constructor(
                                     .filter { it.enabled }
                                     .map { it.providerId }
                                     .distinct()
-                                val provider = activeProvider?.takeIf { it.id in liveProviderIds }
+                                var provider = activeProvider?.takeIf { it.id in liveProviderIds }
                                     ?: liveProviderIds.firstOrNull()?.let { providerRepository.getProvider(it) }
-                                    ?: run {
-                                        emit(DashboardUiState(isLoading = false, currentCombinedProfileId = activeSource.profileId))
-                                        return@flow
-                                    }
-                                emitAll(observeDashboard(provider, liveProviderIds, combinedProfileId = activeSource.profileId))
+                                if (provider == null && allProviders.isNotEmpty()) {
+                                    provider = allProviders.first()
+                                }
+                                if (provider == null) {
+                                    emit(DashboardUiState(isLoading = false, currentCombinedProfileId = activeSource.profileId))
+                                    return@flow
+                                }
+                                emitAll(observeDashboard(provider, if (liveProviderIds.isNotEmpty()) liveProviderIds else listOf(provider.id), combinedProfileId = activeSource.profileId))
                             }
 
-                            null -> emit(DashboardUiState(isLoading = false))
+                            null -> {
+                                if (allProviders.isNotEmpty()) {
+                                    val fallback = allProviders.first()
+                                    combinedM3uRepository.setActiveLiveSource(ActiveLiveSource.ProviderSource(fallback.id))
+                                    providerRepository.setActiveProvider(fallback.id)
+                                    emitAll(observeDashboard(fallback, listOf(fallback.id), combinedProfileId = null))
+                                } else {
+                                    emit(DashboardUiState(isLoading = false, provider = null))
+                                }
+                            }
                         }
                     }
                 }

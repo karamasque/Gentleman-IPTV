@@ -4,12 +4,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
+import com.kaynanamtv.app.KaynanamTVApp
 import com.kaynanamtv.domain.model.AppColorTheme
 
 // ── Dinamik AppColors Nesnesi ───────────────────────────────────────────────
 // Artık Compose State (mutableStateOf) kullanıyor. Değiştiğinde tüm UI otomatik güncellenir.
 object AppColors {
-    var currentPalette by mutableStateOf(AppColorPalette.indigo())
+    var currentPalette by mutableStateOf(
+        try {
+            AppColorPalette.forTheme(
+                KaynanamTVApp.instance.preferencesRepository.getAppColorThemeSynchronously()
+            )
+        } catch (_: Throwable) {
+            AppColorPalette.indigo()
+        }
+    )
 
     val Canvas: Color get() = currentPalette.Canvas
     val CanvasElevated: Color get() = currentPalette.CanvasElevated
@@ -93,8 +102,8 @@ data class AppColorPalette(
             BrandStrong = Color(0xFFA78BFA), Focus = Color(0xFFEEF2FF),
             NeonCyan = Color(0xFF22D3EE), NeonGreen = Color(0xFF10B981),
             NeonAmber = Color(0xFFF59E0B), NeonRose = Color(0xFFF43F5E),
-            TextPrimary = Color(0xFFF1F5F9), TextSecondary = Color(0xFFCBD5E1),
-            TextTertiary = Color(0xFF7A8FA6), TextDisabled = Color(0xFF4B5563),
+            TextPrimary = Color(0xFFF8FAFC), TextSecondary = Color(0xFFCBD5E1),
+            TextTertiary = Color(0xFF94A3B8), TextDisabled = Color(0xFF64748B),
             Live = Color(0xFFF43F5E), Success = Color(0xFF10B981),
             Warning = Color(0xFFF59E0B), Info = Color(0xFF22D3EE),
             Divider = Color(0x1AFFFFFF), Outline = Color(0x266366F1),
@@ -109,8 +118,8 @@ data class AppColorPalette(
             BrandStrong = Color(0xFFFFFFFF), Focus = Color(0xFFFFFFFF),
             NeonCyan = Color(0xFF22D3EE), NeonGreen = Color(0xFF10B981),
             NeonAmber = Color(0xFFF59E0B), NeonRose = Color(0xFFF43F5E),
-            TextPrimary = Color(0xFFF1F5F9), TextSecondary = Color(0xFFCBD5E1),
-            TextTertiary = Color(0xFF7A8FA6), TextDisabled = Color(0xFF4B5563),
+            TextPrimary = Color(0xFFFFFFFF), TextSecondary = Color(0xFFE4E4E7),
+            TextTertiary = Color(0xFFA1A1AA), TextDisabled = Color(0xFF71717A),
             Live = Color(0xFFF43F5E), Success = Color(0xFF10B981),
             Warning = Color(0xFFF59E0B), Info = Color(0xFF22D3EE),
             Divider = Color(0x1AFFFFFF), Outline = Color(0x33FFFFFF),
@@ -125,8 +134,8 @@ data class AppColorPalette(
             BrandStrong = Color(0xFF93C5FD), Focus = Color(0xFFEFF6FF),
             NeonCyan = Color(0xFF22D3EE), NeonGreen = Color(0xFF10B981),
             NeonAmber = Color(0xFFF59E0B), NeonRose = Color(0xFFF43F5E),
-            TextPrimary = Color(0xFFF1F5F9), TextSecondary = Color(0xFFCBD5E1),
-            TextTertiary = Color(0xFF7A8FA6), TextDisabled = Color(0xFF4B5563),
+            TextPrimary = Color(0xFFF8FAFC), TextSecondary = Color(0xFFCBD5E1),
+            TextTertiary = Color(0xFF94A3B8), TextDisabled = Color(0xFF64748B),
             Live = Color(0xFFF43F5E), Success = Color(0xFF10B981),
             Warning = Color(0xFFF59E0B), Info = Color(0xFF22D3EE),
             Divider = Color(0x1AFFFFFF), Outline = Color(0x333B82F6),
@@ -141,8 +150,8 @@ data class AppColorPalette(
             BrandStrong = Color(0xFFFCA5A5), Focus = Color(0xFFFFF1F2),
             NeonCyan = Color(0xFF22D3EE), NeonGreen = Color(0xFF10B981),
             NeonAmber = Color(0xFFF59E0B), NeonRose = Color(0xFFFB7185),
-            TextPrimary = Color(0xFFF1F5F9), TextSecondary = Color(0xFFCBD5E1),
-            TextTertiary = Color(0xFF7A8FA6), TextDisabled = Color(0xFF4B5563),
+            TextPrimary = Color(0xFFF8FAFC), TextSecondary = Color(0xFFCBD5E1),
+            TextTertiary = Color(0xFF94A3B8), TextDisabled = Color(0xFF64748B),
             Live = Color(0xFFFB7185), Success = Color(0xFF10B981),
             Warning = Color(0xFFF59E0B), Info = Color(0xFF22D3EE),
             Divider = Color(0x1AFFFFFF), Outline = Color(0x33EF4444),
@@ -157,8 +166,8 @@ data class AppColorPalette(
             BrandStrong = Color(0xFFFDE68A), Focus = Color(0xFFFFFBEB),
             NeonCyan = Color(0xFF22D3EE), NeonGreen = Color(0xFF10B981),
             NeonAmber = Color(0xFFFBBF24), NeonRose = Color(0xFFF43F5E),
-            TextPrimary = Color(0xFFF1F5F9), TextSecondary = Color(0xFFCBD5E1),
-            TextTertiary = Color(0xFF7A8FA6), TextDisabled = Color(0xFF4B5563),
+            TextPrimary = Color(0xFFF8FAFC), TextSecondary = Color(0xFFE2E8F0),
+            TextTertiary = Color(0xFFA8A29E), TextDisabled = Color(0xFF78716C),
             Live = Color(0xFFF43F5E), Success = Color(0xFF10B981),
             Warning = Color(0xFFFBBF24), Info = Color(0xFF22D3EE),
             Divider = Color(0x1AFFFFFF), Outline = Color(0x33F59E0B),
@@ -173,8 +182,8 @@ data class AppColorPalette(
             BrandStrong = Color(0xFF6EE7B7), Focus = Color(0xFFECFDF5),
             NeonCyan = Color(0xFF22D3EE), NeonGreen = Color(0xFF34D399),
             NeonAmber = Color(0xFFF59E0B), NeonRose = Color(0xFFF43F5E),
-            TextPrimary = Color(0xFFF1F5F9), TextSecondary = Color(0xFFCBD5E1),
-            TextTertiary = Color(0xFF7A8FA6), TextDisabled = Color(0xFF4B5563),
+            TextPrimary = Color(0xFFF8FAFC), TextSecondary = Color(0xFFCBD5E1),
+            TextTertiary = Color(0xFF94A3B8), TextDisabled = Color(0xFF64748B),
             Live = Color(0xFFF43F5E), Success = Color(0xFF34D399),
             Warning = Color(0xFFF59E0B), Info = Color(0xFF22D3EE),
             Divider = Color(0x1AFFFFFF), Outline = Color(0x3310B981),
@@ -189,8 +198,8 @@ data class AppColorPalette(
             BrandStrong = Color(0xFFD8B4FE), Focus = Color(0xFFFAF5FF),
             NeonCyan = Color(0xFF22D3EE), NeonGreen = Color(0xFF10B981),
             NeonAmber = Color(0xFFF59E0B), NeonRose = Color(0xFFF43F5E),
-            TextPrimary = Color(0xFFF1F5F9), TextSecondary = Color(0xFFCBD5E1),
-            TextTertiary = Color(0xFF7A8FA6), TextDisabled = Color(0xFF4B5563),
+            TextPrimary = Color(0xFFF8FAFC), TextSecondary = Color(0xFFCBD5E1),
+            TextTertiary = Color(0xFFA8A29E), TextDisabled = Color(0xFF78716C),
             Live = Color(0xFFF43F5E), Success = Color(0xFF10B981),
             Warning = Color(0xFFF59E0B), Info = Color(0xFF22D3EE),
             Divider = Color(0x1AFFFFFF), Outline = Color(0x33A855F7),
@@ -205,8 +214,8 @@ data class AppColorPalette(
             BrandStrong = Color(0xFFF9A8D4), Focus = Color(0xFFFDF2F8),
             NeonCyan = Color(0xFF22D3EE), NeonGreen = Color(0xFF10B981),
             NeonAmber = Color(0xFFF59E0B), NeonRose = Color(0xFFFB7185),
-            TextPrimary = Color(0xFFF1F5F9), TextSecondary = Color(0xFFCBD5E1),
-            TextTertiary = Color(0xFF7A8FA6), TextDisabled = Color(0xFF4B5563),
+            TextPrimary = Color(0xFFF8FAFC), TextSecondary = Color(0xFFCBD5E1),
+            TextTertiary = Color(0xFFA8A29E), TextDisabled = Color(0xFF78716C),
             Live = Color(0xFFFB7185), Success = Color(0xFF10B981),
             Warning = Color(0xFFF59E0B), Info = Color(0xFF22D3EE),
             Divider = Color(0x1AFFFFFF), Outline = Color(0x33EC4899),
