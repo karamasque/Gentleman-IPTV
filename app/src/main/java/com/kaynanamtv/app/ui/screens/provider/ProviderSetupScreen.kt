@@ -2,6 +2,12 @@ package com.kaynanamtv.app.ui.screens.provider
 
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -277,29 +283,9 @@ fun ProviderSetupScreen(
         runCatching { android.net.Uri.parse(importUri) }.getOrNull()?.let(::importM3uUri)
     }
 
-    LaunchedEffect(uiState.backupImportSuccess) {
-        if (uiState.backupImportSuccess) {
-            Toast.makeText(
-                context,
-                "Yedekleme başarıyla yüklendi.\nYeni yayın kaynağınız aktif hale getirildi.",
-                Toast.LENGTH_LONG
-            ).show()
-            onProviderAdded()
-        }
-    }
-    LaunchedEffect(pairingState.status) {
-        if (pairingState.status == ProviderQrPairingStatus.COMPLETE) {
-            Toast.makeText(
-                context,
-                "IPTV başarıyla eklendi.\nYeni yayın kaynağınız aktif hale getirildi.",
-                Toast.LENGTH_LONG
-            ).show()
-            delay(1200)
-            onProviderAdded()
-        }
-    }
     ProviderSetupCompletionLayer(
         uiState = uiState,
+        pairingStatus = pairingState.status,
         knownLocalM3uUrls = knownLocalM3uUrls,
         selectedM3uUrl = m3uUrl,
         filesDir = context.filesDir,
@@ -624,22 +610,87 @@ fun ProviderSetupScreen(
                         .zIndex(1f)
                 )
             }
+
+            var isSyncDismissed by remember { mutableStateOf(false) }
+            val showFloatingSync = uiState.isLoading && !uiState.syncProgress.isNullOrBlank() && uiState.jellyfinQuickConnectCode.isBlank()
+            LaunchedEffect(showFloatingSync) {
+                if (!showFloatingSync) {
+                    isSyncDismissed = false
+                }
+            }
+
+            AnimatedVisibility(
+                visible = showFloatingSync && !isSyncDismissed,
+                enter = fadeIn() + slideInHorizontally(initialOffsetX = { it }),
+                exit = fadeOut() + slideOutHorizontally(targetOffsetX = { it }),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 16.dp, end = 16.dp)
+                    .zIndex(100f)
+            ) {
+                androidx.compose.material3.Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xCC070A13),
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = AppColors.Brand.copy(alpha = 0.4f)
+                    ),
+                    modifier = Modifier.widthIn(max = 320.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            color = AppColors.Brand,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(1.dp)
+                        ) {
+                            val providerTitle = name.trim().ifBlank { "IPTV Sağlayıcı" } + " Ekleniyor"
+                            val phaseText = uiState.syncProgress.orEmpty().ifBlank { "Sunucu doğrulanıyor..." }
+
+                            androidx.tv.material3.Text(
+                                text = providerTitle,
+                                style = androidx.tv.material3.MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                ),
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            androidx.tv.material3.Text(
+                                text = phaseText,
+                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                                color = AppColors.TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        androidx.compose.material3.IconButton(
+                            onClick = { isSyncDismissed = true },
+                            modifier = Modifier.size(22.dp)
+                        ) {
+                            androidx.compose.material3.Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Kapat",
+                                tint = Color.Gray,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-    // Xtream / Stalker / M3U loading dialog
-    if (uiState.syncProgress != null && uiState.jellyfinQuickConnectCode.isBlank()) {
-        ProviderOnboardingProgressDialog(
-            message = uiState.syncProgress!!,
-            fullCatalogProgress = uiState.fullCatalogProgress,
-            onEnterApp = {
-                Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] ON_PROVIDER_ADDED (manual button)")
-                onProviderAdded()
-            },
-            onDismiss = null
-        )
-    }
+
 
     // Jellyfin quick-connect dialog
     if (uiState.syncProgress != null && uiState.jellyfinQuickConnectCode.isNotBlank()) {
@@ -740,6 +791,7 @@ fun ProviderSetupScreen(
     @Composable
     internal fun ProviderSetupCompletionLayer(
         uiState: ProviderSetupState,
+        pairingStatus: ProviderQrPairingStatus? = null,
         knownLocalM3uUrls: Set<String>,
         selectedM3uUrl: String,
         filesDir: java.io.File,
@@ -751,22 +803,30 @@ fun ProviderSetupScreen(
         val context = LocalContext.current
         val lifecycle = LocalLifecycleOwner.current.lifecycle
         var hasNavigated by remember { mutableStateOf(false) }
-        LaunchedEffect(uiState.onboardingCompletion, uiState.completionWarning, uiState.pendingCombinedAttachProfileId) {
+        LaunchedEffect(uiState.onboardingCompletion, uiState.completionWarning, uiState.pendingCombinedAttachProfileId, uiState.backupImportSuccess, pairingStatus) {
             if (
                 !hasNavigated &&
-                uiState.onboardingCompletion != ProviderSetupViewModel.OnboardingCompletion.NONE &&
-                uiState.pendingCombinedAttachProfileId == null
+                (uiState.backupImportSuccess ||
+                 pairingStatus == ProviderQrPairingStatus.COMPLETE ||
+                 (uiState.onboardingCompletion != ProviderSetupViewModel.OnboardingCompletion.NONE &&
+                  uiState.pendingCombinedAttachProfileId == null))
             ) {
                 hasNavigated = true
                 Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] ON_PROVIDER_ADDED")
                 Log.i("ONBOARD_TRACE", "[ONBOARD_TRACE] NAVIGATION_HOME")
-                if (uiState.completionWarning != null) {
+                if (uiState.backupImportSuccess) {
+                    Toast.makeText(
+                        context,
+                        "Yedekleme başarıyla yüklendi.\nYeni yayın kaynağınız aktif hale getirildi.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else if (uiState.completionWarning != null) {
                     Toast.makeText(
                         context,
                         "Sağlayıcı kaydedildi. Senkronizasyon arka planda devam edecek.",
                         Toast.LENGTH_LONG
                     ).show()
-                } else if (uiState.onboardingCompletion == ProviderSetupViewModel.OnboardingCompletion.READY) {
+                } else if (pairingStatus == ProviderQrPairingStatus.COMPLETE || uiState.onboardingCompletion == ProviderSetupViewModel.OnboardingCompletion.READY) {
                     Toast.makeText(
                         context,
                         "IPTV başarıyla eklendi.\nYeni yayın kaynağınız aktif hale getirildi.",
@@ -1915,12 +1975,12 @@ private fun AdvancedProviderOptionsSection(
                             ProviderTextField(
                                 value = stalkerProxyHost,
                                 onValueChange = onStalkerProxyHostChange,
-                                placeholder = "Proxy host"
+                                placeholder = "Proxy sunucusu (IP veya alan adı)"
                             )
                             ProviderTextField(
                                 value = stalkerProxyPort,
                                 onValueChange = onStalkerProxyPortChange,
-                                placeholder = "Proxy port",
+                                placeholder = "Proxy bağlantı noktası (port)",
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
                         }
@@ -2037,7 +2097,7 @@ private fun StalkerRequestRulesEditor(
                 ProviderTextField(
                     value = rule.action,
                     onValueChange = { onUpdateRule(index, rule.copy(action = it.trim())) },
-                    placeholder = "action, e.g. get_profile"
+                    placeholder = "eylem, örn: get_profile"
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -2060,7 +2120,7 @@ private fun StalkerRequestRulesEditor(
                 ProviderTextField(
                     value = rule.paramsText,
                     onValueChange = { onUpdateRule(index, rule.copy(paramsText = it)) },
-                    placeholder = "Param overrides: name=value | remove_me="
+                    placeholder = "Parametre geçersiz kılmaları: ad=değer | sil_beni="
                 )
             }
         }

@@ -600,7 +600,7 @@ class FavoritesViewModel @Inject constructor(
                             FavoriteUiModel(
                                 favorite = favorite,
                                 title = channel.name,
-                                subtitle = "Channel ${index + 1}",
+                                subtitle = if (channel.number > 0) "Kanal ${channel.number}" else "Canlı TV",
                                 lastWatchedAt = historyMap[Triple(favorite.contentType, favorite.contentId, channel.providerId)]?.lastWatchedAt ?: 0L,
                                 streamUrl = channel.streamUrl,
                                 providerId = channel.providerId,
@@ -714,7 +714,7 @@ class FavoritesViewModel @Inject constructor(
                         SavedHistoryUiModel(
                             history = entry,
                             title = channel.name,
-                            subtitle = "Channel ${index + 1}",
+                            subtitle = if (channel.number > 0) "Kanal ${channel.number}" else "Canlı TV",
                             providerId = channel.providerId,
                             categoryId = channel.categoryId,
                             epgChannelId = channel.epgChannelId,

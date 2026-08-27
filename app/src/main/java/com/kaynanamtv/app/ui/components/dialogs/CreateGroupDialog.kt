@@ -1,4 +1,4 @@
-﻿package com.kaynanamtv.app.ui.components.dialogs
+package com.kaynanamtv.app.ui.components.dialogs
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -165,7 +165,7 @@ fun CreateGroupDialog(
                         ),
                         colors = ButtonDefaults.colors(
                             containerColor = Primary,
-                            contentColor = Color.White
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
                         Text(stringResource(R.string.add_group_create))

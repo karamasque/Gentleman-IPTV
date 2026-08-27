@@ -86,19 +86,23 @@ class PluginsViewModel @Inject constructor(
         }
     }
 
+    fun showUserMessage(message: String) {
+        _uiState.update { it.copy(userMessage = message) }
+    }
+
     fun installFromUrl() {
         val url = _uiState.value.installUrl.trim()
         if (url.isBlank()) {
-            _uiState.update { it.copy(userMessage = "Enter a plugin APK URL first") }
+            _uiState.update { it.copy(userMessage = "Lütfen önce bir eklenti APK URL'si girin") }
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isInstalling = true, userMessage = "Preparing plugin installer...") }
+            _uiState.update { it.copy(isInstalling = true, userMessage = "Eklenti yükleyici hazırlanıyor...") }
             val result = pluginManager.installApkFromUrl(url)
             _uiState.update {
                 it.copy(
                     isInstalling = false,
-                    userMessage = result.messageOr("Plugin installer opened")
+                    userMessage = result.messageOr("Eklenti yükleyici açıldı")
                 )
             }
             refreshPlugins()
@@ -107,12 +111,12 @@ class PluginsViewModel @Inject constructor(
 
     fun installFromLocalUri(uri: Uri) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isInstalling = true, userMessage = "Preparing selected APK...") }
+            _uiState.update { it.copy(isInstalling = true, userMessage = "Seçilen APK hazırlanıyor...") }
             val result = pluginManager.installApkFromUri(uri)
             _uiState.update {
                 it.copy(
                     isInstalling = false,
-                    userMessage = result.messageOr("Plugin installer opened")
+                    userMessage = result.messageOr("Eklenti yükleyici açıldı")
                 )
             }
             refreshPlugins()
@@ -211,7 +215,7 @@ class PluginsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     configuration = configuration.copy(validationErrors = validationErrors),
-                    userMessage = "Review the highlighted plugin settings"
+                    userMessage = "Lütfen vurgulanan eklenti ayarlarını kontrol edin"
                 )
             }
             return

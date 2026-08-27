@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -152,14 +153,12 @@ private fun BoxScope.FloatingSyncIndicator(
         }
     }
 
-    val activeSyncPair = syncingInfos.firstOrNull()
-    val activeSyncPhase = activeSyncPair?.first to activeSyncPair?.second
-    var isDismissed by remember(activeSyncPhase) { mutableStateOf(false) }
+    val hasActiveSync = syncingInfos.isNotEmpty()
+    var isDismissed by remember { mutableStateOf(false) }
 
-    LaunchedEffect(activeSyncPhase) {
-        if (activeSyncPair != null) {
-            kotlinx.coroutines.delay(10_000L)
-            isDismissed = true
+    LaunchedEffect(hasActiveSync) {
+        if (!hasActiveSync) {
+            isDismissed = false
         }
     }
 
@@ -245,11 +244,11 @@ enum class AppNavigationChrome {
 
 @Composable
 fun AnimatedIptvBackground(modifier: Modifier = Modifier) {
-    val isTelevision = com.kaynanamtv.app.device.rememberIsTelevisionDevice()
-    if (isTelevision) {
-        StaticIptvBackground(modifier)
-    } else {
+    val tier = com.kaynanamtv.app.ui.theme.LocalVisualEffectsProfile.current.tier
+    if (tier.isBackgroundAnimated) {
         DynamicIptvBackground(modifier)
+    } else {
+        StaticIptvBackground(modifier)
     }
 }
 
@@ -705,7 +704,7 @@ private fun TopNavigationBar(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                items.forEach { item ->
+                items.forEachIndexed { index, item ->
                     val requester = focusRequesters.getOrPut(item.route) { FocusRequester() }
                     TopNavigationButton(
                         label = stringResource(item.labelRes),
@@ -713,6 +712,16 @@ private fun TopNavigationBar(
                         accentColor = item.accentColor,
                         selected = currentRoute.startsWith(item.route),
                         focusRequester = requester,
+                        modifier = if (index == 0) {
+                            Modifier.focusProperties {
+                                left = FocusRequester.Cancel
+                                up = FocusRequester.Cancel
+                            }
+                        } else {
+                            Modifier.focusProperties {
+                                up = FocusRequester.Cancel
+                            }
+                        },
                         onClick = {
                             if (!currentRoute.startsWith(item.route)) {
                                 onNavigate(item.route)
@@ -776,11 +785,16 @@ private fun TopNavigationButton(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val sounds = rememberTvInteractionSounds()
-    val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.04f else 1f,
-        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-        label = "topNavScale"
-    )
+    val tier = com.kaynanamtv.app.ui.theme.LocalVisualEffectsProfile.current.tier
+    val scale = if (tier.isFocusScaleEnabled) {
+        animateFloatAsState(
+            targetValue = if (isFocused) 1.04f else 1f,
+            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+            label = "topNavScale"
+        ).value
+    } else {
+        1f
+    }
 
     Column(
         modifier = modifier
@@ -1007,7 +1021,7 @@ fun StatusPill(
     label: String,
     modifier: Modifier = Modifier,
     containerColor: Color = AppColors.SurfaceEmphasis,
-    contentColor: Color = AppColors.TextPrimary,
+    contentColor: Color = if (containerColor.luminance() > 0.5f) Color(0xFF0A0E1A) else AppColors.TextPrimary,
     cornerRadius: Dp = 999.dp,
     horizontalPadding: Dp = 10.dp,
     verticalPadding: Dp = 4.dp

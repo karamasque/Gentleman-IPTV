@@ -23,6 +23,7 @@ import androidx.tv.material3.Text
 import com.kaynanamtv.app.R
 import com.kaynanamtv.app.ui.interaction.TvClickableSurface
 import com.kaynanamtv.app.ui.interaction.mouseClickable
+import com.kaynanamtv.app.ui.theme.AccentGreen
 import com.kaynanamtv.app.ui.theme.ErrorColor
 import com.kaynanamtv.app.ui.theme.OnBackground
 import com.kaynanamtv.app.ui.theme.OnSurfaceDim
@@ -96,13 +97,13 @@ internal fun ProviderSelectorTab(
             val typeLabel = when (provider.type) {
                 com.kaynanamtv.domain.model.ProviderType.XTREAM_CODES -> "Xtream Codes"
                 com.kaynanamtv.domain.model.ProviderType.STALKER_PORTAL -> "Stalker Portal"
-                com.kaynanamtv.domain.model.ProviderType.M3U -> "M3U Playlist"
-                else -> provider.type.name
+                com.kaynanamtv.domain.model.ProviderType.M3U -> "M3U Çalma Listesi"
+                com.kaynanamtv.domain.model.ProviderType.JELLYFIN -> "Jellyfin"
             }
             Text(
                 text = if (isActive) "$typeLabel • Aktif" else typeLabel,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isActive) Primary else OnSurfaceDim,
+                color = if (isActive) AccentGreen else OnSurfaceDim,
                 maxLines = 1
             )
         }
@@ -174,7 +175,7 @@ internal fun ProviderCatalogCountUiModel.shouldShowCatalogStatusTag(): Boolean =
 @Composable
 internal fun ProviderStatusBadge(status: ProviderStatus) {
     val (label, color) = when (status) {
-        ProviderStatus.ACTIVE -> stringResource(R.string.settings_status_active) to Primary
+        ProviderStatus.ACTIVE -> stringResource(R.string.settings_status_active) to AccentGreen
         ProviderStatus.PARTIAL -> stringResource(R.string.settings_status_partial) to Secondary
         ProviderStatus.ERROR -> stringResource(R.string.settings_status_error) to ErrorColor
         ProviderStatus.EXPIRED -> stringResource(R.string.settings_status_expired) to ErrorColor

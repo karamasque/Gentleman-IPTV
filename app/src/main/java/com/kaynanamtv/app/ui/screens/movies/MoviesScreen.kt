@@ -171,7 +171,8 @@ fun MoviesScreen(
             )
         }
 
-        if (uiState.isLoading) {
+        val hasLocalContent = uiState.categories.isNotEmpty() || uiState.moviesByCategory.isNotEmpty() || uiState.libraryCount > 0
+        if (uiState.isLoading && !hasLocalContent) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -997,7 +998,7 @@ private fun MoviesVodClassicContent(
 
     LaunchedEffect(uiState.vodViewMode, uiState.selectedCategory, uiState.isReorderMode) {
         if (uiState.vodViewMode == VodViewMode.CLASSIC && uiState.selectedCategory == null && !uiState.isReorderMode) {
-            onSelectCategory(uiState.favoriteCategoryName)
+            onSelectFullLibraryBrowse()
         }
     }
 
@@ -1031,10 +1032,12 @@ private fun MoviesVodClassicContent(
         uiState.continueWatching.map { it.contentId }.distinct().size
     }
     val recentCount = uiState.libraryLensRows[MovieLibraryLens.FRESH]?.size ?: 0
+    val favoritesLabel = stringResource(R.string.favorites_title)
     val railOptions = remember(
         visibleCategoryNames,
         uiState.categoryCounts,
         uiState.favoriteCategoryName,
+        favoritesLabel,
         uiState.selectedCategory,
         selectedFilterType,
         categoryQuery,
@@ -1057,7 +1060,7 @@ private fun MoviesVodClassicContent(
             add(
                 VodClassicCategoryOption(
                     key = "favorites",
-                    label = uiState.favoriteCategoryName,
+                    label = favoritesLabel,
                     count = uiState.categoryCounts[uiState.favoriteCategoryName] ?: 0,
                     isSelected = selectedKey == "favorites",
                     onClick = { onSelectCategory(uiState.favoriteCategoryName) }

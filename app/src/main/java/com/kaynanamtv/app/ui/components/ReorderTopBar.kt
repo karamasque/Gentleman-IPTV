@@ -103,9 +103,9 @@ fun ReorderTopBar(
                         onClick = onSave,
                         colors = ButtonDefaults.colors(
                             containerColor = Primary,
-                            contentColor = Color.White,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
                             focusedContainerColor = Primary.copy(alpha = 0.88f),
-                            focusedContentColor = Color.White
+                            focusedContentColor = MaterialTheme.colorScheme.onPrimary
                         ),
                         border = ButtonDefaults.border(
                             focusedBorder = Border(

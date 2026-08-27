@@ -49,6 +49,7 @@ import com.kaynanamtv.domain.model.RemoteShortcutSelection
 import com.kaynanamtv.domain.model.SearchHistoryScope
 import com.kaynanamtv.domain.model.AppColorTheme
 import com.kaynanamtv.domain.model.TimeshiftBackendPreference
+import com.kaynanamtv.domain.model.VisualEffectsMode
 import com.kaynanamtv.domain.manager.ParentalPinVerifier
 import com.kaynanamtv.domain.manager.ParentalControlSessionState
 import com.kaynanamtv.domain.manager.ParentalControlSessionStore
@@ -92,6 +93,10 @@ internal fun parseDecoderModePreference(saved: String?, legacySaved: String? = n
 internal fun parseTimeshiftBackendPreference(saved: String?): TimeshiftBackendPreference =
     saved?.let { value -> TimeshiftBackendPreference.entries.firstOrNull { it.name == value } }
         ?: TimeshiftBackendPreference.AUTOMATIC
+
+internal fun parseVisualEffectsModePreference(saved: String?): VisualEffectsMode =
+    saved?.let { value -> VisualEffectsMode.entries.firstOrNull { it.name == value } }
+        ?: VisualEffectsMode.AUTO
 
 @Singleton
 class PreferencesRepository @Inject constructor(
@@ -256,6 +261,8 @@ class PreferencesRepository @Inject constructor(
         val LAST_MAINTENANCE_PLAYBACK_HISTORY_ROWS = longPreferencesKey("last_maintenance_playback_history_rows")
         val LAST_MAINTENANCE_FAVORITE_ROWS = longPreferencesKey("last_maintenance_favorite_rows")
         val APP_COLOR_THEME = stringPreferencesKey("app_color_theme")
+        val VISUAL_EFFECTS_MODE = stringPreferencesKey("visual_effects_mode")
+        val SHOW_DATABASE_HEALTH = booleanPreferencesKey("show_database_health")
         val APP_FORCE_UPDATE_BLOCKED = booleanPreferencesKey("app_force_update_blocked")
         val APP_FORCE_UPDATE_MIN_VERSION = intPreferencesKey("app_force_update_min_version")
         val APP_FORCE_UPDATE_LATEST_VERSION_NAME = stringPreferencesKey("app_force_update_latest_version_name")
@@ -336,6 +343,16 @@ class PreferencesRepository @Inject constructor(
 
     val appColorTheme: Flow<AppColorTheme>
         get() = _themeStateFlow.asStateFlow()
+
+    val showDatabaseHealth: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.SHOW_DATABASE_HEALTH] ?: false
+    }.distinctUntilChanged()
+
+    suspend fun setShowDatabaseHealth(show: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SHOW_DATABASE_HEALTH] = show
+        }
+    }
 
     suspend fun setAppColorTheme(theme: AppColorTheme) {
         Log.i("KaynanamTV_Theme", "[THEME_WRITE] requested=${theme.name}")
@@ -2636,6 +2653,16 @@ class PreferencesRepository @Inject constructor(
             } else {
                 preferences[PreferencesKeys.TRAKT_ACCESS_TOKEN] = token
             }
+        }
+    }
+
+    val visualEffectsMode: Flow<VisualEffectsMode> = context.dataStore.data.map { preferences ->
+        parseVisualEffectsModePreference(preferences[PreferencesKeys.VISUAL_EFFECTS_MODE])
+    }
+
+    suspend fun setVisualEffectsMode(mode: VisualEffectsMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.VISUAL_EFFECTS_MODE] = mode.name
         }
     }
 

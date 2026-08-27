@@ -162,30 +162,44 @@ class HomeViewModel @Inject constructor(
                 when (activeSource) {
                     is ActiveLiveSource.CombinedM3uSource -> {
                         val profile = combinedM3uRepository.getProfile(activeSource.profileId)
-                        combinedCategoriesById = emptyMap()
-                        _uiState.update {
-                            it.copy(
-                                provider = null,
-                                activeLiveSource = activeSource,
-                                activeLiveSourceTitle = profile?.name ?: "Combined M3U",
-                                isCombinedLiveSource = true,
-                                categories = emptyList(),
-                                recentChannels = emptyList(),
-                                lastVisitedCategory = null,
-                                selectedCategory = null,
-                                filteredChannels = emptyList(),
-                                hasChannels = false,
-                                isLoading = false,
-                                isCategoriesLoading = true,
-                                errorMessage = null,
-                                currentCombinedProfileMembers = profile?.members.orEmpty(),
-                                selectedCombinedSourceProviderId = null
-                            )
+                        val isSameProfile = _uiState.value.isCombinedLiveSource &&
+                            (_uiState.value.activeLiveSource as? ActiveLiveSource.CombinedM3uSource)?.profileId == activeSource.profileId
+                        if (!isSameProfile) {
+                            combinedCategoriesById = emptyMap()
+                            _uiState.update {
+                                it.copy(
+                                    provider = null,
+                                    activeLiveSource = activeSource,
+                                    activeLiveSourceTitle = profile?.name ?: "Combined M3U",
+                                    isCombinedLiveSource = true,
+                                    categories = emptyList(),
+                                    recentChannels = emptyList(),
+                                    lastVisitedCategory = null,
+                                    selectedCategory = null,
+                                    filteredChannels = emptyList(),
+                                    hasChannels = false,
+                                    isLoading = false,
+                                    isCategoriesLoading = true,
+                                    errorMessage = null,
+                                    currentCombinedProfileMembers = profile?.members.orEmpty(),
+                                    selectedCombinedSourceProviderId = null
+                                )
+                            }
+                            recentChannelsJob?.cancel()
+                            recentChannelsJob = null
+                            _localChannels.value = emptyList()
+                            observeCombinedRecentChannels(currentCombinedProviderIds())
+                        } else {
+                            _uiState.update {
+                                it.copy(
+                                    provider = null,
+                                    activeLiveSource = activeSource,
+                                    activeLiveSourceTitle = profile?.name ?: "Combined M3U",
+                                    isCombinedLiveSource = true,
+                                    currentCombinedProfileMembers = profile?.members.orEmpty()
+                                )
+                            }
                         }
-                        recentChannelsJob?.cancel()
-                        recentChannelsJob = null
-                        _localChannels.value = emptyList()
-                        observeCombinedRecentChannels(currentCombinedProviderIds())
                         loadCombinedCategoriesAndChannels(activeSource.profileId)
                     }
                     is ActiveLiveSource.ProviderSource -> {
@@ -223,30 +237,42 @@ class HomeViewModel @Inject constructor(
                             }
                             return@collectLatest
                         }
-                        parentalControlManager.clearUnlockedCategories(provider.id)
-                        combinedCategoriesById = emptyMap()
-                        _uiState.update {
-                            it.copy(
-                                provider = provider,
-                                activeLiveSource = activeSource,
-                                activeLiveSourceTitle = provider.name,
-                                isCombinedLiveSource = false,
-                                categories = emptyList(),
-                                recentChannels = emptyList(),
-                                lastVisitedCategory = null,
-                                selectedCategory = null,
-                                filteredChannels = emptyList(),
-                                hasChannels = false,
-                                isLoading = false,
-                                isCategoriesLoading = true,
-                                errorMessage = null,
-                                currentCombinedProfileMembers = emptyList(),
-                                selectedCombinedSourceProviderId = null
-                            )
+                        val isSameProvider = _uiState.value.provider?.id == provider.id && !_uiState.value.isCombinedLiveSource
+                        if (!isSameProvider) {
+                            parentalControlManager.clearUnlockedCategories(provider.id)
+                            combinedCategoriesById = emptyMap()
+                            _uiState.update {
+                                it.copy(
+                                    provider = provider,
+                                    activeLiveSource = activeSource,
+                                    activeLiveSourceTitle = provider.name,
+                                    isCombinedLiveSource = false,
+                                    categories = emptyList(),
+                                    recentChannels = emptyList(),
+                                    lastVisitedCategory = null,
+                                    selectedCategory = null,
+                                    filteredChannels = emptyList(),
+                                    hasChannels = false,
+                                    isLoading = false,
+                                    isCategoriesLoading = true,
+                                    errorMessage = null,
+                                    currentCombinedProfileMembers = emptyList(),
+                                    selectedCombinedSourceProviderId = null
+                                )
+                            }
+                            _localChannels.value = emptyList()
+                            observeRecentChannels(provider.id)
+                        } else {
+                            _uiState.update {
+                                it.copy(
+                                    provider = provider,
+                                    activeLiveSource = activeSource,
+                                    activeLiveSourceTitle = provider.name,
+                                    isCombinedLiveSource = false
+                                )
+                            }
                         }
-                        _localChannels.value = emptyList()
                         loadCategoriesAndChannels(provider.id)
-                        observeRecentChannels(provider.id)
                         preferencesRepository.setLastActiveProviderId(provider.id)
                     }
                     null -> {
@@ -305,30 +331,32 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        // Observe channels, search query, and favorites to update UI
+        // Observe channels, search query, and favorites to update UI on Dispatchers.Default
         viewModelScope.launch {
             combine(
                 _localChannels,
                 observeCurrentLiveFavorites(),
                 _epgProgramMap
             ) { channels: List<Channel>, favorites: List<Favorite>, epgProgramMap: Map<String, Program> ->
-                Triple(channels, favorites, epgProgramMap)
-            }.collectLatest { (channels, favorites, epgProgramMap) ->
                 val favoriteIds = favorites.map { it.contentId }.toSet()
-                val markedChannels = channels.map { channel ->
+                channels.map { channel ->
                     val program = channel.guideLookupKey()?.let { lookupKey -> epgProgramMap[lookupKey] }
-                    if (favoriteIds.contains(channel.id)) {
-                        channel.copy(isFavorite = true, currentProgram = program)
-                    } else {
-                        channel.copy(isFavorite = false, currentProgram = program)
-                    }
+                    channel.copy(
+                        isFavorite = favoriteIds.contains(channel.id),
+                        currentProgram = program
+                    )
                 }
-
+            }
+            .flowOn(kotlinx.coroutines.Dispatchers.Default)
+            .collectLatest { markedChannels ->
                 _uiState.update { state ->
                     if (state.isChannelReorderMode) {
                         state
                     } else {
-                        state.copy(filteredChannels = markedChannels)
+                        state.copy(
+                            filteredChannels = markedChannels,
+                            hasChannels = markedChannels.isNotEmpty()
+                        )
                     }
                 }
                 val previewChannelId = _uiState.value.previewChannelId
@@ -493,7 +521,7 @@ class HomeViewModel @Inject constructor(
         categoriesJob?.cancel()
         categoriesJob = viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isCategoriesLoading = true, errorMessage = null) }
+                _uiState.update { it.copy(isCategoriesLoading = it.categories.isEmpty(), errorMessage = null) }
                 combine(
                     channelRepository.getCategories(providerId),
                     getCustomCategories(providerId, ContentType.LIVE),
@@ -561,7 +589,9 @@ class HomeViewModel @Inject constructor(
                     if (!showRecent) ctx.copy(categories = ctx.categories.filter { it.id != VirtualCategoryIds.RECENT }) else ctx
                 }.combine(preferencesRepository.showAllChannelsCategory) { ctx, showAll ->
                     if (!showAll) ctx.copy(categories = ctx.categories.filter { it.id != ChannelRepository.ALL_CHANNELS_ID }) else ctx
-                }.collect { selectionContext ->
+                }
+                .flowOn(kotlinx.coroutines.Dispatchers.Default)
+                .collect { selectionContext ->
                     val categories = selectionContext.categories
                     val defaultId = selectionContext.defaultCategoryId
                     val preferredCategoryId = _preferredInitialCategoryId.value
@@ -636,7 +666,7 @@ class HomeViewModel @Inject constructor(
         categoriesJob?.cancel()
         categoriesJob = viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isCategoriesLoading = true, errorMessage = null, pinnedCategoryIds = emptySet()) }
+                _uiState.update { it.copy(isCategoriesLoading = it.categories.isEmpty(), errorMessage = null, pinnedCategoryIds = emptySet()) }
                 val providerIds = currentCombinedProviderIds()
                 combine(
                     combinedM3uRepository.getCombinedCategories(profileId),
@@ -676,7 +706,9 @@ class HomeViewModel @Inject constructor(
                     if (!showRecent) ctx.copy(categories = ctx.categories.filter { it.id != VirtualCategoryIds.RECENT }) else ctx
                 }.combine(preferencesRepository.showAllChannelsCategory) { ctx, showAll ->
                     if (!showAll) ctx.copy(categories = ctx.categories.filter { it.id != ChannelRepository.ALL_CHANNELS_ID }) else ctx
-                }.collect { selectionContext ->
+                }
+                .flowOn(kotlinx.coroutines.Dispatchers.Default)
+                .collect { selectionContext ->
                     val categories = selectionContext.categories
                     _uiState.update {
                         it.copy(
@@ -720,13 +752,9 @@ class HomeViewModel @Inject constructor(
             }
         }
         clearPreview()
-        _localChannels.value = emptyList()
         _uiState.update {
             it.copy(
                 selectedCategory = category,
-                filteredChannels = emptyList(),
-                hasChannels = false,
-                isLoading = true,
                 errorMessage = null
             )
         }
@@ -766,7 +794,7 @@ class HomeViewModel @Inject constructor(
             try {
                 _uiState.update {
                     it.copy(
-                        isLoading = true,
+                        isLoading = it.filteredChannels.isEmpty() && it.isSyncing,
                         errorMessage = null
                     )
                 }
@@ -889,7 +917,9 @@ class HomeViewModel @Inject constructor(
                             numbered, level
                         ) { isAdult || isUserProtected }
                     } else numbered
-                }.collect { displayedChannels ->
+                }
+                .flowOn(kotlinx.coroutines.Dispatchers.Default)
+                .collect { displayedChannels ->
                     val currentQuery = _uiState.value.channelSearchQuery.trim()
                     val currentLimit = if (currentQuery.length < MIN_CHANNEL_SEARCH_QUERY_LENGTH) {
                         _channelBrowseLimit.value
@@ -1406,7 +1436,7 @@ class HomeViewModel @Inject constructor(
             _uiState.update { it.copy(userMessage = appContext.getString(R.string.home_group_name_invalid)) }
             return
         }
-        if (trimmed.equals("Favorites", ignoreCase = true)) {
+        if (trimmed.equals("Favorites", ignoreCase = true) || trimmed.equals("Favoriler", ignoreCase = true)) {
             _uiState.update { it.copy(userMessage = appContext.getString(R.string.home_group_name_reserved)) }
             return
         }
@@ -1503,7 +1533,7 @@ class HomeViewModel @Inject constructor(
                 _uiState.update { it.copy(renameGroupError = appContext.getString(R.string.home_group_name_invalid)) }
                 return
             }
-            trimmed.equals("Favorites", ignoreCase = true) -> {
+            trimmed.equals("Favorites", ignoreCase = true) || trimmed.equals("Favoriler", ignoreCase = true) -> {
                 _uiState.update { it.copy(renameGroupError = appContext.getString(R.string.home_group_name_reserved)) }
                 return
             }

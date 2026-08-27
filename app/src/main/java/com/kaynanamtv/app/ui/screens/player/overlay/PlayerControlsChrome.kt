@@ -1039,10 +1039,19 @@ private fun PlayerLiveInfo(
                         }
 
                         // Channel Number & Name
-                        val channelNumberText = if (displayChannelNumber > 0) "Kanal $displayChannelNumber | " else ""
-                        val channelNameText = currentChannel?.name ?: currentChannelName ?: "Kanal"
+                        val channelNumberPrefix = if (displayChannelNumber > 0) "$displayChannelNumber • " else ""
+                        val resolvedChannelName = currentChannel?.name?.takeIf { it.isNotBlank() }
+                            ?: currentChannelName?.takeIf { it.isNotBlank() }
+                            ?: ""
+                        val displayText = if (resolvedChannelName.isNotBlank()) {
+                            "$channelNumberPrefix$resolvedChannelName"
+                        } else if (displayChannelNumber > 0) {
+                            "$displayChannelNumber"
+                        } else {
+                            ""
+                        }
                         Text(
-                            text = "$channelNumberText$channelNameText",
+                            text = displayText,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
@@ -1946,10 +1955,15 @@ private fun TvVodControlButton(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val scaleAnim by animateFloatAsState(
-        targetValue = if (isFocused) 1.08f else 1.0f,
-        label = "vodCtrlScale"
-    )
+    val tier = com.kaynanamtv.app.ui.theme.LocalVisualEffectsProfile.current.tier
+    val scaleAnim = if (tier.isFocusScaleEnabled) {
+        animateFloatAsState(
+            targetValue = if (isFocused) 1.08f else 1.0f,
+            label = "vodCtrlScale"
+        ).value
+    } else {
+        1.0f
+    }
     val focusColor = if (isPrimary) VodControlsColors.PrimaryIndigo else accentColor
 
     val surfaceModifier = modifier
@@ -2285,10 +2299,15 @@ private fun TvLiveControlButton(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val scaleAnim by animateFloatAsState(
-        targetValue = if (isFocused) 1.10f else 1.0f,
-        label = "tvCtrlScale"
-    )
+    val tier = com.kaynanamtv.app.ui.theme.LocalVisualEffectsProfile.current.tier
+    val scaleAnim = if (tier.isFocusScaleEnabled) {
+        animateFloatAsState(
+            targetValue = if (isFocused) 1.10f else 1.0f,
+            label = "tvCtrlScale"
+        ).value
+    } else {
+        1.0f
+    }
     val focusColor = if (isPrimary) Primary else accentColor
 
     TvClickableSurface(

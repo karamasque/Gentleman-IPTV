@@ -1122,13 +1122,15 @@ class MoviesViewModel @Inject constructor(
     }
 
     private fun validateGroupName(name: String, currentGroupId: Long? = null): String? {
-        if (name.isBlank()) return "Enter a group name"
-        if (name.equals("favorites", ignoreCase = true)) return "Favorites is reserved"
+        if (name.isBlank()) return "Lütfen bir grup adı girin"
+        if (name.equals("favorites", ignoreCase = true) || name.equals("favoriler", ignoreCase = true)) {
+            return "Favoriler adı ayrılmıştır"
+        }
 
         val duplicate = _uiState.value.categories.any { category ->
             category.id != currentGroupId && category.name.equals(name, ignoreCase = true)
         }
-        return if (duplicate) "A movie group with that name already exists" else null
+        return if (duplicate) "Bu ada sahip bir film grubu zaten mevcut" else null
     }
 
     private fun List<Movie>.orderByIds(ids: List<Long>): List<Movie> {
@@ -1271,7 +1273,7 @@ data class MoviesUiState(
     val categoryNames: List<String> = emptyList(),
     val categoryCounts: Map<String, Int> = emptyMap(),
     val libraryCount: Int = 0,
-    val favoriteCategoryName: String = "\u2605 Favorites",
+    val favoriteCategoryName: String = VodBrowseDefaults.FAVORITES_CATEGORY,
     val fullLibraryCategoryName: String = "__full_library__",
     val libraryLensRows: Map<MovieLibraryLens, List<Movie>> = emptyMap(),
     val selectedCategory: String? = null,

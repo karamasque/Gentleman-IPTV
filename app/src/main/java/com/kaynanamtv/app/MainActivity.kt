@@ -181,9 +181,11 @@ class MainActivity : ComponentActivity() {
             val appLanguage by preferencesRepository.appLanguage.collectAsState(initial = "system")
             val appTimeFormat by preferencesRepository.appTimeFormat.collectAsState(initial = com.kaynanamtv.domain.model.AppTimeFormat.SYSTEM)
             val appColorTheme by preferencesRepository.appColorTheme.collectAsState(initial = initialTheme)
+            val visualEffectsMode by preferencesRepository.visualEffectsMode.collectAsState(initial = com.kaynanamtv.domain.model.VisualEffectsMode.AUTO)
             val forceUpdateDecision by remoteConfigRepository.forceUpdateDecisionFlow
                 .collectAsState(initial = com.kaynanamtv.domain.model.ForceUpdateDecision.ALLOWED)
             val currentContext = LocalContext.current
+            val isTelevision = com.kaynanamtv.app.device.rememberIsTelevisionDevice()
             
             val configuration = remember(appLanguage) {
                 val locale = resolveAppLocale(
@@ -211,6 +213,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val visualEffectsProfile = remember(visualEffectsMode, isTelevision, localizedContext) {
+                com.kaynanamtv.app.ui.theme.VisualEffectsResolver.resolve(
+                    mode = visualEffectsMode,
+                    context = localizedContext,
+                    isTelevision = isTelevision
+                )
+            }
+
             val layoutDirection = remember(configuration) {
                 if (TextUtils.getLayoutDirectionFromLocale(configuration.locales[0]) == View.LAYOUT_DIRECTION_RTL) {
                     LayoutDirection.Rtl
@@ -222,7 +232,8 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalContext provides localizedContext,
                 LocalLayoutDirection provides layoutDirection,
-                LocalAppTimeFormat provides appTimeFormat
+                LocalAppTimeFormat provides appTimeFormat,
+                com.kaynanamtv.app.ui.theme.LocalVisualEffectsProfile provides visualEffectsProfile
             ) {
                 KaynanamTVTheme(colorTheme = appColorTheme) {
                     if (forceUpdateDecision == com.kaynanamtv.domain.model.ForceUpdateDecision.BLOCKED_FORCE_UPDATE_REQUIRED) {

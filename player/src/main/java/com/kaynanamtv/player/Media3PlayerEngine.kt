@@ -1493,6 +1493,9 @@ class Media3PlayerEngine @Inject constructor(
                 Log.d("PlayerZapTrace", "[FIRST_FRAME] ttffMs=$ttff target=${PlaybackLogSanitizer.sanitizeUrl(lastStreamInfo?.url)}")
                 videoStallDetector.onVideoFrameRendered(eventTime.currentPlaybackPositionMs)
                 markPlaybackStarted("first-frame-success")
+                if (_playbackState.value == PlaybackState.BUFFERING) {
+                    _playbackState.value = PlaybackState.READY
+                }
             }
         }
     }

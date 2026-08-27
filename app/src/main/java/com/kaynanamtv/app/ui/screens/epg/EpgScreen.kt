@@ -163,6 +163,7 @@ fun FullEpgScreen(
     val notificationPermissionGate = rememberNotificationPermissionGate(
         onNotificationsBlocked = { message ->
             android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearRecordingMessage()
         },
         reminderBlockedMessage = stringResource(R.string.notification_permission_reminder_required),
         recordingBlockedMessage = stringResource(R.string.notification_permission_recording_alert_required)
@@ -361,48 +362,62 @@ fun FullEpgScreen(
                             else -> stringResource(R.string.epg_error)
                         },
                         subtitle = when (uiState.error) {
-                            EpgViewModel.NO_ACTIVE_PROVIDER -> null
-                            else -> stringResource(R.string.epg_retry_hint)
+                            EpgViewModel.NO_ACTIVE_PROVIDER -> stringResource(R.string.home_add_first_provider_subtitle)
+                            else -> stringResource(R.string.epg_provider_unsupported_hint)
                         },
-                        actionLabel = if (uiState.error == EpgViewModel.NO_ACTIVE_PROVIDER) null else stringResource(R.string.epg_retry),
-                        onAction = if (uiState.error == EpgViewModel.NO_ACTIVE_PROVIDER) null else viewModel::refresh
+                        actionLabel = null,
+                        onAction = null
                     )
                 }
 
                 uiState.channels.isEmpty() -> {
-                    GuideMessageState(
-                        modifier = Modifier.weight(1f),
-                        title = when {
-                            uiState.programSearchQuery.isNotBlank() ->
-                                stringResource(R.string.epg_no_search_results)
-                            uiState.totalChannelCount == 0 && uiState.selectedCategoryId != ChannelRepository.ALL_CHANNELS_ID ->
-                                stringResource(R.string.epg_no_channels_in_category)
-                            uiState.totalChannelCount == 0 ->
-                                stringResource(R.string.epg_no_data)
-                            else ->
-                                stringResource(R.string.epg_no_scheduled_channels)
-                        },
-                        subtitle = when {
-                            uiState.programSearchQuery.isNotBlank() ->
-                                stringResource(R.string.epg_search_empty_hint)
-                            uiState.totalChannelCount == 0 ->
-                                stringResource(R.string.epg_filter_hint)
-                            uiState.showScheduledOnly ->
-                                stringResource(R.string.epg_scheduled_only_hint)
-                            else ->
-                                stringResource(R.string.epg_stale_warning)
-                        },
-                        actionLabel = if (uiState.programSearchQuery.isNotBlank()) {
-                            stringResource(R.string.epg_clear_search)
-                        } else {
-                            stringResource(R.string.epg_retry)
-                        },
-                        onAction = if (uiState.programSearchQuery.isNotBlank()) {
-                            viewModel::clearProgramSearch
-                        } else {
-                            viewModel::refresh
+                    when {
+                        uiState.programSearchQuery.isNotBlank() -> {
+                            GuideMessageState(
+                                modifier = Modifier.weight(1f),
+                                title = stringResource(R.string.epg_no_search_results),
+                                subtitle = stringResource(R.string.epg_search_empty_hint),
+                                actionLabel = stringResource(R.string.epg_clear_search),
+                                onAction = viewModel::clearProgramSearch
+                            )
                         }
-                    )
+                        uiState.showScheduledOnly && uiState.totalChannelCount > 0 -> {
+                            GuideMessageState(
+                                modifier = Modifier.weight(1f),
+                                title = stringResource(R.string.epg_no_scheduled_channels),
+                                subtitle = stringResource(R.string.epg_scheduled_only_hint),
+                                actionLabel = stringResource(R.string.epg_show_all_channels),
+                                onAction = viewModel::resetScheduledOnly
+                            )
+                        }
+                        uiState.showFavoritesOnly && uiState.favoriteChannelIds.isEmpty() -> {
+                            GuideMessageState(
+                                modifier = Modifier.weight(1f),
+                                title = stringResource(R.string.epg_no_channels_in_category),
+                                subtitle = stringResource(R.string.epg_filter_hint),
+                                actionLabel = stringResource(R.string.epg_show_all_channels),
+                                onAction = viewModel::resetFavoritesFilter
+                            )
+                        }
+                        uiState.totalChannelCount == 0 && uiState.selectedCategoryId != ChannelRepository.ALL_CHANNELS_ID -> {
+                            GuideMessageState(
+                                modifier = Modifier.weight(1f),
+                                title = stringResource(R.string.epg_no_channels_in_category),
+                                subtitle = stringResource(R.string.epg_filter_hint),
+                                actionLabel = stringResource(R.string.epg_show_all_channels),
+                                onAction = { viewModel.selectCategory(ChannelRepository.ALL_CHANNELS_ID) }
+                            )
+                        }
+                        else -> {
+                            GuideMessageState(
+                                modifier = Modifier.weight(1f),
+                                title = stringResource(R.string.epg_provider_unsupported),
+                                subtitle = stringResource(R.string.epg_provider_unsupported_hint),
+                                actionLabel = null,
+                                onAction = null
+                            )
+                        }
+                    }
                 }
 
                 else -> {

@@ -173,18 +173,24 @@ internal fun AddEpgSourceCard(viewModel: SettingsViewModel) {
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("EPG Kaynağı Ekle", style = MaterialTheme.typography.titleSmall, color = Color.White)
-            EpgSourceTextField(value = newName, onValueChange = { newName = it }, placeholder = "Source name")
+            EpgSourceTextField(value = newName, onValueChange = { newName = it }, placeholder = "Kaynak adı")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.weight(1f)) {
                     EpgSourceTextField(
                         value = newUrl,
                         onValueChange = { newUrl = it },
-                        placeholder = "XMLTV URL (HTTP/HTTPS) or browse file"
+                        placeholder = "XMLTV URL'si (HTTP/HTTPS) girin veya dosya seçin"
                     )
                 }
                 val addActionShape = RoundedCornerShape(8.dp)
                 TvClickableSurface(
-                    onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                    onClick = {
+                        try {
+                            filePickerLauncher.launch(arrayOf("*/*"))
+                        } catch (_: Exception) {
+                            android.widget.Toast.makeText(context, "Cihazda dosya seçici bulunamadı", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    },
                     shape = ClickableSurfaceDefaults.shape(addActionShape),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = Primary.copy(alpha = 0.15f),

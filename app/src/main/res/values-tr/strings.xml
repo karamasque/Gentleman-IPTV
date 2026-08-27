@@ -283,6 +283,8 @@
     <string name="settings_playback">Oynatma</string>
     <string name="settings_browsing">Arayüz ve Gezinme</string>
     <string name="settings_playback_subtitle">Daha akıcı oynatma için kod çözücü ve arabellek davranışını ayarlayın.</string>
+    <string name="settings_visual_effects">Görsel Efektler</string>
+    <string name="settings_visual_effects_subtitle">Arayüz animasyonları ve grafik performans modunu seçin.</string>
     <string name="settings_live_tv_channel_mode">Canlı TV Kanalı Modu</string>
     <string name="settings_live_tv_channel_mode_subtitle">Canlı TV tarayıcısının kanalları nasıl göstereceğini ve oynatmadan önce önizleme yapıp yapmayacağını seçin.</string>
     <string name="settings_live_tv_quick_filters">Canlı TV Hızlı Filtreleri</string>
@@ -605,7 +607,7 @@
     <string name="settings_capability_xtream_without_epg">İsteğe bağlı rehber yedeği olan Xtream kaynağı. Geri alma, yayın kaynağının tekrar desteğine bağlıdır.</string>
     <string name="settings_capability_m3u_with_epg">XMLTV kılavuzlu M3U kaynağı. Arşiv desteği, yayın kaynağı akış şablonlarına bağlıdır.</string>
     <string name="settings_capability_m3u_without_epg">Kılavuz URL\'si olmayan M3U kaynağı. Rehberin ve arşivin kapsamı sınırlı olabilir.</string>
-    <string name="favorites_title">Kaydedildi</string>
+    <string name="favorites_title">Favoriler</string>
     <string name="favorites_loading">Kaydedilen kitaplık yükleniyor...</string>
     <string name="favorites_no_favorites">Kaydedilen kitaplık boş</string>
     <string name="favorites_empty_hint">Kaydedilen kitaplığınızı oluşturmak için herhangi bir kanala, filme veya diziye uzun basın</string>
@@ -699,7 +701,7 @@
     <string name="a11y_recent_search">Son arama %1$s</string>
     <string name="a11y_locked">Kilitli</string>
     <string name="a11y_favorite">Favori</string>
-    <string name="a11y_catch_up_available">Yakalama mevcut</string>
+    <string name="a11y_catch_up_available">Geri sarma mevcut</string>
     <string name="a11y_now_playing">%1$s oynatılıyor</string>
     <string name="a11y_channel_with_number">Kanal %1$d, %2$s</string>
     <string name="setup_title_kaynanamtv">KaynanamTV</string>
@@ -882,7 +884,7 @@
     <string name="epg_no_schedule">Program verisi yok</string>
     <string name="epg_no_schedule_short">Program yok</string>
     <string name="epg_watch_live">Canlı İzle</string>
-    <string name="epg_watch_archive">Yakalama oyna</string>
+    <string name="epg_watch_archive">Tekrar İzle</string>
     <string name="epg_override_manage">EPG Eşleşmesini Ayarla</string>
     <string name="epg_override_title">EPG Eşleşmesi</string>
     <string name="epg_override_current_label">Geçerli eşleşme</string>
@@ -972,7 +974,10 @@
     <string name="epg_no_search_results">Bu rehber aralığında eşleşen program yok</string>
     <string name="epg_search_empty_hint">Başka bir başlık deneyin, kategoriyi genişletin veya aramayı temizleyin.</string>
     <string name="epg_scheduled_only_hint">Yalnızca planlananlar seçeneğini kapatın veya başka bir kategoriye geçin.</string>
-    <string name="epg_filter_hint">Başka bir kategori seçin veya rehberi yenileyin.</string>
+    <string name="epg_filter_hint">Başka bir kategori seçin veya tüm kanallara geçin.</string>
+    <string name="epg_provider_unsupported">Bu sağlayıcı için rehber verisi bulunmuyor.</string>
+    <string name="epg_provider_unsupported_hint">Canlı TV kanallarını izlemeye devam edebilir veya Ayarlar\'dan harici bir EPG kaynağı atayabilirsiniz.</string>
+    <string name="epg_show_all_channels">Tüm Kanalları Göster</string>
     <string name="epg_title">TV Rehberi</string>
     <string name="epg_catchup_available">Geri sarma mevcut (%1$d gün)</string>
     <string name="epg_archive_ready_hint">Bu program için arşiv veya geri sarma oynatma kullanılabilir olmalı.</string>
@@ -1125,7 +1130,7 @@
     <string name="label_duration_min">%1$d dakika</string>
     <string name="label_tv">televizyon</string>
     <string name="badge_saved">KAYDEDİLDİ</string>
-    <string name="badge_catch_up">YAKALAN</string>
+    <string name="badge_catch_up">GERİ SARMA</string>
     <string name="badge_moving">HAREKETLİ</string>
     <string name="badge_fav">Favorim</string>
     <string name="badge_error">HATA</string>
@@ -1233,7 +1238,7 @@
     <string name="player_browse_archive">Arşive Göz At</string>
     <string name="player_browse_guide_catchup">Rehbere Göz At</string>
     <string name="player_cancel_scheduled_recording">Zamanlanmışı İptal Et</string>
-    <string name="player_catchup_options">Yetişme</string>
+    <string name="player_catchup_options">Geri Sarma</string>
     <string name="player_channel_variants">Kanal Varyantları</string>
     <string name="player_diagnostics_active_decoder">Etkin Dekoder</string>
     <string name="player_diagnostics_av_offset">A/V Ofseti</string>

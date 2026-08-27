@@ -943,6 +943,13 @@ class EpgViewModel @Inject constructor(
         }
     }
 
+    fun resetScheduledOnly() {
+        showScheduledOnly.value = false
+        viewModelScope.launch {
+            preferencesRepository.setGuideScheduledOnly(false)
+        }
+    }
+
     fun selectChannelMode(mode: GuideChannelMode) {
         selectedChannelMode.value = mode
         viewModelScope.launch {
@@ -962,6 +969,13 @@ class EpgViewModel @Inject constructor(
         showFavoritesOnly.value = enabled
         viewModelScope.launch {
             preferencesRepository.setGuideFavoritesOnly(enabled)
+        }
+    }
+
+    fun resetFavoritesFilter() {
+        showFavoritesOnly.value = false
+        viewModelScope.launch {
+            preferencesRepository.setGuideFavoritesOnly(false)
         }
     }
 

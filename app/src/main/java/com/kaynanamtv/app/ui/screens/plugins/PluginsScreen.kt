@@ -117,13 +117,17 @@ fun PluginsScreen(
                     isInstalling = uiState.isInstalling,
                     onInstallFromUrl = { showInstallUrlDialog = true },
                     onInstallFromFile = {
-                        apkPicker.launch(
-                            arrayOf(
-                                "application/vnd.android.package-archive",
-                                "application/octet-stream",
-                                "*/*"
+                        try {
+                            apkPicker.launch(
+                                arrayOf(
+                                    "application/vnd.android.package-archive",
+                                    "application/octet-stream",
+                                    "*/*"
+                                )
                             )
-                        )
+                        } catch (_: Exception) {
+                            viewModel.showUserMessage("Cihazda dosya seçici bulunamadı.")
+                        }
                     },
                     onRefresh = viewModel::refreshPlugins
                 )

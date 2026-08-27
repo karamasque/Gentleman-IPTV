@@ -135,7 +135,7 @@ internal fun SettingsProviderManagementDialogs(
                 providerState.pendingDeleteProviderId = null
             }
         }
-        val providerName = providerToDelete?.name ?: "this provider"
+        val providerName = providerToDelete?.name ?: "bu sağlayıcı"
         PremiumDialog(
             title = "Sağlayıcıyı Sil",
             subtitle = "\"$providerName\" silinsin mi? Bu, tüm kanalları, programları ve senkronizasyon verilerini kalıcı olarak kaldıracaktır.",
@@ -162,7 +162,7 @@ internal fun SettingsProviderManagementDialogs(
                         )
                     }
                     Text(
-                        text = uiState.deleteProviderProgressMessage ?: "Deleting provider...",
+                        text = uiState.deleteProviderProgressMessage ?: "Sağlayıcı siliniyor...",
                         color = OnSurfaceDim
                     )
                 }

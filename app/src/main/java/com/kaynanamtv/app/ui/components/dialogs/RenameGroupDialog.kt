@@ -1,4 +1,4 @@
-﻿package com.kaynanamtv.app.ui.components.dialogs
+package com.kaynanamtv.app.ui.components.dialogs
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardActions
@@ -186,9 +186,9 @@ fun RenameGroupDialog(
                         ),
                         colors = ButtonDefaults.colors(
                             containerColor = Primary,
-                            contentColor = Color.White,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
                             focusedContainerColor = Primary.copy(alpha = 0.84f),
-                            focusedContentColor = Color.White
+                            focusedContentColor = MaterialTheme.colorScheme.onPrimary
                         ),
                         border = ButtonDefaults.border(
                             focusedBorder = Border(

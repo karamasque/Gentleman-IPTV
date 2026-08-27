@@ -370,12 +370,6 @@ class ProviderRepositoryImpl @Inject constructor(
             val recordingRunIds = recordingRunDao.getIdsByProvider(id)
             val reminderIds = programReminderDao.getIdsByProvider(id)
 
-            // Query image URLs for permanent cache cleanup before deleting from database
-            val channelUrls = channelDao.getByProviderSync(id).mapNotNull { it.logoUrl }.filter { it.isNotBlank() }
-            val movieUrls = movieDao.getByProviderSync(id).mapNotNull { it.posterUrl }.filter { it.isNotBlank() }
-            val seriesUrls = seriesDao.getByProviderSync(id).mapNotNull { it.posterUrl }.filter { it.isNotBlank() }
-            val allUrls = (channelUrls + movieUrls + seriesUrls).distinct()
-
             onProgress?.invoke(ProviderDeleteProgress(message = "Sağlayıcı kaldırılıyor...", fraction = 0.5f))
 
             transactionRunner.inTransaction {
@@ -424,9 +418,6 @@ class ProviderRepositoryImpl @Inject constructor(
 
             // Offload heavy disk I/O (image files, vacuum) to background
             repositoryScope.launch(Dispatchers.IO) {
-                runPostDeleteCleanup("provider image cache cleanup $id") {
-                    PermanentImageCache.deleteCachedFiles(context, allUrls)
-                }
                 runPostDeleteCleanup("vacuum and wal checkpoint $id") {
                     database?.openHelper?.writableDatabase?.let { sqliteDb ->
                         sqliteDb.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -618,7 +609,7 @@ class ProviderRepositoryImpl @Inject constructor(
         UrlSecurityPolicy.validatePlaylistSourceUrl(normalizedUrl)?.let { message ->
             return Result.error(message)
         }
-        onProgress?.invoke("Validating playlist URL...")
+        onProgress?.invoke("1/4 • Çalma listesi URL'si doğrulanıyor...")
         val providerName = normalizedName.ifBlank {
             normalizedUrl.substringAfterLast("/").substringBefore("?").ifBlank { "M3U Playlist" }
         }
@@ -629,7 +620,7 @@ class ProviderRepositoryImpl @Inject constructor(
             // provider before we commit the update.
             val collision = providerDao.getByUrlAndUserForAccount(normalizedUrl, "", accountUid = currentUid)
             if (collision != null && collision.id != id) {
-                return Result.error("A playlist provider with this URL already exists.")
+                return Result.error("Bu URL adresine sahip bir sağlayıcı zaten mevcut.")
             }
             providerDao.getById(id)
         } else {

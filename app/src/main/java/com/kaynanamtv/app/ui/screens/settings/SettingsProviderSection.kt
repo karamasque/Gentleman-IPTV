@@ -98,6 +98,7 @@ internal fun LazyListScope.providerSection(
                     xtreamIndexSectionStatuses = uiState.xtreamIndexSectionStatusByProvider[selectedProvider.id].orEmpty(),
                     diagnostics = uiState.diagnosticsByProvider[selectedProvider.id],
                     databaseMaintenance = uiState.databaseMaintenance,
+                    showDatabaseHealth = uiState.showDatabaseHealth,
                     syncWarnings = uiState.syncWarningsByProvider[selectedProvider.id].orEmpty(),
                     onRetryWarningAction = { action -> viewModel.retryWarningAction(selectedProvider.id, action) },
                     onConnect = { viewModel.setActiveProvider(selectedProvider.id) },

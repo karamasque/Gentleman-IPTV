@@ -50,13 +50,13 @@ internal class SettingsProviderActions(
             // Validate the provider exists before writing any preferences.
             val provider = providerRepository.getProvider(providerId)
             if (provider == null) {
-                uiState.update { it.copy(userMessage = "Could not activate provider: provider not found") }
+                uiState.update { it.copy(userMessage = "Yayın kaynağı aktifleştirilemedi: sağlayıcı bulunamadı") }
                 return@launch
             }
             // Write to the repository first; only persist UI-layer preferences on success.
             when (val result = providerRepository.setActiveProvider(providerId)) {
                 is Result.Error -> {
-                    uiState.update { it.copy(userMessage = "Could not activate provider: ${result.message}") }
+                    uiState.update { it.copy(userMessage = "Yayın kaynağı aktifleştirilemedi: ${result.message}") }
                     return@launch
                 }
                 else -> Unit
@@ -78,7 +78,7 @@ internal class SettingsProviderActions(
                     progressPrefix = "${provider.name} yenileniyor..."
                 )
             } else {
-                uiState.update { it.copy(userMessage = "Connected to ${provider.name}") }
+                uiState.update { it.copy(userMessage = "${provider.name} yayınına bağlanıldı") }
             }
         }
     }
@@ -89,17 +89,17 @@ internal class SettingsProviderActions(
             val profile = combinedM3uRepository.getProfile(profileId)
             when {
                 profile == null ->
-                    uiState.update { it.copy(userMessage = "Could not activate combined source: profile not found") }
+                    uiState.update { it.copy(userMessage = "Birleşik kaynak aktifleştirilemedi: profil bulunamadı") }
                 profile.members.isEmpty() ->
                     uiState.update { it.copy(userMessage = "Bu birleşik kaynağı aktifleştirmeden önce en az bir oynatma listesi ekleyin") }
                 profile.members.none { it.enabled } ->
-                    uiState.update { it.copy(userMessage = "Enable at least one playlist in this combined source before activating it") }
+                    uiState.update { it.copy(userMessage = "Bu birleşik kaynağı aktifleştirmeden önce en az bir oynatma listesini etkinleştirin") }
                 else -> when (combinedM3uRepository.setActiveLiveSource(ActiveLiveSource.CombinedM3uSource(profileId))) {
                     is Result.Success -> {
                         launcherRecommendationsManager.refreshRecommendations(force = true)
-                        uiState.update { it.copy(userMessage = "Combined M3U source activated") }
+                        uiState.update { it.copy(userMessage = "Birleşik M3U kaynağı aktifleştirildi") }
                     }
-                    is Result.Error -> uiState.update { it.copy(userMessage = "Could not activate combined source") }
+                    is Result.Error -> uiState.update { it.copy(userMessage = "Birleşik kaynak aktifleştirilemedi") }
                     Result.Loading -> Unit
                 }
             }
@@ -111,7 +111,7 @@ internal class SettingsProviderActions(
             when (val result = combinedM3uRepository.createProfile(name, providerIds)) {
                 is Result.Success -> {
                     combinedM3uRepository.setActiveLiveSource(ActiveLiveSource.CombinedM3uSource(result.data.id))
-                    uiState.update { it.copy(userMessage = "Combined M3U source created") }
+                    uiState.update { it.copy(userMessage = "Birleşik M3U kaynağı oluşturuldu") }
                     onSuccess()
                 }
                 is Result.Error -> {
@@ -126,7 +126,7 @@ internal class SettingsProviderActions(
     fun deleteCombinedProfile(scope: CoroutineScope, profileId: Long) {
         scope.launch {
             when (val result = combinedM3uRepository.deleteProfile(profileId)) {
-                is Result.Success -> uiState.update { it.copy(userMessage = "Combined M3U source deleted") }
+                is Result.Success -> uiState.update { it.copy(userMessage = "Birleşik M3U kaynağı silindi") }
                 is Result.Error -> uiState.update { it.copy(userMessage = result.message) }
                 Result.Loading -> Unit
             }
@@ -153,7 +153,7 @@ internal class SettingsProviderActions(
         scope.launch {
             when (val result = combinedM3uRepository.updateProfileName(profileId, name)) {
                 is Result.Success -> {
-                    uiState.update { it.copy(userMessage = "Combined M3U source renamed") }
+                    uiState.update { it.copy(userMessage = "Birleşik M3U kaynağı yeniden adlandırıldı") }
                     onSuccess()
                 }
                 is Result.Error -> {
@@ -174,7 +174,7 @@ internal class SettingsProviderActions(
                 val removingEnabledMember = memberToRemove?.enabled == true
                 val remainingEnabled = profile.members.count { it.providerId != providerId && it.enabled }
                 if (removingEnabledMember && remainingEnabled == 0) {
-                    uiState.update { it.copy(userMessage = "Cannot remove the last active playlist from the current live source") }
+                    uiState.update { it.copy(userMessage = "Mevcut canlı yayındaki son aktif oynatma listesi kaldırılamaz") }
                     return@launch
                 }
             }
@@ -196,7 +196,7 @@ internal class SettingsProviderActions(
             if (targetIndex !in orderedProviderIds.indices) return@launch
             java.util.Collections.swap(orderedProviderIds, currentIndex, targetIndex)
             when (val result = combinedM3uRepository.reorderMembers(profileId, orderedProviderIds)) {
-                is Result.Success -> uiState.update { it.copy(userMessage = "Combined playlist order updated") }
+                is Result.Success -> uiState.update { it.copy(userMessage = "Birleşik oynatma listesi sırası güncellendi") }
                 is Result.Error -> uiState.update { it.copy(userMessage = result.message) }
                 Result.Loading -> Unit
             }
@@ -214,7 +214,7 @@ internal class SettingsProviderActions(
                 ) {
                     val remainingEnabled = profile.members.count { it.providerId != providerId && it.enabled }
                     if (remainingEnabled == 0) {
-                        uiState.update { it.copy(userMessage = "Cannot disable the last active playlist in the current live source") }
+                        uiState.update { it.copy(userMessage = "Mevcut canlı yayındaki son aktif oynatma listesi devre dışı bırakılamaz") }
                         return@launch
                     }
                 }
@@ -234,13 +234,13 @@ internal class SettingsProviderActions(
             val provider = providerRepository.getProvider(providerId) ?: return@launch
             if (provider.type != ProviderType.M3U) return@launch
             when (val result = providerRepository.updateProvider(provider.copy(m3uVodClassificationEnabled = enabled))) {
-                is Result.Error -> uiState.update { it.copy(userMessage = "Could not save provider setting: ${result.message}") }
+                is Result.Error -> uiState.update { it.copy(userMessage = "Sağlayıcı ayarı kaydedilemedi: ${result.message}") }
                 else -> uiState.update {
                     it.copy(
                         userMessage = if (enabled) {
-                            "M3U VOD classification enabled. Refresh the playlist to reclassify content."
+                            "M3U VOD sınıflandırması etkinleştirildi. İçeriği yeniden sınıflandırmak için çalma listesini yenileyin."
                         } else {
-                            "M3U VOD classification disabled. Refresh the playlist to reclassify content."
+                            "M3U VOD sınıflandırması devre dışı bırakıldı. İçeriği yeniden sınıflandırmak için çalma listesini yenileyin."
                         }
                     )
                 }
@@ -252,8 +252,8 @@ internal class SettingsProviderActions(
         scope.launch {
             val provider = providerRepository.getProvider(providerId) ?: return@launch
             when (val result = providerRepository.updateProvider(provider.copy(guideSourcePolicy = policy))) {
-                is Result.Error -> uiState.update { it.copy(userMessage = "Could not save guide source: ${result.message}") }
-                else -> uiState.update { it.copy(userMessage = "Guide source updated for ${provider.name}") }
+                is Result.Error -> uiState.update { it.copy(userMessage = "Rehber kaynağı kaydedilemedi: ${result.message}") }
+                else -> uiState.update { it.copy(userMessage = "${provider.name} için rehber kaynağı güncellendi") }
             }
         }
     }
@@ -262,8 +262,8 @@ internal class SettingsProviderActions(
         scope.launch {
             val provider = providerRepository.getProvider(providerId) ?: return@launch
             when (val result = providerRepository.updateProvider(provider.copy(channelLogoSourcePolicy = policy))) {
-                is Result.Error -> uiState.update { it.copy(userMessage = "Could not save logo source: ${result.message}") }
-                else -> uiState.update { it.copy(userMessage = "Channel logo source updated for ${provider.name}") }
+                is Result.Error -> uiState.update { it.copy(userMessage = "Kanal logosu kaynağı kaydedilemedi: ${result.message}") }
+                else -> uiState.update { it.copy(userMessage = "${provider.name} için kanal logosu kaynağı güncellendi") }
             }
         }
     }

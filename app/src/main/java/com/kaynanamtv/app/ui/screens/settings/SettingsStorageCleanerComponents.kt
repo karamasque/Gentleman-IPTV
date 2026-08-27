@@ -120,14 +120,14 @@ internal fun StorageCleanerCard(
                 ) {
                     if (isCleaning) {
                         CircularProgressIndicator(
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.height(16.dp)
                         )
                     }
                     Text(
                         text = if (isCleaning) "Temizleniyor..." else "Önbelleği ve Geçici Verileri Temizle",
                         style = MaterialTheme.typography.labelLarge,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onPrimary,
                         fontWeight = FontWeight.Bold
                     )
                 }

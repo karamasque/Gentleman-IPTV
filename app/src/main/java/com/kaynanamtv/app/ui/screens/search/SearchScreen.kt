@@ -605,6 +605,7 @@ fun SearchScreen(
                 )
             }
 
+            val isTypingPending = query.trim().length >= 2 && (uiState.queryLength != query.trim().length || uiState.isLoading)
             when {
                 !uiState.hasActiveProvider -> {
                     item {
@@ -615,7 +616,7 @@ fun SearchScreen(
                     }
                 }
 
-                uiState.queryLength < 2 -> {
+                query.trim().length < 2 -> {
                     item {
                         SearchMessageState(
                             title = stringResource(R.string.search_ready_title),
@@ -624,7 +625,7 @@ fun SearchScreen(
                     }
                 }
 
-                uiState.isLoading -> {
+                isTypingPending -> {
                     item {
                         SearchMessageState(
                             title = stringResource(R.string.search_loading_title),

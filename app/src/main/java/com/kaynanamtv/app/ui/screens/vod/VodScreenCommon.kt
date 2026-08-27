@@ -8,7 +8,7 @@ import com.kaynanamtv.app.ui.components.dialogs.PinDialog
 import kotlinx.coroutines.launch
 
 object VodBrowseDefaults {
-    const val FAVORITES_CATEGORY = "\u2605 Favorites"
+    const val FAVORITES_CATEGORY = "\u2605 Favoriler"
     const val FAVORITES_SENTINEL_ID = -999L
     const val FULL_LIBRARY_CATEGORY = "__full_library__"
     const val PREVIEW_ROW_LIMIT = 18

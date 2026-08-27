@@ -350,7 +350,7 @@ fun HomeScreen(
         ) {
             if (isReorderMode) {
                 ReorderTopBar(
-                    categoryName = uiState.reorderCategory?.name ?: uiState.selectedCategory?.name ?: "Channels",
+                    categoryName = uiState.reorderCategory?.name ?: uiState.selectedCategory?.name ?: stringResource(R.string.nav_live_tv),
                     onSave = { viewModel.saveChannelReorder() },
                     onCancel = { viewModel.exitChannelReorderMode() },
                     subtitle = stringResource(R.string.live_reorder_subtitle)
@@ -1093,7 +1093,7 @@ fun HomeScreen(
                             animationSpec = tween(durationMillis = 200),
                             label = "category_content_transition"
                         ) { _ ->
-                        if (uiState.isLoading) {
+                        if (uiState.isLoading && uiState.filteredChannels.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,

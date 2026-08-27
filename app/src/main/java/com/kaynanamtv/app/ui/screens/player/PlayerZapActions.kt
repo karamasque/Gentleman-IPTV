@@ -84,12 +84,12 @@ internal fun shouldPreloadAdjacentChannel(
     maxConnections: Int,
     preloadCoolingDown: Boolean
 ): Boolean {
-    if (streamUrl.isBlank() || preloadCoolingDown) return false
+    if (streamUrl.isBlank() || preloadCoolingDown || maxConnections < 2) return false
     return when (providerType) {
-        ProviderType.M3U -> true
-        ProviderType.JELLYFIN -> true
+        ProviderType.M3U,
+        ProviderType.JELLYFIN,
         ProviderType.XTREAM_CODES,
-        ProviderType.STALKER_PORTAL -> maxConnections >= 2
+        ProviderType.STALKER_PORTAL -> true
         null -> false
     }
 }
@@ -154,7 +154,7 @@ fun PlayerViewModel.changeChannelDebounced(index: Int, userInitiated: Boolean = 
     showControlsFlow.value = false
 
     zapDebounceJob = viewModelScope.launch {
-        delay(600)
+        delay(180)
         executeChannelChange(index, userInitiated = true, source = source)
     }
 }

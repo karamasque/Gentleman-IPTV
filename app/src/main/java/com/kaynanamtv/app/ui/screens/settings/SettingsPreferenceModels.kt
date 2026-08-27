@@ -49,6 +49,8 @@ internal data class SettingsPreferenceSnapshot(
     val hasParentalPin: Boolean,
     val appLanguage: String,
     val appColorTheme: AppColorTheme,
+    val visualEffectsMode: com.kaynanamtv.domain.model.VisualEffectsMode = com.kaynanamtv.domain.model.VisualEffectsMode.AUTO,
+    val showDatabaseHealth: Boolean = false,
     val appLandingDestination: AppLandingDestination,
     val appTopLevelDestinations: List<AppTopLevelDestination>,
     val appHomeDashboardShelves: List<AppHomeDashboardShelf>,

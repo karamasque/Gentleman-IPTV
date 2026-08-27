@@ -1005,7 +1005,7 @@ private fun SeriesVodClassicContent(
 
     LaunchedEffect(uiState.vodViewMode, uiState.selectedCategory, uiState.isReorderMode) {
         if (uiState.vodViewMode == VodViewMode.CLASSIC && uiState.selectedCategory == null && !uiState.isReorderMode) {
-            onSelectCategory(uiState.favoriteCategoryName)
+            onSelectFullLibraryBrowse()
         }
     }
 
@@ -1039,10 +1039,12 @@ private fun SeriesVodClassicContent(
         uiState.continueWatching.map { it.seriesId ?: it.contentId }.distinct().size
     }
     val recentCount = uiState.libraryLensRows[SeriesLibraryLens.FRESH]?.size ?: 0
+    val favoritesLabel = stringResource(R.string.favorites_title)
     val railOptions = remember(
         visibleCategoryNames,
         uiState.categoryCounts,
         uiState.favoriteCategoryName,
+        favoritesLabel,
         uiState.selectedCategory,
         selectedFilterType,
         categoryQuery,
@@ -1065,7 +1067,7 @@ private fun SeriesVodClassicContent(
             add(
                 VodClassicCategoryOption(
                     key = "favorites",
-                    label = uiState.favoriteCategoryName,
+                    label = favoritesLabel,
                     count = uiState.categoryCounts[uiState.favoriteCategoryName] ?: 0,
                     isSelected = selectedKey == "favorites",
                     onClick = { onSelectCategory(uiState.favoriteCategoryName) }

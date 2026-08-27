@@ -53,14 +53,18 @@ internal fun SettingsScreenDialogs(
 ) {
     val providerState = rememberSettingsProviderSectionState(dialogState)
 
-    SyncingOverlay(
-        isSyncing = uiState.isSyncing,
-        providerName = uiState.syncingProviderName,
-        progress = uiState.syncProgress,
-        sectionLabel = uiState.syncSectionLabel,
-        startedAt = uiState.syncStartedAt,
-        onCancel = onCancelSync.takeIf { uiState.syncCanCancel }
-    )
+
+
+    if (dialogState.showVisualEffectsModeDialog) {
+        VisualEffectsModeDialog(
+            selectedMode = uiState.visualEffectsMode,
+            onDismiss = { dialogState.showVisualEffectsModeDialog = false },
+            onModeSelected = { mode ->
+                viewModel.setVisualEffectsMode(mode)
+                dialogState.showVisualEffectsModeDialog = false
+            }
+        )
+    }
 
     if (dialogState.showLiveTvModeDialog) {
         LiveTvChannelModeDialog(

@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -165,7 +166,6 @@ private fun ProviderWarningRetryButton(
 internal fun ProviderActionButtons(
     isActive: Boolean,
     isSyncing: Boolean,
-    liveOnboardingIncomplete: Boolean,
     onConnect: () -> Unit,
     onRefresh: () -> Unit,
     onEdit: () -> Unit,
@@ -175,15 +175,11 @@ internal fun ProviderActionButtons(
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         if (!isActive) {
             ProviderActionButton(
-                label = when {
-                    liveOnboardingIncomplete && isSyncing -> stringResource(R.string.settings_syncing_btn)
-                    liveOnboardingIncomplete -> stringResource(R.string.settings_sync_btn)
-                    else -> stringResource(R.string.settings_connect)
-                },
+                label = if (isSyncing) stringResource(R.string.settings_syncing_btn) else stringResource(R.string.settings_connect),
                 accent = Primary,
                 filled = true,
-                contentColor = Color.White,
-                onClick = if (liveOnboardingIncomplete) onRefresh else onConnect
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                onClick = onConnect
             )
         } else {
             ProviderActionButton(
@@ -221,14 +217,14 @@ private fun ProviderActionButton(
     accent: Color,
     onClick: () -> Unit,
     filled: Boolean = false,
-    contentColor: Color = accent
+    contentColor: Color = if (filled) MaterialTheme.colorScheme.onPrimary else accent
 ) {
     TvClickableSurface(
         onClick = onClick,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (filled) accent else accent.copy(alpha = 0.2f),
-            focusedContainerColor = if (filled) accent.copy(alpha = 0.8f) else accent.copy(alpha = 0.5f),
+            focusedContainerColor = if (filled) accent.copy(alpha = 0.88f) else accent.copy(alpha = 0.5f),
             contentColor = contentColor,
             focusedContentColor = contentColor
         ),
@@ -244,9 +240,8 @@ private fun ProviderActionButton(
             text = label,
             style = MaterialTheme.typography.labelMedium,
             color = contentColor,
-            modifier = Modifier
-                .widthIn(min = 0.dp)
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
         )
     }
 }

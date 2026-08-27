@@ -91,24 +91,34 @@ fun DownloadsScreen(
                     ?: uiState.storageConfig.treeUri
                     ?: stringResource(R.string.download_folder_default)
 
+                val isTv = com.kaynanamtv.app.device.rememberIsTelevisionDevice()
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.End
                 ) {
-                    Button(onClick = { folderPicker.launch(null) }) {
-                        Text(text = stringResource(R.string.download_folder_change))
+                    if (!isTv) {
+                        Button(onClick = {
+                            try {
+                                folderPicker.launch(null)
+                            } catch (e: Exception) {
+                                // Safe fallback if no document picker is present on device
+                            }
+                        }) {
+                            Text(text = stringResource(R.string.download_folder_change))
+                        }
                     }
                     Text(
                         text = downloadFolderLabel,
                         style = MaterialTheme.typography.labelSmall,
-                        color = AppColors.TextTertiary,
-                        maxLines = 2,
+                        color = AppColors.TextSecondary,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.End,
                         modifier = Modifier
-                            .fillMaxWidth(0.7f)
+                            .fillMaxWidth(if (isTv) 1f else 0.7f)
                             .padding(top = 4.dp)
                     )
                 }

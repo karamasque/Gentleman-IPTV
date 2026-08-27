@@ -440,3 +440,64 @@ internal fun RemoteShortcutSelectionDialog(
         }
     )
 }
+
+@Composable
+internal fun VisualEffectsModeDialog(
+    selectedMode: com.kaynanamtv.domain.model.VisualEffectsMode,
+    onDismiss: () -> Unit,
+    onModeSelected: (com.kaynanamtv.domain.model.VisualEffectsMode) -> Unit
+) {
+    val modes = listOf(
+        Triple(com.kaynanamtv.domain.model.VisualEffectsMode.AUTO, "Otomatik (Önerilen)", "Cihaz donanımına göre en uygun performans profilini belirler."),
+        Triple(com.kaynanamtv.domain.model.VisualEffectsMode.FULL, "Tam", "Tüm premium görsel efektler, dinamik katmanlar ve akıcı geçişler."),
+        Triple(com.kaynanamtv.domain.model.VisualEffectsMode.BALANCED, "Dengeli", "Optimize edilmiş arka plan ve hafif odak animasyonları."),
+        Triple(com.kaynanamtv.domain.model.VisualEffectsMode.LITE, "Hafif", "Statik arka plan, minimum GPU yükü ve hızlı D-Pad tepkisi."),
+        Triple(com.kaynanamtv.domain.model.VisualEffectsMode.OFF, "Kapalı", "Tüm dekoratif efektler kapalı; gerekli odak ve oynatıcı kontrolleri aktif.")
+    )
+
+    PremiumDialog(
+        title = "Görsel Efektler",
+        subtitle = "Arayüz animasyonları ve grafik performans modunu seçin",
+        onDismissRequest = onDismiss,
+        widthFraction = 0.54f,
+        content = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                modes.forEach { (mode, title, subtitle) ->
+                    val isSelected = mode == selectedMode
+                    TvClickableSurface(
+                        onClick = { onModeSelected(mode) },
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = if (isSelected) Primary.copy(alpha = 0.18f) else SurfaceElevated,
+                            focusedContainerColor = Primary.copy(alpha = 0.28f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = if (isSelected) Primary else OnBackground
+                            )
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OnSurfaceDim
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        footer = {
+            PremiumDialogFooterButton(
+                label = stringResource(R.string.settings_cancel),
+                onClick = onDismiss
+            )
+        }
+    )
+}
+

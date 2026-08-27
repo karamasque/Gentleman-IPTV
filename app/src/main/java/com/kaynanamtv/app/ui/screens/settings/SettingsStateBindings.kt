@@ -129,6 +129,10 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(appLanguage = language)
     }.combine(preferencesRepository.appColorTheme) { snapshot, theme ->
         snapshot.copy(appColorTheme = theme)
+    }.combine(preferencesRepository.visualEffectsMode) { snapshot, mode ->
+        snapshot.copy(visualEffectsMode = mode)
+    }.combine(preferencesRepository.showDatabaseHealth) { snapshot, show ->
+        snapshot.copy(showDatabaseHealth = show)
     }.combine(preferencesRepository.appLandingDestination) { snapshot, destination ->
         snapshot.copy(appLandingDestination = destination)
     }.combine(preferencesRepository.appTopLevelDestinations) { snapshot, destinations ->

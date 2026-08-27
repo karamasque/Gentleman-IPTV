@@ -34,6 +34,7 @@ internal fun ProviderDiagnosticsPanel(
     diagnostics: ProviderDiagnosticsUiModel,
     movieIndexInProgress: Boolean,
     databaseMaintenance: DatabaseMaintenanceUiModel?,
+    showDatabaseHealth: Boolean = false,
     syncWarnings: List<String> = emptyList()
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -89,8 +90,10 @@ internal fun ProviderDiagnosticsPanel(
             }
         }
 
-        databaseMaintenance?.let { report ->
-            DatabaseMaintenancePanel(report = report)
+        if (showDatabaseHealth) {
+            databaseMaintenance?.let { report ->
+                DatabaseMaintenancePanel(report = report)
+            }
         }
     }
 }
@@ -107,69 +110,22 @@ private fun DatabaseMaintenancePanel(report: DatabaseMaintenanceUiModel) {
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
-            text = "Database Health",
+            text = "Veritabanı Sağlık Bilgileri",
             style = MaterialTheme.typography.titleSmall,
             color = Primary
         )
         Text(
-            text = "Last maintenance ${formatDiagnosticTimestamp(report.ranAt, dateTimeFormat)}",
+            text = "Son Bakım: ${formatDiagnosticTimestamp(report.ranAt, dateTimeFormat)}",
             style = MaterialTheme.typography.bodySmall,
             color = OnSurface
         )
         Text(
-            text = buildString {
-                append("Pruned ")
-                append(report.deletedPrograms)
-                append(" internal programs, ")
-                append(report.deletedExternalProgrammes)
-                append(" external programs, ")
-                append(report.deletedOrphanEpisodes)
-                append(" orphan episodes, and ")
-                append(report.deletedStaleFavorites)
-                append(" stale favorites.")
-            },
+            text = "Veritabanı: ${formatMaintenanceBytes(report.mainDbBytes)} • Önbellek: ${formatMaintenanceBytes(report.walBytes)} • Boşaltılabilir: ${formatMaintenanceBytes(report.reclaimableBytes)}",
             style = MaterialTheme.typography.bodySmall,
             color = OnSurfaceDim
         )
         Text(
-            text = buildString {
-                append("Main DB ")
-                append(formatMaintenanceBytes(report.mainDbBytes))
-                append(" • WAL ")
-                append(formatMaintenanceBytes(report.walBytes))
-                append(" • Reclaimable ")
-                append(formatMaintenanceBytes(report.reclaimableBytes))
-                append(" • VACUUM ")
-                append(if (report.vacuumRan) "ran" else "not needed or skipped")
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = OnSurface
-        )
-        Text(
-            text = buildString {
-                append("Rows: channels ")
-                append(formatMaintenanceCount(report.channelRows))
-                append(", movies ")
-                append(formatMaintenanceCount(report.movieRows))
-                append(", series ")
-                append(formatMaintenanceCount(report.seriesRows))
-                append(", episodes ")
-                append(formatMaintenanceCount(report.episodeRows))
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = OnSurfaceDim
-        )
-        Text(
-            text = buildString {
-                append("Programs ")
-                append(formatMaintenanceCount(report.programRows))
-                append(", external EPG ")
-                append(formatMaintenanceCount(report.epgProgrammeRows))
-                append(", history ")
-                append(formatMaintenanceCount(report.playbackHistoryRows))
-                append(", favorites ")
-                append(formatMaintenanceCount(report.favoriteRows))
-            },
+            text = "Kayıtlar: Kanallar ${formatMaintenanceCount(report.channelRows)}, Filmler ${formatMaintenanceCount(report.movieRows)}, Diziler ${formatMaintenanceCount(report.seriesRows)}, Bölümler ${formatMaintenanceCount(report.episodeRows)}, Rehber ${formatMaintenanceCount(report.epgProgrammeRows)}",
             style = MaterialTheme.typography.bodySmall,
             color = OnSurfaceDim
         )

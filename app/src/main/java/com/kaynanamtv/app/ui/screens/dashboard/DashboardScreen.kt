@@ -123,17 +123,16 @@ fun DashboardScreen(
         }
     }
 
-    com.kaynanamtv.app.ui.components.AmbientGlowBackground(glowColor = Primary) {
+    AppScreenScaffold(
+        currentRoute = currentRoute,
+        onNavigate = onNavigate,
+        title = stringResource(R.string.nav_home),
+        subtitle = provider?.name,
+        navigationChrome = AppNavigationChrome.TopBar,
+        compactHeader = true,
+        showScreenHeader = false
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
-        AppScreenScaffold(
-            currentRoute = currentRoute,
-            onNavigate = onNavigate,
-            title = stringResource(R.string.nav_home),
-            subtitle = provider?.name,
-            navigationChrome = AppNavigationChrome.TopBar,
-            compactHeader = true,
-            showScreenHeader = false
-        ) {
             if (provider == null) {
                 if (uiState.isLoading) {
                     Box(
@@ -332,14 +331,14 @@ fun DashboardScreen(
                 }
             }
             }
-        }
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp)
-        )
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp)
+            )
+        }
     }
 
     if (showHomeCustomizationDialog) {
@@ -373,7 +372,6 @@ fun DashboardScreen(
             }
         )
     }
-}
 }
 
 private fun formatUpdateBytes(bytes: Long): String {
@@ -863,139 +861,7 @@ private fun DashboardActionButton(
     }
 }
 
-@Composable
-private fun DashboardProviderHealthCard(
-    providerName: String,
-    health: DashboardProviderHealth,
-    onOpenDiagnostics: () -> Unit
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val appTimeFormat = LocalAppTimeFormat.current
-    val dateTimeFormat = remember(appTimeFormat) { appTimeFormat.createDateTimeFormat() }
-    val syncLabel = remember(health.lastSyncedAt, dateTimeFormat) {
-        if (health.lastSyncedAt <= 0L) {
-            context.getString(R.string.dashboard_provider_no_sync)
-        } else {
-            context.getString(R.string.dashboard_provider_synced_at, dateTimeFormat.format(Date(health.lastSyncedAt)))
-        }
-    }
-    val expiryLabel = remember(health.expirationDate) {
-        health.expirationDate?.let {
-            val format = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
-            context.getString(R.string.dashboard_provider_expires_at, format.format(Date(it)))
-        } ?: context.getString(R.string.dashboard_provider_no_expiry)
-    }
-    val statusLabel = when (health.status) {
-        com.kaynanamtv.domain.model.ProviderStatus.ACTIVE -> stringResource(R.string.settings_status_active)
-        com.kaynanamtv.domain.model.ProviderStatus.PARTIAL -> stringResource(R.string.settings_status_partial)
-        com.kaynanamtv.domain.model.ProviderStatus.ERROR -> stringResource(R.string.settings_status_error)
-        com.kaynanamtv.domain.model.ProviderStatus.EXPIRED -> stringResource(R.string.settings_status_expired)
-        com.kaynanamtv.domain.model.ProviderStatus.DISABLED -> stringResource(R.string.settings_status_disabled)
-        com.kaynanamtv.domain.model.ProviderStatus.UNKNOWN -> stringResource(R.string.settings_status_unknown)
-    }
-    val sourceLabel = when (health.type) {
-        com.kaynanamtv.domain.model.ProviderType.XTREAM_CODES -> stringResource(R.string.dashboard_provider_xtream)
-        com.kaynanamtv.domain.model.ProviderType.M3U -> stringResource(R.string.dashboard_provider_m3u)
-        com.kaynanamtv.domain.model.ProviderType.STALKER_PORTAL -> "Stalker/MAG Portal"
-        com.kaynanamtv.domain.model.ProviderType.JELLYFIN -> "Jellyfin"
-    }
 
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 48.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(22.dp),
-        colors = SurfaceDefaults.colors(containerColor = SurfaceHighlight)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 18.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.dashboard_provider_health_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary
-                )
-                Text(
-                    text = providerName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = OnSurfaceDim
-                )
-                Text(
-                    text = "$syncLabel | $expiryLabel",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceDim
-                )
-            }
-
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                item {
-                    DashboardHealthPill(
-                        label = statusLabel,
-                        value = stringResource(R.string.dashboard_provider_status)
-                    )
-                }
-                item {
-                    DashboardHealthPill(
-                        label = sourceLabel,
-                        value = stringResource(R.string.dashboard_provider_source)
-                    )
-                }
-                item {
-                    DashboardHealthPill(
-                        label = health.maxConnections.toString(),
-                        value = stringResource(R.string.dashboard_provider_connections)
-                    )
-                }
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 0.dp),
-            horizontalArrangement = Arrangement.End
-        ) {
-            DashboardActionButton(
-                label = stringResource(R.string.dashboard_warning_review),
-                onClick = onOpenDiagnostics
-            )
-        }
-    }
-}
-
-@Composable
-private fun DashboardHealthPill(
-    label: String,
-    value: String
-) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        colors = SurfaceDefaults.colors(containerColor = Color.White.copy(alpha = 0.08f))
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.labelSmall,
-                color = OnSurfaceDim
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = TextPrimary
-            )
-        }
-    }
-}
 
 @Composable
 private fun DashboardProviderWarningCard(

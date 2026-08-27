@@ -353,6 +353,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setVisualEffectsMode(mode: com.kaynanamtv.domain.model.VisualEffectsMode) {
+        _uiState.update { it.copy(visualEffectsMode = mode) }
+        viewModelScope.launch {
+            preferencesRepository.setVisualEffectsMode(mode)
+        }
+    }
+
+    fun setShowDatabaseHealth(show: Boolean) {
+        _uiState.update { it.copy(showDatabaseHealth = show) }
+        viewModelScope.launch {
+            preferencesRepository.setShowDatabaseHealth(show)
+        }
+    }
+
     private fun com.kaynanamtv.app.diagnostics.CrashReportSummary.toUiModel(): CrashReportUiModel =
         CrashReportUiModel(
             timestamp = timestamp,

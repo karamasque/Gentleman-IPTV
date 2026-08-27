@@ -110,6 +110,18 @@ import com.kaynanamtv.app.navigation.Routes
 
 
 
+private sealed interface PlayerDialogState {
+    data class TrackSelection(val trackType: TrackType) : PlayerDialogState
+    data object ChannelVariantSelection : PlayerDialogState
+    data object PlaybackSpeed : PlayerDialogState
+    data object StopPlaybackTimer : PlayerDialogState
+    data object IdleStandbyTimer : PlayerDialogState
+    data object AudioVideoOffset : PlayerDialogState
+    data object EpisodePicker : PlayerDialogState
+    data object ProgramHistory : PlayerDialogState
+    data object SplitScreen : PlayerDialogState
+}
+
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
@@ -226,15 +238,7 @@ fun PlayerScreen(
     var ambilightColor by remember { mutableStateOf(Color.Transparent) }
     val sleepTimerExitEvent by viewModel.sleepTimerExitEvent.collectAsStateWithLifecycle()
 
-    var showTrackSelection by remember { mutableStateOf<TrackType?>(null) }
-    var showVariantSelection by remember { mutableStateOf(false) }
-    var showSpeedSelection by remember { mutableStateOf(false) }
-    var showAudioVideoOffsetDialog by remember { mutableStateOf(false) }
-    var showStopPlaybackTimerDialog by remember { mutableStateOf(false) }
-    var showIdleStandbyTimerDialog by remember { mutableStateOf(false) }
-    var showProgramHistory by remember { mutableStateOf(false) }
-    var showSplitDialog by remember { mutableStateOf(false) }
-    var showEpisodePicker by remember { mutableStateOf(false) }
+    var activeDialog by remember { mutableStateOf<PlayerDialogState?>(null) }
     var channelInfoSubPanelOpen by remember { mutableStateOf(false) }
     
     val focusRequester = remember { FocusRequester() }
@@ -277,8 +281,8 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(audioVideoSyncEnabled) {
-        if (!audioVideoSyncEnabled && showAudioVideoOffsetDialog) {
-            showAudioVideoOffsetDialog = false
+        if (!audioVideoSyncEnabled && activeDialog is PlayerDialogState.AudioVideoOffset) {
+            activeDialog = null
             viewModel.dismissAudioVideoOffsetPreview()
         }
     }
@@ -330,7 +334,7 @@ fun PlayerScreen(
     // Consolidated focus management for all overlays
     val liveOverlayVisible = contentType == "LIVE" && (showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showChannelInfoOverlay)
     val nextEpisodeCountdownVisible = !isInPictureInPictureMode && autoPlayCountdown != null
-    val anyOverlayVisible = liveOverlayVisible || nextEpisodeCountdownVisible || showTrackSelection != null || showVariantSelection || showSpeedSelection || showAudioVideoOffsetDialog || showStopPlaybackTimerDialog || showIdleStandbyTimerDialog || showProgramHistory || showSplitDialog || showEpisodePicker || showDiagnostics
+    val anyOverlayVisible = liveOverlayVisible || nextEpisodeCountdownVisible || activeDialog != null || showDiagnostics
 
     LaunchedEffect(contentType, showCategoryListOverlay, showChannelListOverlay, showEpgOverlay, showChannelInfoOverlay) {
         if (contentType == "LIVE" && (showCategoryListOverlay || showChannelListOverlay || showEpgOverlay || showChannelInfoOverlay)) {
@@ -387,25 +391,25 @@ fun PlayerScreen(
         viewModel.recordLiveVariantObservation(playbackState, videoFormat)
     }
 
-    if (!isInPictureInPictureMode && showProgramHistory) {
+    if (!isInPictureInPictureMode && activeDialog is PlayerDialogState.ProgramHistory) {
         ProgramHistoryDialog(
             programs = programHistory,
-            onDismiss = { showProgramHistory = false },
+            onDismiss = { activeDialog = null },
             onProgramSelect = { program ->
                 viewModel.playCatchUp(program)
-                showProgramHistory = false
+                activeDialog = null
             }
         )
     }
 
     // Split Screen Manager dialog
-    if (showSplitDialog && currentChannel != null) {
+    if (activeDialog is PlayerDialogState.SplitScreen && currentChannel != null) {
         val multiViewViewModel: MultiViewViewModel = hiltViewModel()
         MultiViewPlannerDialog(
             pendingChannel = currentChannel,
-            onDismiss = { showSplitDialog = false },
+            onDismiss = { activeDialog = null },
             onLaunch = {
-                showSplitDialog = false
+                activeDialog = null
                 viewModel.handOffPlaybackToMultiView()
                 onNavigate?.invoke(Routes.MULTI_VIEW)
             },
@@ -480,10 +484,10 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, showTrackSelection, showVariantSelection, showSpeedSelection, showAudioVideoOffsetDialog, showStopPlaybackTimerDialog, showIdleStandbyTimerDialog, showProgramHistory, showSplitDialog, showEpisodePicker) {
+    LaunchedEffect(showControls, activeDialog) {
         if (!showControls) {
             viewModel.cancelControlsAutoHide()
-        } else if (showTrackSelection != null || showVariantSelection || showSpeedSelection || showAudioVideoOffsetDialog || showStopPlaybackTimerDialog || showIdleStandbyTimerDialog || showProgramHistory || showSplitDialog || showEpisodePicker) {
+        } else if (activeDialog != null) {
             viewModel.cancelControlsAutoHide()
         } else {
             viewModel.hideControlsAfterDelay()
@@ -504,15 +508,7 @@ fun PlayerScreen(
     val handleBackPress = remember(
         autoPlayCountdown,
         playerNotice,
-        showProgramHistory,
-        showSplitDialog,
-        showEpisodePicker,
-        showSpeedSelection,
-        showAudioVideoOffsetDialog,
-        showStopPlaybackTimerDialog,
-        showIdleStandbyTimerDialog,
-        showTrackSelection,
-        showVariantSelection,
+        activeDialog,
         showDiagnostics,
         showChannelInfoOverlay,
         showChannelListOverlay,
@@ -526,18 +522,12 @@ fun PlayerScreen(
                 viewModel.hasPendingNumericChannelInput() -> viewModel.clearNumericChannelInput()
                 autoPlayCountdown != null -> viewModel.cancelAutoPlay()
                 playerNotice != null -> viewModel.dismissPlayerNotice()
-                showProgramHistory -> showProgramHistory = false
-                showSplitDialog -> showSplitDialog = false
-                showEpisodePicker -> showEpisodePicker = false
-                showSpeedSelection -> showSpeedSelection = false
-                showAudioVideoOffsetDialog -> {
-                    showAudioVideoOffsetDialog = false
-                    viewModel.dismissAudioVideoOffsetPreview()
+                activeDialog != null -> {
+                    if (activeDialog is PlayerDialogState.AudioVideoOffset) {
+                        viewModel.dismissAudioVideoOffsetPreview()
+                    }
+                    activeDialog = null
                 }
-                showStopPlaybackTimerDialog -> showStopPlaybackTimerDialog = false
-                showIdleStandbyTimerDialog -> showIdleStandbyTimerDialog = false
-                showVariantSelection -> showVariantSelection = false
-                showTrackSelection != null -> showTrackSelection = null
                 showDiagnostics -> viewModel.toggleDiagnostics()
                 showChannelInfoOverlay -> viewModel.closeChannelInfoOverlay()
                 showChannelListOverlay || showCategoryListOverlay || showEpgOverlay -> viewModel.closeOverlays()
@@ -616,7 +606,7 @@ fun PlayerScreen(
                 if (showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showDiagnostics) {
                     return@onPreviewKeyEvent false
                 }
-                if (showTrackSelection != null || showVariantSelection || showSpeedSelection || showAudioVideoOffsetDialog || showStopPlaybackTimerDialog || showIdleStandbyTimerDialog || showProgramHistory || showSplitDialog || showEpisodePicker) {
+                if (activeDialog != null) {
                     return@onPreviewKeyEvent false
                 }
                 if (showChannelInfoOverlay) {
@@ -652,63 +642,15 @@ fun PlayerScreen(
                             else -> true
                         }
                     }
-                    if (showTrackSelection != null || showVariantSelection || showSpeedSelection || showAudioVideoOffsetDialog || showStopPlaybackTimerDialog || showIdleStandbyTimerDialog) {
-                        if (showAudioVideoOffsetDialog) {
-                            return@onKeyEvent when (event.nativeKeyEvent.keyCode) {
-                                KeyEvent.KEYCODE_BACK -> {
-                                    showAudioVideoOffsetDialog = false
-                                    viewModel.dismissAudioVideoOffsetPreview()
-                                    true
-                                }
-                                KeyEvent.KEYCODE_DPAD_UP,
-                                KeyEvent.KEYCODE_DPAD_DOWN,
-                                KeyEvent.KEYCODE_DPAD_LEFT,
-                                KeyEvent.KEYCODE_DPAD_RIGHT,
-                                KeyEvent.KEYCODE_DPAD_CENTER,
-                                KeyEvent.KEYCODE_ENTER,
-                                KeyEvent.KEYCODE_NUMPAD_ENTER -> false
-                                else -> true
+                    if (activeDialog != null) {
+                        if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK) {
+                            if (activeDialog is PlayerDialogState.AudioVideoOffset) {
+                                viewModel.dismissAudioVideoOffsetPreview()
                             }
-                        }
-                        if (showSpeedSelection) {
-                            return@onKeyEvent when (event.nativeKeyEvent.keyCode) {
-                                KeyEvent.KEYCODE_BACK -> {
-                                    showSpeedSelection = false
-                                    true
-                                }
-                                KeyEvent.KEYCODE_DPAD_UP,
-                                KeyEvent.KEYCODE_DPAD_DOWN,
-                                KeyEvent.KEYCODE_DPAD_LEFT,
-                                KeyEvent.KEYCODE_DPAD_RIGHT,
-                                KeyEvent.KEYCODE_DPAD_CENTER,
-                                KeyEvent.KEYCODE_ENTER,
-                                KeyEvent.KEYCODE_NUMPAD_ENTER -> false
-                                else -> true
-                            }
-                        }
-                        if (showVariantSelection) {
-                            return@onKeyEvent when (event.nativeKeyEvent.keyCode) {
-                                KeyEvent.KEYCODE_BACK -> {
-                                    showVariantSelection = false
-                                    true
-                                }
-                                KeyEvent.KEYCODE_DPAD_UP,
-                                KeyEvent.KEYCODE_DPAD_DOWN,
-                                KeyEvent.KEYCODE_DPAD_LEFT,
-                                KeyEvent.KEYCODE_DPAD_RIGHT,
-                                KeyEvent.KEYCODE_DPAD_CENTER,
-                                KeyEvent.KEYCODE_ENTER,
-                                KeyEvent.KEYCODE_NUMPAD_ENTER -> false
-                                else -> true
-                            }
+                            activeDialog = null
+                            return@onKeyEvent true
                         }
                         return@onKeyEvent when (event.nativeKeyEvent.keyCode) {
-                            KeyEvent.KEYCODE_BACK -> {
-                                showStopPlaybackTimerDialog = false
-                                showIdleStandbyTimerDialog = false
-                                showTrackSelection = null
-                                true
-                            }
                             KeyEvent.KEYCODE_DPAD_UP,
                             KeyEvent.KEYCODE_DPAD_DOWN,
                             KeyEvent.KEYCODE_DPAD_LEFT,
@@ -804,7 +746,7 @@ fun PlayerScreen(
                                 // UP tuşu: önce kanal listesini aç; liste açıkken navigasyon listeye devredilir
                                 viewModel.openChannelListOverlay()
                             } else if (canOpenEpisodePicker) {
-                                showEpisodePicker = true
+                                activeDialog = PlayerDialogState.EpisodePicker
                             } else {
                                 viewModel.toggleControls()
                             }
@@ -1079,7 +1021,7 @@ fun PlayerScreen(
             onSeekBackward = viewModel::seekBackward,
             onSeekForward = viewModel::seekForward,
             onRestartProgram = viewModel::restartCurrentProgram,
-            onOpenArchive = { showProgramHistory = true },
+            onOpenArchive = { activeDialog = PlayerDialogState.ProgramHistory },
             onStartRecording = {
                 notificationPermissionGate.runRecordingAction {
                     viewModel.startManualRecording()
@@ -1102,17 +1044,17 @@ fun PlayerScreen(
                 }
             },
             onToggleAspectRatio = viewModel::toggleAspectRatio,
-            onOpenSubtitleTracks = { showTrackSelection = TrackType.TEXT },
-            onOpenAudioTracks = { showTrackSelection = TrackType.AUDIO },
-            onOpenVideoTracks = { showTrackSelection = TrackType.VIDEO },
-            onOpenPlaybackSpeed = { showSpeedSelection = true },
-            onOpenStopPlaybackTimer = { showStopPlaybackTimerDialog = true },
-            onOpenIdleStandbyTimer = { showIdleStandbyTimerDialog = true },
-            onOpenAudioVideoSync = { showAudioVideoOffsetDialog = true },
+            onOpenSubtitleTracks = { activeDialog = PlayerDialogState.TrackSelection(TrackType.TEXT) },
+            onOpenAudioTracks = { activeDialog = PlayerDialogState.TrackSelection(TrackType.AUDIO) },
+            onOpenVideoTracks = { activeDialog = PlayerDialogState.TrackSelection(TrackType.VIDEO) },
+            onOpenPlaybackSpeed = { activeDialog = PlayerDialogState.PlaybackSpeed },
+            onOpenStopPlaybackTimer = { activeDialog = PlayerDialogState.StopPlaybackTimer },
+            onOpenIdleStandbyTimer = { activeDialog = PlayerDialogState.IdleStandbyTimer },
+            onOpenAudioVideoSync = { activeDialog = PlayerDialogState.AudioVideoOffset },
             audioVideoSyncEnabled = audioVideoSyncEnabled,
             showEpisodesAction = canOpenEpisodePicker,
-            onOpenEpisodes = { showEpisodePicker = true },
-            onOpenSplitScreen = { showSplitDialog = true },
+            onOpenEpisodes = { activeDialog = PlayerDialogState.EpisodePicker },
+            onOpenSplitScreen = { activeDialog = PlayerDialogState.SplitScreen },
             onEnterPictureInPicture = enterPictureInPicture,
             onToggleMute = viewModel::toggleMute,
             isCastConnected = castConnectionState == CastConnectionState.CONNECTED,
@@ -1211,13 +1153,13 @@ fun PlayerScreen(
         // Track Selection Dialog
         if (!isInPictureInPictureMode) {
             PlayerTrackSelectionDialog(
-                trackType = showTrackSelection,
+                trackType = (activeDialog as? PlayerDialogState.TrackSelection)?.trackType,
                 audioTracks = availableAudioTracks,
                 subtitleTracks = availableSubtitleTracks,
                 videoTracks = availableVideoQualities,
                 liveTranslationAvailable = liveTranslationAvailable,
                 liveTranslationActive = liveTranslationActive,
-                onDismiss = { showTrackSelection = null },
+                onDismiss = { activeDialog = null },
                 onSelectAudio = viewModel::selectAudioTrack,
                 onSelectVideo = viewModel::selectVideoQuality,
                 onSelectSubtitle = { trackId ->
@@ -1230,47 +1172,47 @@ fun PlayerScreen(
                 }
             )
             ChannelVariantSelectionDialog(
-                visible = showVariantSelection,
+                visible = activeDialog is PlayerDialogState.ChannelVariantSelection,
                 channel = currentChannel,
-                onDismiss = { showVariantSelection = false },
+                onDismiss = { activeDialog = null },
                 onSelectVariant = viewModel::selectLiveVariant
             )
             PlayerSpeedSelectionDialog(
-                visible = showSpeedSelection,
+                visible = activeDialog is PlayerDialogState.PlaybackSpeed,
                 selectedSpeed = playbackSpeed,
-                onDismiss = { showSpeedSelection = false },
+                onDismiss = { activeDialog = null },
                 onSelectSpeed = viewModel::setPlaybackSpeed
             )
             PlayerSleepTimerDialog(
-                visible = showStopPlaybackTimerDialog,
+                visible = activeDialog is PlayerDialogState.StopPlaybackTimer,
                 title = stringResource(R.string.player_stop_playback_after),
                 selectedMinutes = sleepTimerUiState.stopTimerMinutes,
-                onDismiss = { showStopPlaybackTimerDialog = false },
+                onDismiss = { activeDialog = null },
                 onSelectMinutes = { minutes ->
                     viewModel.notifyUserActivity()
                     viewModel.setStopPlaybackTimer(minutes)
-                    showStopPlaybackTimerDialog = false
+                    activeDialog = null
                 }
             )
             PlayerSleepTimerDialog(
-                visible = showIdleStandbyTimerDialog,
+                visible = activeDialog is PlayerDialogState.IdleStandbyTimer,
                 title = stringResource(R.string.player_idle_standby_after),
                 selectedMinutes = sleepTimerUiState.idleTimerMinutes,
-                onDismiss = { showIdleStandbyTimerDialog = false },
+                onDismiss = { activeDialog = null },
                 onSelectMinutes = { minutes ->
                     viewModel.notifyUserActivity()
                     viewModel.setIdleStandbyTimer(minutes)
-                    showIdleStandbyTimerDialog = false
+                    activeDialog = null
                 }
             )
             PlayerAudioVideoOffsetDialog(
-                visible = showAudioVideoOffsetDialog &&
+                visible = activeDialog is PlayerDialogState.AudioVideoOffset &&
                     audioVideoSyncEnabled &&
                     castConnectionState != CastConnectionState.CONNECTED,
                 state = audioVideoOffsetState,
                 canSaveChannel = currentChannel != null,
                 onDismiss = {
-                    showAudioVideoOffsetDialog = false
+                    activeDialog = null
                     viewModel.dismissAudioVideoOffsetPreview()
                 },
                 onAdjust = viewModel::adjustAudioVideoOffset,
@@ -1280,14 +1222,14 @@ fun PlayerScreen(
                 onUseGlobal = viewModel::useGlobalAudioVideoOffset
             )
             PlayerEpisodeSelectionDialog(
-                visible = showEpisodePicker,
+                visible = activeDialog is PlayerDialogState.EpisodePicker,
                 seriesTitle = currentSeries?.name ?: playbackTitle.ifBlank { title },
                 seasons = currentSeriesSeasons.orEmpty(),
                 currentEpisodeId = currentEpisode?.id ?: internalChannelId,
                 currentSeasonNumber = currentEpisode?.seasonNumber ?: seasonNumber,
-                onDismiss = { showEpisodePicker = false },
+                onDismiss = { activeDialog = null },
                 onSelectEpisode = { episode ->
-                    showEpisodePicker = false
+                    activeDialog = null
                     viewModel.playEpisode(episode)
                 }
             )
@@ -1371,7 +1313,7 @@ fun PlayerScreen(
                     upcomingPrograms = upcomingPrograms,
                     onDismiss = { viewModel.closeOverlays() },
                     onOpenArchiveBrowser = {
-                        showProgramHistory = true
+                        activeDialog = PlayerDialogState.ProgramHistory
                         viewModel.closeOverlays()
                     },
                     onOverlayInteracted = viewModel::onLiveOverlayInteraction
@@ -1427,7 +1369,7 @@ fun PlayerScreen(
                         }
                     },
                     onRestartProgram = { viewModel.restartCurrentProgram() },
-                    onOpenArchive = { showProgramHistory = true },
+                    onOpenArchive = { activeDialog = PlayerDialogState.ProgramHistory },
                     onToggleAspectRatio = { viewModel.toggleAspectRatio() },
                     onToggleDiagnostics = { viewModel.toggleDiagnostics() },
                     onTogglePlayPause = {
@@ -1440,7 +1382,7 @@ fun PlayerScreen(
                     isPlaying = isPlaying,
                     currentAspectRatio = stringResource(aspectRatio.getLabelRes()),
                     isDiagnosticsEnabled = showDiagnostics,
-                    onOpenSplitScreen = { showSplitDialog = true },
+                    onOpenSplitScreen = { activeDialog = PlayerDialogState.SplitScreen },
                     subtitleTrackCount = availableSubtitleTracks.size,
                     liveTranslationAvailable = liveTranslationAvailable,
                     audioTrackCount = availableAudioTracks.size,
@@ -1448,11 +1390,11 @@ fun PlayerScreen(
                     channelVariantCount = currentChannel?.variants?.size ?: 0,
                     isMuted = isMuted,
                     onToggleMute = viewModel::toggleMute,
-                    onOpenSubtitleTracks = { showTrackSelection = TrackType.TEXT },
-                    onOpenAudioTracks = { showTrackSelection = TrackType.AUDIO },
-                    onOpenVideoTracks = { showTrackSelection = TrackType.VIDEO },
-                    onOpenVariants = { showVariantSelection = true },
-                    onOpenAudioVideoSync = { showAudioVideoOffsetDialog = true },
+                    onOpenSubtitleTracks = { activeDialog = PlayerDialogState.TrackSelection(TrackType.TEXT) },
+                    onOpenAudioTracks = { activeDialog = PlayerDialogState.TrackSelection(TrackType.AUDIO) },
+                    onOpenVideoTracks = { activeDialog = PlayerDialogState.TrackSelection(TrackType.VIDEO) },
+                    onOpenVariants = { activeDialog = PlayerDialogState.ChannelVariantSelection },
+                    onOpenAudioVideoSync = { activeDialog = PlayerDialogState.AudioVideoOffset },
                     audioVideoSyncEnabled = audioVideoSyncEnabled,
                     onEnterPictureInPicture = enterPictureInPicture,
                     isCastConnected = castConnectionState == CastConnectionState.CONNECTED,
@@ -1694,7 +1636,7 @@ private fun PlayerMiniZapOverlay(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (!channel.logoUrl.isNullOrBlank()) {
+                            if (channel.number > 0) {
                                 Text(
                                     text = "${channel.number}.",
                                     style = MaterialTheme.typography.titleMedium,

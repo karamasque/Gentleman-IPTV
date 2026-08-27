@@ -319,10 +319,17 @@ fun ChannelInfoOverlay(
                             }
 
                             // Channel Number & Name
-                            val channelLabel = currentChannel?.name ?: "Kanal"
-                            val channelNumberText = if (displayChannelNumber > 0) "Kanal $displayChannelNumber | " else ""
+                            val channelNumberPrefix = if (displayChannelNumber > 0) "$displayChannelNumber • " else ""
+                            val resolvedChannelName = currentChannel?.name?.takeIf { it.isNotBlank() } ?: ""
+                            val displayText = if (resolvedChannelName.isNotBlank()) {
+                                "$channelNumberPrefix$resolvedChannelName"
+                            } else if (displayChannelNumber > 0) {
+                                "$displayChannelNumber"
+                            } else {
+                                ""
+                            }
                             Text(
-                                text = "$channelNumberText$channelLabel",
+                                text = displayText,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,

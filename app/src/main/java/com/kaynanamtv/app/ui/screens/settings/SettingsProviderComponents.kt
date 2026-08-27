@@ -65,6 +65,7 @@ internal fun ProviderSettingsCard(
     xtreamIndexSectionStatuses: Map<String, ProviderCatalogCountStatus>,
     diagnostics: ProviderDiagnosticsUiModel?,
     databaseMaintenance: DatabaseMaintenanceUiModel?,
+    showDatabaseHealth: Boolean = false,
     syncWarnings: List<String>,
     onRetryWarningAction: (ProviderWarningAction) -> Unit,
     onConnect: () -> Unit,
@@ -109,20 +110,32 @@ internal fun ProviderSettingsCard(
             Column {
                 Text(
                     text = provider.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = OnBackground,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurface
                 )
                 val typeLabel = when (provider.type) {
-                    ProviderType.XTREAM_CODES -> "Xtream Giriş"
-                    ProviderType.STALKER_PORTAL -> "Stalker Giriş"
-                    ProviderType.M3U -> "M3U Playlist"
+                    ProviderType.XTREAM_CODES -> "Xtream Codes"
+                    ProviderType.M3U -> "M3U Çalma Listesi"
+                    ProviderType.STALKER_PORTAL -> "Stalker Portal"
                     ProviderType.JELLYFIN -> "Jellyfin"
                 }
-                val connText = if (provider.maxConnections > 0) " • ${provider.maxConnections} Bağlantı" else ""
                 Text(
-                    text = "$typeLabel$connText",
+                    text = typeLabel,
                     style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim
+                )
+                val connText = if (provider.maxConnections > 0) " • ${provider.maxConnections} Bağlantı" else ""
+                val lastSyncText = if (provider.lastSyncedAt > 0) {
+                    val date = java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault())
+                        .format(java.util.Date(provider.lastSyncedAt))
+                    "Son Senkronizasyon: $date$connText"
+                } else {
+                    "Henüz senkronize edilmedi$connText"
+                }
+                Text(
+                    text = lastSyncText,
+                    style = MaterialTheme.typography.labelSmall,
                     color = OnSurfaceDim
                 )
             }
@@ -130,58 +143,44 @@ internal fun ProviderSettingsCard(
                 Text(
                     text = stringResource(R.string.settings_active),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Primary,
+                    color = AccentGreen,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
-                        .background(Primary.copy(alpha = 0.16f), RoundedCornerShape(4.dp))
+                        .background(
+                            color = AccentGreen.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(4.dp)
+                        )
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 )
-            } else {
-                ProviderStatusBadge(status = provider.status)
             }
         }
 
-        // Expiration Date
-        val expDate = provider.expirationDate
-        val expirationText = remember(expDate) {
-            when (expDate) {
-                null -> context.getString(R.string.settings_expiration_unknown)
-                Long.MAX_VALUE -> context.getString(R.string.settings_expiration_never)
-                else -> context.getString(R.string.settings_expires, java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(expDate)))
-            }
-        }
-        Text(
-            text = expirationText,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (expDate != null && expDate < System.currentTimeMillis() && expDate != Long.MAX_VALUE) ErrorColor else OnSurfaceDim
-        )
-
-        if (liveOnboardingMessageRes != null) {
+        liveOnboardingMessageRes?.let { messageRes ->
             Text(
-                text = stringResource(liveOnboardingMessageRes),
+                text = stringResource(messageRes),
                 style = MaterialTheme.typography.bodySmall,
-                color = Secondary
+                color = AccentAmber,
+                fontWeight = FontWeight.Medium
             )
-            xtreamLiveOnboarding?.let { onboarding ->
-                Text(
-                    text = onboarding.summary,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = OnSurfaceDim
-                )
-            }
         }
 
         diagnostics?.let { model ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 ProviderCompactStat(
                     title = stringResource(R.string.settings_diagnostic_live),
-                    value = model.liveCatalogCount(liveOnboardingIncomplete, xtreamLiveOnboardingPhase)
-                )
-                ProviderCompactStat(
-                    title = stringResource(R.string.settings_diagnostic_movies),
-                    value = model.movieCatalogCount(xtreamIndexSectionStatuses["MOVIE"]),
+                    value = model.liveCatalogCount(liveOnboardingIncomplete, xtreamLiveOnboardingPhase),
                     syncingLabel = stringResource(R.string.settings_catalog_count_indexing)
                 )
+                if (provider.type != ProviderType.M3U) {
+                    ProviderCompactStat(
+                        title = stringResource(R.string.settings_diagnostic_movies),
+                        value = model.movieCatalogCount(xtreamIndexSectionStatuses["MOVIE"]),
+                        syncingLabel = stringResource(R.string.settings_catalog_count_indexing)
+                    )
+                }
                 if (provider.type != ProviderType.M3U) {
                     ProviderCompactStat(
                         title = stringResource(R.string.settings_diagnostic_series),
@@ -204,6 +203,7 @@ internal fun ProviderSettingsCard(
                     ProviderCatalogCountStatus.SYNCING
                 ),
                 databaseMaintenance = databaseMaintenance,
+                showDatabaseHealth = showDatabaseHealth,
                 syncWarnings = syncWarnings
             )
         }
@@ -229,18 +229,14 @@ internal fun ProviderSettingsCard(
         ProviderActionButtons(
             isActive = isActive,
             isSyncing = isSyncing,
-            liveOnboardingIncomplete = liveOnboardingIncomplete,
             onConnect = onConnect,
             onRefresh = onRefresh,
             onEdit = onEdit,
             onDelete = onDelete,
             onParentalControl = onParentalControl
         )
-
     }
 }
-
-
 
 internal fun xtreamLiveOnboardingMessageRes(phase: String?): Int = when (phase?.uppercase()) {
     "STARTING" -> R.string.settings_provider_live_onboarding_starting

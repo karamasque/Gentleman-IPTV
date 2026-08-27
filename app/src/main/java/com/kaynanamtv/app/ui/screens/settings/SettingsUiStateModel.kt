@@ -71,6 +71,8 @@ data class SettingsUiState(
     val hasParentalPin: Boolean = false,
     val appLanguage: String = "system",
     val appColorTheme: AppColorTheme = AppColorTheme.DEFAULT,
+    val visualEffectsMode: com.kaynanamtv.domain.model.VisualEffectsMode = com.kaynanamtv.domain.model.VisualEffectsMode.AUTO,
+    val showDatabaseHealth: Boolean = false,
     val appLandingDestination: AppLandingDestination = AppLandingDestination.HOME,
     val appTopLevelDestinations: List<AppTopLevelDestination> = AppTopLevelDestination.defaultOrder,
     val appHomeDashboardShelves: List<AppHomeDashboardShelf> = AppHomeDashboardShelf.defaultOrder,

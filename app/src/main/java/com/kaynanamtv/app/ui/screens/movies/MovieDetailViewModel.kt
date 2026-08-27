@@ -187,15 +187,15 @@ class MovieDetailViewModel @Inject constructor(
                     when (result) {
                         is Result.Success -> {
                             DownloadForegroundService.startDownload(context, result.data.id)
-                            Toast.makeText(context, context.getString(R.string.download_started), Toast.LENGTH_SHORT).show()
+                            _castEvents.emit(CastUiEvent.ShowMessage(R.string.download_started))
                         }
                         is Result.Error ->
-                            Toast.makeText(context, context.getString(R.string.download_failed), Toast.LENGTH_SHORT).show()
+                            _castEvents.emit(CastUiEvent.ShowMessage(R.string.download_failed))
                         Result.Loading -> Unit
                     }
                 }
                 is Result.Error ->
-                    Toast.makeText(context, context.getString(R.string.download_error_no_url), Toast.LENGTH_SHORT).show()
+                    _castEvents.emit(CastUiEvent.ShowMessage(R.string.download_error_no_url))
                 Result.Loading -> Unit
             }
         }

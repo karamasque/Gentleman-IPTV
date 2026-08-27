@@ -56,6 +56,7 @@ internal fun LazyListScope.settingsBrowsingSection(
     guideDefaultCategoryLabel: String,
     timeFormatLabel: String,
     appLanguageLabel: String,
+    onShowVisualEffectsModeDialogChange: (Boolean) -> Unit,
     onShowLiveTvModeDialogChange: (Boolean) -> Unit,
     onShowLiveTvFiltersDialogChange: (Boolean) -> Unit,
     onShowLiveTvQuickFilterVisibilityDialogChange: (Boolean) -> Unit,
@@ -76,12 +77,47 @@ internal fun LazyListScope.settingsBrowsingSection(
     onShowLanguageDialogChange: (Boolean) -> Unit,
     onRemoteShortcutDialogTargetChange: (RemoteShortcutDialogTarget?) -> Unit
 ) {
+    val visualEffectsLabel = when (uiState.visualEffectsMode) {
+        com.kaynanamtv.domain.model.VisualEffectsMode.AUTO -> "Otomatik (Önerilen)"
+        com.kaynanamtv.domain.model.VisualEffectsMode.FULL -> "Tam"
+        com.kaynanamtv.domain.model.VisualEffectsMode.BALANCED -> "Dengeli"
+        com.kaynanamtv.domain.model.VisualEffectsMode.LITE -> "Hafif"
+        com.kaynanamtv.domain.model.VisualEffectsMode.OFF -> "Kapalı"
+    }
+
     item {
         // ── Renk Teması Seçici ────────────────────────────────────────────
         ThemeColorPickerRow(
             currentTheme = uiState.appColorTheme,
             onThemeSelected = { viewModel.setAppColorTheme(it) }
         )
+        ClickableSettingsRow(
+            label = "Görsel Efektler",
+            value = visualEffectsLabel,
+            onClick = { onShowVisualEffectsModeDialogChange(true) }
+        )
+        TvClickableSurface(
+            onClick = { viewModel.setShowDatabaseHealth(!uiState.showDatabaseHealth) },
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.Transparent,
+                focusedContainerColor = Primary.copy(alpha = 0.15f)
+            ),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "Veritabanı sağlık bilgilerini göster", style = MaterialTheme.typography.bodyMedium, color = OnSurface)
+                    Text(text = "Tanılama panellerinde veritabanı boyutu ve bakım detaylarını gösterir", style = MaterialTheme.typography.bodySmall, color = OnBackground.copy(alpha = 0.6f))
+                }
+                Switch(checked = uiState.showDatabaseHealth, onCheckedChange = { viewModel.setShowDatabaseHealth(it) })
+            }
+        }
         ClickableSettingsRow(
             label = stringResource(R.string.settings_live_tv_channel_mode),
             value = stringResource(uiState.liveTvChannelMode.labelResId()),

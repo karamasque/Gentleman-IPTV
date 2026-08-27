@@ -115,7 +115,7 @@ internal fun ClickableSettingsRow(
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color.Transparent,
-            focusedContainerColor = if (enabled) Primary else Color.Transparent
+            focusedContainerColor = if (enabled) Primary.copy(alpha = 0.22f) else Color.Transparent
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         modifier = Modifier
@@ -137,12 +137,12 @@ internal fun ClickableSettingsRow(
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (isFocused) Color.White else (if (enabled) OnSurface else OnSurfaceDim)
+                color = if (isFocused) Primary else (if (enabled) OnSurface else OnSurfaceDim)
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (isFocused) Color.White else (if (enabled) Primary else OnSurfaceDim)
+                color = if (isFocused) Primary else (if (enabled) Primary else OnSurfaceDim)
             )
         }
     }
@@ -164,7 +164,7 @@ internal fun SwitchSettingsRow(
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color.Transparent,
-            focusedContainerColor = if (enabled) Primary else Color.Transparent
+            focusedContainerColor = if (enabled) Primary.copy(alpha = 0.22f) else Color.Transparent
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         modifier = Modifier
@@ -187,12 +187,12 @@ internal fun SwitchSettingsRow(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (isFocused) Color.White else (if (enabled) OnSurface else OnSurfaceDim)
+                    color = if (isFocused) Primary else (if (enabled) OnSurface else OnSurfaceDim)
                 )
                 Text(
                     text = value,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isFocused) Color.White.copy(alpha = 0.8f) else OnSurfaceDim
+                    color = if (isFocused) Primary.copy(alpha = 0.85f) else OnSurfaceDim
                 )
             }
             Switch(
