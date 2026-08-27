@@ -50,7 +50,7 @@ internal fun resolvePlaybackErrorMessage(error: PlayerError): String = when (cla
         else -> "Bu yayın mevcut yollar üzerinden başlatılamadı."
     }
 
-    PlayerRecoveryType.DECODER -> "Bu yayın mevcut kod çözücü modunda oynatılamadı."
+    PlayerRecoveryType.DECODER -> "Bu video biçimi cihazınızda oynatılamıyor."
     PlayerRecoveryType.DRM -> "Oynatma geçerli DRM kimlik bilgileri veya desteklenen bir cihaz güvenlik seviyesi gerektiriyor."
     PlayerRecoveryType.BUFFER_TIMEOUT -> "Oynatma bu yayında çok uzun süre arabelleğe alma aşamasında takılı kaldı."
     PlayerRecoveryType.CATCH_UP -> "Seçilen program için geriye dönük izleme mevcut değil."

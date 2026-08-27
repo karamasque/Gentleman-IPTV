@@ -260,6 +260,8 @@ class PlayerViewModel @Inject constructor(
     internal var playerNoticeHideJob: Job? = null
     internal var mutePersistJob: Job? = null
     internal var zapDebounceJob: Job? = null
+    internal var coalescedSeekJob: Job? = null
+    internal var pendingSeekTargetMs: Long? = null
     internal var recoveryJob: Job? = null
     internal var numericInputBuffer: String = ""
     internal val triedAlternativeStreams = mutableSetOf<String>()

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,11 +26,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.collectAsState
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,7 +42,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
@@ -114,7 +109,6 @@ fun DashboardScreen(
     val provider = uiState.provider
     val snackbarHostState = remember { SnackbarHostState() }
     var showHomeCustomizationDialog by remember { mutableStateOf(false) }
-    var showStartupUpdateDialog by remember { mutableStateOf(true) }
 
     LaunchedEffect(uiState.userMessage) {
         uiState.userMessage?.let { message ->
@@ -350,262 +344,6 @@ fun DashboardScreen(
                 showHomeCustomizationDialog = false
             }
         )
-    }
-
-    if (showStartupUpdateDialog && uiState.updateNotice != null) {
-        val notice = uiState.updateNotice!!
-
-        DashboardStartupUpdateDialog(
-            notice = notice,
-            onDismiss = { showStartupUpdateDialog = false },
-            onOpenSettings = {
-                showStartupUpdateDialog = false
-                onNavigate(Routes.SETTINGS)
-            },
-            onInstallUpdate = {
-                showStartupUpdateDialog = false
-                viewModel.installDownloadedUpdate()
-            },
-            onDownloadAndInstall = {
-                // Keep dialog open during download so user sees real-time progress
-                viewModel.downloadAndInstallUpdate()
-            }
-        )
-    }
-}
-
-private fun formatUpdateBytes(bytes: Long): String {
-    if (bytes <= 0) return "0 MB"
-    val mb = bytes.toDouble() / (1024.0 * 1024.0)
-    return String.format(java.util.Locale.US, "%.1f MB", mb)
-}
-
-private fun formatUpdateReleaseDateTime(publishedAt: String?): String {
-    if (publishedAt.isNullOrBlank()) return ""
-    return runCatching {
-        val instant = java.time.Instant.parse(publishedAt)
-        val zdt = instant.atZone(java.time.ZoneId.systemDefault())
-        val formatter = java.time.format.DateTimeFormatter.ofPattern("dd MMMM yyyy, HH:mm", java.util.Locale("tr", "TR"))
-        zdt.format(formatter)
-    }.getOrElse {
-        if (publishedAt.length >= 16) {
-            publishedAt.substring(0, 16).replace("T", " ")
-        } else {
-            publishedAt
-        }
-    }
-}
-
-@Composable
-private fun DashboardStartupUpdateDialog(
-    notice: DashboardUpdateNotice,
-    onDismiss: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onInstallUpdate: () -> Unit,
-    onDownloadAndInstall: () -> Unit
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            colors = SurfaceDefaults.colors(containerColor = Color(0xFF141824)),
-            border = Border(BorderStroke(1.5.dp, Primary)),
-            modifier = Modifier
-                .widthIn(max = 540.dp)
-                .fillMaxWidth(0.92f)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .background(Primary.copy(alpha = 0.16f), RoundedCornerShape(14.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (notice.isDownloading) "⏳" else "🚀",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Yeni Güncelleme Mevcut!",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "KaynanamTV v${notice.latestVersionName}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Primary,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-
-                // Metadata Card: Version, Date, Time
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF1C2234), RoundedCornerShape(12.dp))
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Mevcut Sürüm:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceDim
-                        )
-                        Text(
-                            text = "v${com.kaynanamtv.app.BuildConfig.VERSION_NAME}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Yeni Sürüm:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceDim
-                        )
-                        Text(
-                            text = "v${notice.latestVersionName}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    val formattedDate = formatUpdateReleaseDateTime(notice.publishedAt)
-                    if (formattedDate.isNotBlank()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Yayın Tarihi & Saati:",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceDim
-                            )
-                            Text(
-                                text = formattedDate,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-
-                // Download Progress or Status Text
-                if (notice.isDownloading) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "İndiriliyor... %${notice.progressPercentage}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (notice.totalBytes > 0) {
-                                Text(
-                                    text = "${formatUpdateBytes(notice.downloadedBytes)} / ${formatUpdateBytes(notice.totalBytes)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = OnSurfaceDim
-                                )
-                            }
-                        }
-                        LinearProgressIndicator(
-                            progress = { notice.progressPercentage / 100f },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(4.dp)),
-                            color = Primary,
-                            trackColor = Color.White.copy(alpha = 0.1f)
-                        )
-                    }
-                } else if (notice.installReady) {
-                    Text(
-                        text = "✅ İndirme tamamlandı! Güncellemeyi kurmaya hazırsınız.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF4CAF50),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                } else if (notice.installPermissionRequired) {
-                    Text(
-                        text = "⚠️ Güncellemeyi yüklemek için harici uygulama yükleme izni vermelisiniz.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFFFC107)
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    TvButton(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.colors(
-                            containerColor = SurfaceElevated,
-                            focusedContainerColor = SurfaceHighlight,
-                            contentColor = TextPrimary
-                        )
-                    ) {
-                        Text(stringResource(R.string.epg_recording_conflict_cancel))
-                    }
-
-                    if (notice.isDownloading) {
-                        TvButton(
-                            onClick = {},
-                            enabled = false,
-                            colors = ButtonDefaults.colors(
-                                containerColor = Primary.copy(alpha = 0.5f),
-                                disabledContainerColor = Primary.copy(alpha = 0.4f),
-                                disabledContentColor = TextPrimary
-                            )
-                        ) {
-                            Text("İndiriliyor... %${notice.progressPercentage}")
-                        }
-                    } else {
-                        DashboardActionButton(
-                            label = if (notice.installPermissionRequired) {
-                                "Yükleme İzni Ver ve Kur"
-                            } else if (notice.installReady) {
-                                "Güncellemeyi Kur"
-                            } else {
-                                "Güncellemeyi İndir"
-                            },
-                            onClick = {
-                                if (notice.installReady || notice.installPermissionRequired) {
-                                    onInstallUpdate()
-                                } else {
-                                    onDownloadAndInstall()
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 

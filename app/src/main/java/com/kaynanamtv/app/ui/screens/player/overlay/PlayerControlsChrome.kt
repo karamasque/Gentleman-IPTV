@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MovieFilter
@@ -88,6 +89,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.draw.scale
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -261,6 +265,7 @@ fun PlayerControlsOverlay(
     onToggleDiagnostics: () -> Unit = {},
     onUserInteraction: () -> Unit = {},
     onOpenGuide: () -> Unit = {},
+    onLockScreen: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -272,6 +277,11 @@ fun PlayerControlsOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures {
+                        onClose()
+                    }
+                }
                 .onPreviewKeyEvent { event ->
                     if (event.nativeKeyEvent.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
                     when (event.nativeKeyEvent.keyCode) {
@@ -358,6 +368,7 @@ fun PlayerControlsOverlay(
                 showExternalPlayerAction = showExternalPlayerAction,
                 onOpenExternalPlayer = onOpenExternalPlayer,
                 onOpenGuide = onOpenGuide,
+                onLockScreen = onLockScreen,
                 onClose = onClose
             )
         }
@@ -739,6 +750,7 @@ private fun PlayerBottomBar(
     showExternalPlayerAction: Boolean,
     onOpenExternalPlayer: () -> Unit,
     onOpenGuide: () -> Unit = {},
+    onLockScreen: () -> Unit = {},
     onClose: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -850,6 +862,7 @@ private fun PlayerBottomBar(
                 onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
                 showExternalPlayerAction = showExternalPlayerAction,
                 onOpenExternalPlayer = onOpenExternalPlayer,
+                onLockScreen = onLockScreen,
                 onClose = onClose
             )
         }
@@ -1487,6 +1500,7 @@ private fun PlayerVodInfo(
     onSeekPreviewPositionChanged: (Long?) -> Unit,
     showExternalPlayerAction: Boolean = false,
     onOpenExternalPlayer: () -> Unit = {},
+    onLockScreen: () -> Unit = {},
     onClose: () -> Unit = {}
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
@@ -1526,6 +1540,8 @@ private fun PlayerVodInfo(
                 VodInteractiveTimeline(
                     currentPosition = currentPosition,
                     duration = duration,
+                    isPlaying = isPlaying,
+                    playbackSpeed = playbackSpeed,
                     seekPreview = seekPreview,
                     playButtonFocusRequester = playButtonFocusRequester,
                     onSeekToPosition = onSeekToPosition,
@@ -1621,6 +1637,13 @@ private fun PlayerVodInfo(
                         icon = Icons.Default.PictureInPicture,
                         label = "PiP",
                         onClick = onEnterPictureInPicture,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    TvVodControlButton(
+                        icon = Icons.Default.Lock,
+                        label = stringResource(R.string.player_lock_screen),
+                        onClick = onLockScreen,
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
 
@@ -1738,6 +1761,8 @@ private object VodControlsColors {
 private fun VodInteractiveTimeline(
     currentPosition: Long,
     duration: Long,
+    isPlaying: Boolean,
+    playbackSpeed: Float,
     seekPreview: SeekPreviewState,
     playButtonFocusRequester: FocusRequester,
     onSeekToPosition: (Long) -> Unit,
@@ -1752,8 +1777,36 @@ private fun VodInteractiveTimeline(
     val latestSetScrubbingMode by rememberUpdatedState(onSetScrubbingMode)
     val latestSeekPreviewPositionChanged by rememberUpdatedState(onSeekPreviewPositionChanged)
 
+    // Smooth continuous position interpolation anchored to last genuine ExoPlayer sample
+    var lastSamplePositionMs by remember { mutableLongStateOf(currentPosition) }
+    var lastSampleTimestampNs by remember { mutableLongStateOf(System.nanoTime()) }
+    var interpolatedPositionMs by remember { mutableLongStateOf(currentPosition) }
+
+    LaunchedEffect(currentPosition) {
+        lastSamplePositionMs = currentPosition
+        lastSampleTimestampNs = System.nanoTime()
+        interpolatedPositionMs = currentPosition
+    }
+
+    val isScrubbingActive = userScrubbingPositionMs != null
+    val isSeekPreviewActive = seekPreview.visible && seekPreview.positionMs >= 0L
+
+    LaunchedEffect(isPlaying, isScrubbingActive, isSeekPreviewActive, playbackSpeed, duration) {
+        if (isPlaying && !isScrubbingActive && !isSeekPreviewActive && duration > 0L) {
+            while (isActive) {
+                withFrameNanos { frameTimeNanos ->
+                    val elapsedNanos = (frameTimeNanos - lastSampleTimestampNs).coerceAtLeast(0L)
+                    val elapsedMs = ((elapsedNanos / 1_000_000.0) * playbackSpeed).toLong()
+                    interpolatedPositionMs = (lastSamplePositionMs + elapsedMs).coerceIn(0L, duration)
+                }
+            }
+        } else if (!isPlaying) {
+            interpolatedPositionMs = currentPosition
+        }
+    }
+
     val displayedPositionMs = userScrubbingPositionMs
-        ?: (if (seekPreview.visible && seekPreview.positionMs >= 0L) seekPreview.positionMs else currentPosition).coerceIn(
+        ?: (if (isSeekPreviewActive) seekPreview.positionMs else if (isPlaying) interpolatedPositionMs else currentPosition).coerceIn(
             0L,
             if (duration > 0L) duration else Long.MAX_VALUE
         )

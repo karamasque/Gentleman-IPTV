@@ -9,7 +9,10 @@ import android.os.StrictMode
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.kaynanamtv.app.cast.CastManager
 import com.kaynanamtv.app.cast.CastRouteChooserActivity
 import com.kaynanamtv.app.backup.BackupFileBridge
@@ -268,6 +271,9 @@ class MainActivity : ComponentActivity() {
         handleExternalIntent(intent)
     }
 
+    var onPictureInPictureDismissed: (() -> Unit)? = null
+    private var wasInPictureInPictureMode: Boolean = false
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         enterPlayerPictureInPictureModeIfEligible()
@@ -279,6 +285,27 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         _pictureInPictureModeFlow.value = isInPictureInPictureMode
+        if (isInPictureInPictureMode) {
+            wasInPictureInPictureMode = true
+        } else if (wasInPictureInPictureMode) {
+            wasInPictureInPictureMode = false
+            // When PiP is dismissed by user (X button or swipe), the Activity is not resumed.
+            // Check post-transition after short delay: if not resumed, trigger cleanup.
+            lifecycleScope.launch {
+                delay(250)
+                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    onPictureInPictureDismissed?.invoke()
+                }
+            }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (isFinishing && wasInPictureInPictureMode) {
+            wasInPictureInPictureMode = false
+            onPictureInPictureDismissed?.invoke()
+        }
     }
 
     fun updatePlayerPictureInPictureState(

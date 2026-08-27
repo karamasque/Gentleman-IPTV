@@ -69,8 +69,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.Job
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -240,6 +243,16 @@ fun PlayerScreen(
 
     var activeDialog by remember { mutableStateOf<PlayerDialogState?>(null) }
     var channelInfoSubPanelOpen by remember { mutableStateOf(false) }
+
+    var isScreenLocked by rememberSaveable { mutableStateOf(false) }
+    var showUnlockPrompt by remember { mutableStateOf(false) }
+    var unlockPromptJob by remember { mutableStateOf<Job?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
+    var videoZoomScale by remember { mutableFloatStateOf(1f) }
+
+    var doubleTapSeekFeedback by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
+    var doubleTapFeedbackJob by remember { mutableStateOf<Job?>(null) }
     
     val focusRequester = remember { FocusRequester() }
     val channelListFocusRequester = remember { FocusRequester() }
@@ -309,7 +322,11 @@ fun PlayerScreen(
     }
 
     DisposableEffect(mainActivity) {
+        mainActivity?.onPictureInPictureDismissed = {
+            viewModel.onPlayerScreenDisposed()
+        }
         onDispose {
+            mainActivity?.onPictureInPictureDismissed = null
             mainActivity?.clearPlayerPictureInPictureState()
             viewModel.onPlayerScreenDisposed()
         }
@@ -455,6 +472,9 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(title, artworkUrl, archiveTitle, seriesId, seasonNumber, episodeNumber, prepareIdentity) {
+        videoZoomScale = 1f
+        isScreenLocked = false
+        showUnlockPrompt = false
         viewModel.updatePreparedRouteMetadata(
             title = title,
             artworkUrl = artworkUrl,
@@ -506,6 +526,7 @@ fun PlayerScreen(
     }
 
     val handleBackPress = remember(
+        isScreenLocked,
         autoPlayCountdown,
         playerNotice,
         activeDialog,
@@ -519,6 +540,10 @@ fun PlayerScreen(
     ) {
         {
             when {
+                isScreenLocked -> {
+                    isScreenLocked = false
+                    showUnlockPrompt = false
+                }
                 viewModel.hasPendingNumericChannelInput() -> viewModel.clearNumericChannelInput()
                 autoPlayCountdown != null -> viewModel.cancelAutoPlay()
                 playerNotice != null -> viewModel.dismissPlayerNotice()
@@ -548,34 +573,100 @@ fun PlayerScreen(
             .focusRequester(focusRequester)
             .focusProperties {
                 // Only allow focus on the main background when no overlays are active
-                canFocus = !anyOverlayVisible && !showControls
+                canFocus = !anyOverlayVisible && !showControls && !isScreenLocked
             }
             .focusable()
-            .pointerInput(contentType, anyOverlayVisible, showControls) {
-                detectTapGestures {
-                    viewModel.notifyUserActivity()
-                    when {
-                        anyOverlayVisible -> return@detectTapGestures
-                        showControls -> viewModel.toggleControls()
-                        contentType == "LIVE" && !isCatchUpPlayback -> viewModel.openChannelInfoOverlay()
-                        else -> viewModel.toggleControls()
+            .pointerInput(
+                isScreenLocked,
+                contentType,
+                isCatchUpPlayback,
+                showControls,
+                showChannelInfoOverlay,
+                showChannelListOverlay,
+                showCategoryListOverlay,
+                showEpgOverlay,
+                showDiagnostics,
+                activeDialog
+            ) {
+                if (isScreenLocked) {
+                    detectTapGestures {
+                        showUnlockPrompt = true
+                        unlockPromptJob?.cancel()
+                        unlockPromptJob = coroutineScope.launch {
+                            delay(3000)
+                            showUnlockPrompt = false
+                        }
+                    }
+                } else if (contentType == "LIVE" && !isCatchUpPlayback) {
+                    detectTapGestures {
+                        viewModel.notifyUserActivity()
+                        when {
+                            activeDialog != null || showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showDiagnostics -> return@detectTapGestures
+                            showControls -> viewModel.toggleControls()
+                            showChannelInfoOverlay -> viewModel.closeChannelInfoOverlay()
+                            else -> viewModel.openChannelInfoOverlay()
+                        }
+                    }
+                } else {
+                    detectTapGestures(
+                        onTap = {
+                            viewModel.notifyUserActivity()
+                            when {
+                                activeDialog != null || showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showDiagnostics -> return@detectTapGestures
+                                else -> viewModel.toggleControls()
+                            }
+                        },
+                        onDoubleTap = { offset ->
+                            viewModel.notifyUserActivity()
+                            if (anyOverlayVisible || showControls) return@detectTapGestures
+                            val isRightSide = offset.x > (size.width * 0.5f)
+                            val deltaSec = 10
+                            val deltaMs = deltaSec * 1000L
+
+                            if (isRightSide) {
+                                viewModel.seekForward(deltaMs)
+                            } else {
+                                viewModel.seekBackward(deltaMs)
+                            }
+
+                            val currentSec = if (doubleTapSeekFeedback?.first == isRightSide) {
+                                (doubleTapSeekFeedback?.second ?: 0) + deltaSec
+                            } else {
+                                deltaSec
+                            }
+                            doubleTapSeekFeedback = Pair(isRightSide, currentSec)
+                            doubleTapFeedbackJob?.cancel()
+                            doubleTapFeedbackJob = coroutineScope.launch {
+                                delay(850)
+                                doubleTapSeekFeedback = null
+                            }
+                        }
+                    )
+                }
+            }
+            .pointerInput(isScreenLocked, contentType) {
+                if (!isScreenLocked && contentType != "LIVE") {
+                    detectTransformGestures { _, _, zoom, _ ->
+                        videoZoomScale = (videoZoomScale * zoom).coerceIn(1f, 2.5f)
                     }
                 }
             }
-            .pointerInput(contentType, anyOverlayVisible) {
-                var totalDragAmount = 0f
-                detectVerticalDragGestures(
-                    onDragStart = { totalDragAmount = 0f },
-                    onDragEnd = {
-                        if (!anyOverlayVisible && totalDragAmount < -50f) { // Swiping UP (-Y direction)
-                            viewModel.notifyUserActivity()
-                            viewModel.openChannelListOverlay()
+            .pointerInput(isScreenLocked, contentType, anyOverlayVisible) {
+                if (!isScreenLocked) {
+                    var totalDragAmount = 0f
+                    detectVerticalDragGestures(
+                        onDragStart = { totalDragAmount = 0f },
+                        onDragEnd = {
+                            if (!anyOverlayVisible && totalDragAmount < -50f) { // Swiping UP (-Y direction)
+                                viewModel.notifyUserActivity()
+                                viewModel.openChannelListOverlay()
+                            }
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            totalDragAmount += dragAmount
                         }
-                    },
-                    onVerticalDrag = { change, dragAmount ->
-                        totalDragAmount += dragAmount
-                    }
-                )
+                    )
+                }
             }
             // --- Key handler ownership ---
             // onPreviewKeyEvent (top-down): DPAD_UP, DPAD_DOWN, CHANNEL_UP, CHANNEL_DOWN
@@ -666,18 +757,21 @@ fun PlayerScreen(
                             if (seekPreview.visible) {
                                 viewModel.seekTo(seekPreview.positionMs)
                                 true
-                            } else if (showChannelListOverlay || showEpgOverlay || showChannelInfoOverlay || showDiagnostics) {
+                            } else if (showChannelListOverlay || showEpgOverlay || showDiagnostics) {
                                 viewModel.onLiveOverlayInteraction()
                                 false
                             } else if (contentType == "LIVE" && !isCatchUpPlayback && viewModel.hasPendingNumericChannelInput()) {
                                 viewModel.commitNumericChannelInput()
                                 true
-                            } else if (contentType == "LIVE" && !isCatchUpPlayback) {
-                                if (showChannelInfoOverlay) viewModel.closeChannelInfoOverlay()
-                                else viewModel.openChannelInfoOverlay()
+                            } else if (showChannelInfoOverlay) {
+                                viewModel.closeChannelInfoOverlay()
                                 true
                             } else if (showControls) {
-                                false
+                                viewModel.toggleControls()
+                                true
+                            } else if (contentType == "LIVE" && !isCatchUpPlayback) {
+                                viewModel.openChannelInfoOverlay()
+                                true
                             } else {
                                 viewModel.toggleControls()
                                 true
@@ -704,7 +798,7 @@ fun PlayerScreen(
                                     repeatCount < 10 -> 30_000L
                                     else -> 60_000L
                                 }
-                                if (isRtl) viewModel.seekForward(deltaMs) else viewModel.seekBackward(deltaMs)
+                                if (isRtl) viewModel.coalescedSeek(deltaMs) else viewModel.coalescedSeek(-deltaMs)
                                 true
                             } else {
                                 false
@@ -728,7 +822,7 @@ fun PlayerScreen(
                                     repeatCount < 10 -> 30_000L
                                     else -> 60_000L
                                 }
-                                if (isRtl) viewModel.seekBackward(deltaMs) else viewModel.seekForward(deltaMs)
+                                if (isRtl) viewModel.coalescedSeek(-deltaMs) else viewModel.coalescedSeek(deltaMs)
                                 true
                             } else {
                                 false
@@ -872,7 +966,12 @@ fun PlayerScreen(
             resizeMode = aspectRatio.toPlayerSurfaceResizeMode(),
             surfaceType = renderSurfaceType,
             onColorDetected = { ambilightColor = it },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = videoZoomScale
+                    scaleY = videoZoomScale
+                }
         )
 
         // Premium Ambient Light (Ambilight) Glow
@@ -898,12 +997,97 @@ fun PlayerScreen(
             )
         }
 
-        LaunchedEffect(playbackState) {
-            android.util.Log.d("PlayerZapTrace", "[BUFFERING_UI_VISIBLE] visible=${playbackState == PlaybackState.BUFFERING}")
+        // Double-Tap Seek Feedback Overlay (YouTube Style)
+        AnimatedVisibility(
+            visible = doubleTapSeekFeedback != null,
+            enter = fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.85f),
+            exit = fadeOut(tween(250)),
+            modifier = Modifier
+                .align(if (doubleTapSeekFeedback?.first == true) Alignment.CenterEnd else Alignment.CenterStart)
+                .padding(horizontal = 48.dp)
+        ) {
+            doubleTapSeekFeedback?.let { (isForward, totalSec) ->
+                Box(
+                    modifier = Modifier
+                        .size(130.dp)
+                        .background(
+                            color = Color.Black.copy(alpha = 0.65f),
+                            shape = RoundedCornerShape(65.dp)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = Color.White.copy(alpha = 0.25f),
+                            shape = RoundedCornerShape(65.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = if (isForward) "⏩" else "⏪",
+                            fontSize = androidx.compose.ui.unit.TextUnit(24f, androidx.compose.ui.unit.TextUnitType.Sp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (isForward) "+$totalSec sn" else "-$totalSec sn",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp)
+                        )
+                    }
+                }
+            }
         }
 
-        // Buffering indicator
-        if (playbackState == PlaybackState.BUFFERING) {
+        // Screen Lock / Floating Unlock Prompt Overlay
+        AnimatedVisibility(
+            visible = isScreenLocked && showUnlockPrompt,
+            enter = fadeIn(tween(150)) + scaleIn(tween(150)),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(24.dp)
+        ) {
+            Button(
+                onClick = {
+                    isScreenLocked = false
+                    showUnlockPrompt = false
+                    if (!showControls) {
+                        viewModel.toggleControls()
+                    }
+                },
+                colors = ButtonDefaults.colors(
+                    containerColor = Color.Black.copy(alpha = 0.75f),
+                    contentColor = Color.White
+                ),
+                shape = ButtonDefaults.shape(shape = RoundedCornerShape(16.dp)),
+                border = ButtonDefaults.border(
+                    border = Border(border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF6366F1)))
+                ),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Text(
+                    text = "🔒 " + stringResource(R.string.player_unlock_screen),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        var showBufferingUi by remember { mutableStateOf(false) }
+        LaunchedEffect(playbackState) {
+            android.util.Log.d("PlayerZapTrace", "[BUFFERING_UI_VISIBLE] visible=${playbackState == PlaybackState.BUFFERING}")
+            if (playbackState == PlaybackState.BUFFERING) {
+                delay(350)
+                showBufferingUi = true
+            } else {
+                showBufferingUi = false
+            }
+        }
+
+        // Buffering indicator with hysteresis (prevents rapid flashing during seek)
+        if (showBufferingUi) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -937,12 +1121,12 @@ fun PlayerScreen(
             exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 116.dp)
+                .padding(top = 40.dp)
         ) {
             PlayerNoticeBanner(
                 notice = playerNotice,
-                onDismiss = viewModel::dismissPlayerNotice,
-                onAction = handlePlayerNoticeAction
+                onAction = handlePlayerNoticeAction,
+                onDismiss = viewModel::dismissPlayerNotice
             )
         }
 
@@ -991,18 +1175,20 @@ fun PlayerScreen(
             )
         }
 
+        // Overlays
         PlayerControlsOverlayHost(
             playerEngine = playerEngine,
-            visible = showControls && contentType != "LIVE",
+            visible = showControls && !isScreenLocked,
             title = playbackTitle.ifBlank { title },
             contentType = contentType,
             isCatchUpPlayback = isCatchUpPlayback,
             isPlaying = isPlaying,
             currentProgram = currentProgram,
+            nextProgram = nextProgram,
             currentChannel = currentChannel,
             currentChannelName = currentChannel?.name,
             displayChannelNumber = displayChannelNumber,
-            aspectRatioLabel = aspectRatio.modeName,
+            aspectRatioLabel = stringResource(aspectRatio.getLabelRes()),
             subtitleTrackCount = availableSubtitleTracks.size,
             liveTranslationAvailable = liveTranslationAvailable,
             audioTrackCount = availableAudioTracks.size,
@@ -1017,9 +1203,11 @@ fun PlayerScreen(
             quickActionsFocusRequester = quickActionsFocusRequester,
             modifier = Modifier.fillMaxSize(),
             onClose = onBack,
-            onTogglePlayPause = { if (isPlaying) viewModel.pause() else viewModel.play() },
-            onSeekBackward = viewModel::seekBackward,
-            onSeekForward = viewModel::seekForward,
+            onTogglePlayPause = {
+                if (isPlaying) viewModel.pause() else viewModel.play()
+            },
+            onSeekBackward = { viewModel.seekBackward() },
+            onSeekForward = { viewModel.seekForward() },
             onRestartProgram = viewModel::restartCurrentProgram,
             onOpenArchive = { activeDialog = PlayerDialogState.ProgramHistory },
             onStartRecording = {
@@ -1066,10 +1254,13 @@ fun PlayerScreen(
             onSetScrubbingMode = viewModel::setScrubbingMode,
             seekPreview = seekPreview,
             onSeekPreviewPositionChanged = viewModel::updateSeekPreview,
-            nextProgram = nextProgram,
             onToggleDiagnostics = viewModel::toggleDiagnostics,
             onOpenGuide = {
                 viewModel.openEpgOverlay()
+            },
+            onLockScreen = {
+                isScreenLocked = true
+                viewModel.cancelControlsAutoHide()
             },
             onUserInteraction = {
                 viewModel.notifyUserActivity()
@@ -1498,6 +1689,7 @@ private fun PlayerControlsOverlayHost(
     nextProgram: com.kaynanamtv.domain.model.Program? = null,
     onToggleDiagnostics: () -> Unit = {},
     onOpenGuide: () -> Unit = {},
+    onLockScreen: () -> Unit = {},
     onUserInteraction: () -> Unit
 ) {
     val currentPosition = playerEngine.currentPosition.collectAsStateWithLifecycle().value
@@ -1566,6 +1758,7 @@ private fun PlayerControlsOverlayHost(
         onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
         onToggleDiagnostics = onToggleDiagnostics,
         onOpenGuide = onOpenGuide,
+        onLockScreen = onLockScreen,
         onUserInteraction = onUserInteraction
     )
 }

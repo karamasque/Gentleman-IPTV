@@ -5,9 +5,34 @@ import androidx.lifecycle.viewModelScope
 import com.kaynanamtv.domain.model.ContentType
 import com.kaynanamtv.domain.model.Episode
 import com.kaynanamtv.player.timeshift.LiveTimeshiftStatus
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val PLAYBACK_CONTROL_MUTE_TOGGLE_DEBOUNCE_MS = 250L
+
+fun PlayerViewModel.coalescedSeek(deltaMs: Long) {
+    notifyUserActivity()
+    if (currentContentType != ContentType.LIVE || isCatchUpPlayback.value) {
+        val duration = playerEngine.duration.value
+        if (duration <= 0L) return
+        val currentBase = pendingSeekTargetMs ?: playerEngine.currentPosition.value
+        val targetPos = (currentBase + deltaMs).coerceIn(0L, duration)
+        pendingSeekTargetMs = targetPos
+        updateSeekPreview(targetPos)
+
+        coalescedSeekJob?.cancel()
+        coalescedSeekJob = viewModelScope.launch {
+            delay(220)
+            val finalTarget = pendingSeekTargetMs ?: targetPos
+            pendingSeekTargetMs = null
+            seekTo(finalTarget)
+            delay(600)
+            updateSeekPreview(null)
+        }
+    } else {
+        if (deltaMs >= 0) playerEngine.seekForward() else playerEngine.seekBackward()
+    }
+}
 
 fun PlayerViewModel.seekForward(deltaMs: Long = 10_000L) {
     notifyUserActivity()

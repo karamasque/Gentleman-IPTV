@@ -240,17 +240,17 @@ fun SeriesScreen(
                 onOpenContinueWatching = {
                     viewModel.setSelectedLibraryFilterType(LibraryFilterType.IN_PROGRESS)
                     viewModel.setSelectedLibrarySortBy(LibrarySortBy.LIBRARY)
-                    viewModel.selectFullLibraryBrowse()
+                    viewModel.selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY)
                 },
                 onOpenTopRated = {
                     viewModel.setSelectedLibraryFilterType(LibraryFilterType.TOP_RATED)
                     viewModel.setSelectedLibrarySortBy(LibrarySortBy.RATING)
-                    viewModel.selectFullLibraryBrowse()
+                    viewModel.selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY)
                 },
                 onOpenFresh = {
                     viewModel.setSelectedLibraryFilterType(LibraryFilterType.RECENTLY_UPDATED)
                     viewModel.setSelectedLibrarySortBy(LibrarySortBy.UPDATED)
-                    viewModel.selectFullLibraryBrowse()
+                    viewModel.selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY)
                 },
                 onLoadMore = viewModel::loadMoreSelectedCategory,
                 onLoadMorePreviewRows = viewModel::loadMorePreviewRows,

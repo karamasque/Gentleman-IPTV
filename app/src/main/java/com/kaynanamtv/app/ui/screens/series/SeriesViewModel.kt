@@ -524,6 +524,8 @@ class SeriesViewModel @Inject constructor(
     }
 
     fun selectFullLibraryBrowse() {
+        _selectedLibraryFilterType.value = LibraryFilterType.ALL
+        _selectedLibrarySortBy.value = LibrarySortBy.LIBRARY
         selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY)
     }
 
