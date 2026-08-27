@@ -265,6 +265,7 @@ class PreferencesRepository @Inject constructor(
         val SHOW_DATABASE_HEALTH = booleanPreferencesKey("show_database_health")
         val APP_FORCE_UPDATE_BLOCKED = booleanPreferencesKey("app_force_update_blocked")
         val APP_FORCE_UPDATE_MIN_VERSION = intPreferencesKey("app_force_update_min_version")
+        val APP_FORCE_UPDATE_MIN_VERSION_NAME = stringPreferencesKey("app_force_update_min_version_name")
         val APP_FORCE_UPDATE_LATEST_VERSION_NAME = stringPreferencesKey("app_force_update_latest_version_name")
         val APP_FORCE_UPDATE_LATEST_VERSION_CODE = intPreferencesKey("app_force_update_latest_version_code")
         val APP_FORCE_UPDATE_APK_DOWNLOAD_URL = stringPreferencesKey("app_force_update_apk_download_url")
@@ -816,6 +817,10 @@ class PreferencesRepository @Inject constructor(
         }
     }
 
+    val cachedMinimumSupportedVersionName: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.APP_FORCE_UPDATE_MIN_VERSION_NAME]?.takeIf { it.isNotBlank() }
+    }
+
     val testOverrideMinVersionCode: Flow<Int?> = context.dataStore.data.map { preferences ->
         try {
             preferences[PreferencesKeys.APP_TEST_OVERRIDE_MIN_VERSION_CODE]
@@ -1057,11 +1062,39 @@ class PreferencesRepository @Inject constructor(
         }
     }
 
-    suspend fun setForceUpdateBlockedState(blocked: Boolean, minVersionCode: Int?) {
+    fun getForceUpdateBlockedSynchronously(): Boolean {
+        return themeCachePrefs.getBoolean("app_force_update_blocked", false)
+    }
+
+    suspend fun setForceUpdateBlockedState(
+        blocked: Boolean,
+        minVersionCode: Int? = null,
+        minVersionName: String? = null,
+        latestVersionName: String? = null,
+        latestVersionCode: Int? = null,
+        downloadUrl: String? = null,
+        releaseNotes: String? = null
+    ) {
+        themeCachePrefs.edit().putBoolean("app_force_update_blocked", blocked).apply()
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.APP_FORCE_UPDATE_BLOCKED] = blocked
             if (minVersionCode != null) {
                 preferences[PreferencesKeys.APP_FORCE_UPDATE_MIN_VERSION] = minVersionCode
+            }
+            if (!minVersionName.isNullOrBlank()) {
+                preferences[PreferencesKeys.APP_FORCE_UPDATE_MIN_VERSION_NAME] = minVersionName
+            }
+            if (!latestVersionName.isNullOrBlank()) {
+                preferences[PreferencesKeys.APP_FORCE_UPDATE_LATEST_VERSION_NAME] = latestVersionName
+            }
+            if (latestVersionCode != null) {
+                preferences[PreferencesKeys.APP_FORCE_UPDATE_LATEST_VERSION_CODE] = latestVersionCode
+            }
+            if (!downloadUrl.isNullOrBlank()) {
+                preferences[PreferencesKeys.APP_FORCE_UPDATE_APK_DOWNLOAD_URL] = downloadUrl
+            }
+            if (!releaseNotes.isNullOrBlank()) {
+                preferences[PreferencesKeys.APP_FORCE_UPDATE_RELEASE_NOTES] = releaseNotes
             }
         }
     }
@@ -1078,6 +1111,7 @@ class PreferencesRepository @Inject constructor(
 
     suspend fun setCachedRemoteConfigData(
         minVersionCode: Int,
+        minVersionName: String = "",
         latestVersionCode: Int,
         latestVersionName: String,
         forceUpdate: Boolean,
@@ -1086,6 +1120,9 @@ class PreferencesRepository @Inject constructor(
     ) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.APP_FORCE_UPDATE_MIN_VERSION] = minVersionCode
+            if (minVersionName.isNotBlank()) {
+                preferences[PreferencesKeys.APP_FORCE_UPDATE_MIN_VERSION_NAME] = minVersionName
+            }
             preferences[PreferencesKeys.APP_FORCE_UPDATE_LATEST_VERSION_CODE] = latestVersionCode
             preferences[PreferencesKeys.APP_FORCE_UPDATE_LATEST_VERSION_NAME] = latestVersionName
             preferences[PreferencesKeys.APP_FORCE_UPDATE_ENABLED] = forceUpdate

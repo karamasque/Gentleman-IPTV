@@ -40,7 +40,13 @@ class RemoteConfigRepositoryImpl @Inject constructor(
     private val _remoteConfig = MutableStateFlow<AppRemoteConfig?>(null)
     override val remoteConfigFlow: Flow<AppRemoteConfig?> = _remoteConfig.asStateFlow()
 
-    private val _forceUpdateDecision = MutableStateFlow(ForceUpdateDecision.ALLOWED)
+    private val _forceUpdateDecision = MutableStateFlow(
+        if (preferencesRepository.getForceUpdateBlockedSynchronously()) {
+            ForceUpdateDecision.BLOCKED_FORCE_UPDATE_REQUIRED
+        } else {
+            ForceUpdateDecision.ALLOWED
+        }
+    )
     override val forceUpdateDecisionFlow: Flow<ForceUpdateDecision> = _forceUpdateDecision.asStateFlow()
 
     private fun getCurrentVersionCode(): Int {
@@ -53,7 +59,21 @@ class RemoteConfigRepositoryImpl @Inject constructor(
             }
             PackageInfoCompat.getLongVersionCode(pInfo).toInt()
         } catch (e: Exception) {
-            67
+            0
+        }
+    }
+
+    private fun getCurrentVersionName(): String {
+        return try {
+            val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
+            pInfo.versionName ?: ""
+        } catch (e: Exception) {
+            ""
         }
     }
 
@@ -62,6 +82,7 @@ class RemoteConfigRepositoryImpl @Inject constructor(
             combine(
                 preferencesRepository.cachedForceUpdateBlocked,
                 preferencesRepository.cachedMinimumSupportedVersionCode,
+                preferencesRepository.cachedMinimumSupportedVersionName,
                 preferencesRepository.testOverrideMinVersionCode,
                 preferencesRepository.cachedAppUpdateVersionCode,
                 preferencesRepository.cachedAppUpdateVersionName,
@@ -70,21 +91,24 @@ class RemoteConfigRepositoryImpl @Inject constructor(
                 _remoteConfig
             ) { values ->
                 val cachedBlocked = values[0] as Boolean
-                val cachedMinVersion = values[1] as Int?
-                val testOverrideMinVersion = values[2] as Int?
-                val cachedGitCode = values[3] as Int?
-                val cachedGitName = values[4] as String?
-                val cachedGitUrl = values[5] as String?
-                val cachedGitNotes = values[6] as String?
-                val remoteCfg = values[7] as AppRemoteConfig?
+                val cachedMinVersionCode = values[1] as Int?
+                val cachedMinVersionName = values[2] as String?
+                val testOverrideMinVersion = values[3] as Int?
+                val cachedGitCode = values[4] as Int?
+                val cachedGitName = values[5] as String?
+                val cachedGitUrl = values[6] as String?
+                val cachedGitNotes = values[7] as String?
+                val remoteCfg = values[8] as AppRemoteConfig?
 
                 runCatching {
                     val currentVersionCode = getCurrentVersionCode()
+                    val currentVersionName = getCurrentVersionName()
 
                     val baseConfig = remoteCfg ?: AppRemoteConfig(
-                        minimumSupportedVersionCode = cachedMinVersion ?: 67,
-                        latestVersionCode = cachedGitCode ?: 67,
-                        latestVersionName = cachedGitName ?: "1.0.67",
+                        minimumSupportedVersionCode = cachedMinVersionCode ?: 0,
+                        minimumSupportedVersionName = cachedMinVersionName.orEmpty(),
+                        latestVersionCode = cachedGitCode ?: 0,
+                        latestVersionName = cachedGitName.orEmpty(),
                         forceUpdate = true,
                         apkDownloadUrl = cachedGitUrl.orEmpty(),
                         releaseNotes = cachedGitNotes.orEmpty()
@@ -98,11 +122,12 @@ class RemoteConfigRepositoryImpl @Inject constructor(
                                 forceUpdate = true
                             )
                         }
-                        cachedGitCode != null && cachedGitCode > currentVersionCode -> {
+                        !cachedGitName.isNullOrBlank() && ForceUpdateEngine.compareVersionNames(cachedGitName, currentVersionName) > 0 -> {
                             baseConfig.copy(
-                                minimumSupportedVersionCode = maxOf(baseConfig.minimumSupportedVersionCode, cachedGitCode),
-                                latestVersionCode = maxOf(baseConfig.latestVersionCode, cachedGitCode),
-                                latestVersionName = cachedGitName ?: baseConfig.latestVersionName,
+                                minimumSupportedVersionCode = maxOf(baseConfig.minimumSupportedVersionCode, cachedGitCode ?: 0),
+                                minimumSupportedVersionName = cachedGitName,
+                                latestVersionCode = maxOf(baseConfig.latestVersionCode, cachedGitCode ?: 0),
+                                latestVersionName = cachedGitName,
                                 forceUpdate = true,
                                 apkDownloadUrl = if (!cachedGitUrl.isNullOrBlank()) cachedGitUrl else baseConfig.apkDownloadUrl,
                                 releaseNotes = if (!cachedGitNotes.isNullOrBlank()) cachedGitNotes else baseConfig.releaseNotes
@@ -115,10 +140,11 @@ class RemoteConfigRepositoryImpl @Inject constructor(
 
                     ForceUpdateEngine.evaluate(
                         currentVersionCode = currentVersionCode,
+                        currentVersionName = currentVersionName,
                         remoteConfig = effectiveConfig,
                         cachedForceUpdateBlocked = cachedBlocked
                     )
-                }.getOrDefault(ForceUpdateDecision.ALLOWED)
+                }.getOrDefault(if (cachedBlocked) ForceUpdateDecision.BLOCKED_FORCE_UPDATE_REQUIRED else ForceUpdateDecision.ALLOWED)
             }.collect { decision ->
                 _forceUpdateDecision.value = decision
             }
@@ -127,6 +153,7 @@ class RemoteConfigRepositoryImpl @Inject constructor(
 
     override suspend fun checkRemoteConfig(force: Boolean): Result<AppRemoteConfig> {
         val currentVersionCode = getCurrentVersionCode()
+        val currentVersionName = getCurrentVersionName()
         var cachedBlocked = false
 
         try {
@@ -137,9 +164,10 @@ class RemoteConfigRepositoryImpl @Inject constructor(
             val cachedGitNotes = runCatching { preferencesRepository.cachedAppUpdateReleaseNotes.first() }.getOrNull()
 
             val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull()
-            var firestoreMinVersion = 67
-            var firestoreLatestCode = 67
-            var firestoreLatestName = "1.0.67"
+            var firestoreMinVersionCode = 0
+            var firestoreMinVersionName = ""
+            var firestoreLatestCode = 0
+            var firestoreLatestName = ""
             var firestoreForceUpdate = true
             var firestoreApkUrl = com.kaynanamtv.domain.model.AppUpdateConstants.DEFAULT_DOWNLOAD_URL
             var firestoreNotes = ""
@@ -151,9 +179,10 @@ class RemoteConfigRepositoryImpl @Inject constructor(
                 }
                 if (docSnapshot != null && docSnapshot.exists()) {
                     val data = docSnapshot.data.orEmpty()
-                    firestoreMinVersion = (data["minimumSupportedVersionCode"] as? Number)?.toInt() ?: 67
-                    firestoreLatestCode = (data["latestVersionCode"] as? Number)?.toInt() ?: 67
-                    firestoreLatestName = data["latestVersionName"] as? String ?: "1.0.67"
+                    firestoreMinVersionCode = (data["minimumSupportedVersionCode"] as? Number)?.toInt() ?: 0
+                    firestoreMinVersionName = data["minimumSupportedVersionName"] as? String ?: ""
+                    firestoreLatestCode = (data["latestVersionCode"] as? Number)?.toInt() ?: 0
+                    firestoreLatestName = data["latestVersionName"] as? String ?: ""
                     firestoreForceUpdate = data["forceUpdate"] as? Boolean ?: true
                     firestoreApkUrl = (data["apkDownloadUrl"] as? String)?.takeIf { it.isNotBlank() && it.endsWith(".apk", ignoreCase = true) }
                         ?: com.kaynanamtv.domain.model.AppUpdateConstants.DEFAULT_DOWNLOAD_URL
@@ -163,30 +192,39 @@ class RemoteConfigRepositoryImpl @Inject constructor(
             }
 
             // Always resolve effective versions prioritizing GitHub's newer release if available:
-            val isGitNameNewer = !cachedGitName.isNullOrBlank() && (
-                (cachedGitCode != null && cachedGitCode >= firestoreLatestCode) ||
-                compareVersionNames(cachedGitName, firestoreLatestName) >= 0
+            val isGitNewer = !cachedGitName.isNullOrBlank() && (
+                ForceUpdateEngine.compareVersionNames(cachedGitName, currentVersionName) > 0 ||
+                ForceUpdateEngine.compareVersionNames(cachedGitName, firestoreLatestName) >= 0
             )
+
             val effectiveLatestCode = maxOf(firestoreLatestCode, cachedGitCode ?: 0, currentVersionCode)
-            val effectiveMinVersion = maxOf(
-                firestoreMinVersion,
+            val effectiveMinVersionCode = maxOf(
+                firestoreMinVersionCode,
                 if (cachedGitCode != null && cachedGitCode > currentVersionCode) cachedGitCode else 0
             )
-            val effectiveLatestName = if (isGitNameNewer && !cachedGitName.isNullOrBlank()) {
+            val effectiveMinVersionName = if (isGitNewer && !cachedGitName.isNullOrBlank()) {
                 cachedGitName
             } else {
-                firestoreLatestName
+                firestoreMinVersionName
             }
-            val effectiveApkUrl = if (isGitNameNewer && !cachedGitUrl.isNullOrBlank()) {
+            val effectiveLatestName = if (isGitNewer && !cachedGitName.isNullOrBlank()) {
+                cachedGitName
+            } else if (firestoreLatestName.isNotBlank()) {
+                firestoreLatestName
+            } else {
+                currentVersionName
+            }
+            val effectiveApkUrl = if (isGitNewer && !cachedGitUrl.isNullOrBlank()) {
                 cachedGitUrl
             } else {
                 firestoreApkUrl
             }
             val effectiveNotes = if (!cachedGitNotes.isNullOrBlank()) cachedGitNotes else firestoreNotes
-            val effectiveForceUpdate = firestoreForceUpdate || (cachedGitCode != null && cachedGitCode > currentVersionCode) || cachedBlocked
+            val effectiveForceUpdate = firestoreForceUpdate || isGitNewer || cachedBlocked
 
             val config = AppRemoteConfig(
-                minimumSupportedVersionCode = effectiveMinVersion,
+                minimumSupportedVersionCode = effectiveMinVersionCode,
+                minimumSupportedVersionName = effectiveMinVersionName,
                 latestVersionCode = effectiveLatestCode,
                 latestVersionName = effectiveLatestName,
                 forceUpdate = effectiveForceUpdate,
@@ -210,21 +248,31 @@ class RemoteConfigRepositoryImpl @Inject constructor(
 
             val decision = ForceUpdateEngine.evaluate(
                 currentVersionCode = currentVersionCode,
+                currentVersionName = currentVersionName,
                 remoteConfig = evaluatedConfig,
                 cachedForceUpdateBlocked = cachedBlocked
             )
             _forceUpdateDecision.value = decision
 
             if (decision == ForceUpdateDecision.BLOCKED_FORCE_UPDATE_REQUIRED) {
-                preferencesRepository.setForceUpdateBlockedState(true, evaluatedConfig.minimumSupportedVersionCode)
+                preferencesRepository.setForceUpdateBlockedState(
+                    blocked = true,
+                    minVersionCode = evaluatedConfig.minimumSupportedVersionCode,
+                    minVersionName = evaluatedConfig.minimumSupportedVersionName,
+                    latestVersionName = evaluatedConfig.latestVersionName,
+                    latestVersionCode = evaluatedConfig.latestVersionCode,
+                    downloadUrl = evaluatedConfig.apkDownloadUrl,
+                    releaseNotes = evaluatedConfig.releaseNotes
+                )
             } else {
-                if (cachedBlocked && currentVersionCode >= evaluatedConfig.minimumSupportedVersionCode && currentVersionCode >= evaluatedConfig.latestVersionCode) {
+                if (cachedBlocked && ForceUpdateEngine.isAppVersionSufficient(currentVersionCode, currentVersionName, evaluatedConfig)) {
                     preferencesRepository.setForceUpdateBlockedState(false, null)
                 }
             }
 
             preferencesRepository.setCachedRemoteConfigData(
                 minVersionCode = config.minimumSupportedVersionCode,
+                minVersionName = config.minimumSupportedVersionName,
                 latestVersionCode = config.latestVersionCode,
                 latestVersionName = config.latestVersionName,
                 forceUpdate = config.forceUpdate,
@@ -234,8 +282,13 @@ class RemoteConfigRepositoryImpl @Inject constructor(
 
             return Result.Success(config)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch remote config from Firestore: ${e.message}", e)
-            val fallbackDecision = ForceUpdateEngine.evaluate(currentVersionCode, _remoteConfig.value, cachedBlocked)
+            Log.e(TAG, "Failed to fetch remote config: ${e.message}", e)
+            val fallbackDecision = ForceUpdateEngine.evaluate(
+                currentVersionCode = currentVersionCode,
+                currentVersionName = currentVersionName,
+                remoteConfig = _remoteConfig.value,
+                cachedForceUpdateBlocked = cachedBlocked
+            )
             _forceUpdateDecision.value = fallbackDecision
             val cached = getCachedRemoteConfig()
             return if (cached != null) Result.Success(cached) else Result.Error("Network error: ${e.message}")
@@ -243,14 +296,20 @@ class RemoteConfigRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getCachedRemoteConfig(): AppRemoteConfig? {
-        val minVersion = preferencesRepository.cachedMinimumSupportedVersionCode.first() ?: return null
-        val latestCode = preferencesRepository.cachedAppUpdateVersionCode.first() ?: minVersion
-        val latestName = preferencesRepository.cachedAppUpdateVersionName.first() ?: "1.0.67"
+        val minVersionCode = preferencesRepository.cachedMinimumSupportedVersionCode.first() ?: 0
+        val minVersionName = preferencesRepository.cachedMinimumSupportedVersionName.first().orEmpty()
+        val latestCode = preferencesRepository.cachedAppUpdateVersionCode.first() ?: minVersionCode
+        val latestName = preferencesRepository.cachedAppUpdateVersionName.first().orEmpty()
         val apkUrl = preferencesRepository.cachedAppUpdateDownloadUrl.first().orEmpty()
-        val releaseNotes = preferencesRepository.cachedAppUpdateReleaseNotes.first()
+        val releaseNotes = preferencesRepository.cachedAppUpdateReleaseNotes.first().orEmpty()
+
+        if (minVersionCode <= 0 && minVersionName.isBlank() && latestCode <= 0 && latestName.isBlank()) {
+            return null
+        }
 
         return AppRemoteConfig(
-            minimumSupportedVersionCode = minVersion,
+            minimumSupportedVersionCode = minVersionCode,
+            minimumSupportedVersionName = minVersionName,
             latestVersionCode = latestCode,
             latestVersionName = latestName,
             forceUpdate = true,
@@ -259,18 +318,4 @@ class RemoteConfigRepositoryImpl @Inject constructor(
             updatedAt = 0L
         )
     }
-}
-
-private fun compareVersionNames(left: String, right: String): Int {
-    val leftParts = left.removePrefix("v").removePrefix("V").split('.')
-    val rightParts = right.removePrefix("v").removePrefix("V").split('.')
-    val length = maxOf(leftParts.size, rightParts.size)
-    for (index in 0 until length) {
-        val leftClean = leftParts.getOrNull(index)?.takeWhile { it.isDigit() }.orEmpty()
-        val rightClean = rightParts.getOrNull(index)?.takeWhile { it.isDigit() }.orEmpty()
-        val leftVal = leftClean.toIntOrNull() ?: 0
-        val rightVal = rightClean.toIntOrNull() ?: 0
-        if (leftVal != rightVal) return leftVal.compareTo(rightVal)
-    }
-    return 0
 }

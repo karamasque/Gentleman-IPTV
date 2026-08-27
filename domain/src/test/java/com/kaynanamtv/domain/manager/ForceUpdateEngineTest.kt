@@ -8,34 +8,18 @@ import org.junit.Test
 class ForceUpdateEngineTest {
 
     @Test
-    fun evaluate_version66_minimum66_returnsAllowed() {
+    fun evaluate_version116_minimum117_returnsBlocked() {
         val config = AppRemoteConfig(
-            minimumSupportedVersionCode = 66,
-            latestVersionCode = 66,
-            latestVersionName = "1.0.66",
+            minimumSupportedVersionCode = 117,
+            minimumSupportedVersionName = "1.1.17",
+            latestVersionCode = 117,
+            latestVersionName = "1.1.17",
             forceUpdate = true
         )
 
         val result = ForceUpdateEngine.evaluate(
-            currentVersionCode = 66,
-            remoteConfig = config,
-            cachedForceUpdateBlocked = false
-        )
-
-        assertEquals(ForceUpdateDecision.ALLOWED, result)
-    }
-
-    @Test
-    fun evaluate_version66_minimum67_returnsBlocked() {
-        val config = AppRemoteConfig(
-            minimumSupportedVersionCode = 67,
-            latestVersionCode = 67,
-            latestVersionName = "1.0.67",
-            forceUpdate = true
-        )
-
-        val result = ForceUpdateEngine.evaluate(
-            currentVersionCode = 66,
+            currentVersionCode = 116,
+            currentVersionName = "1.1.16",
             remoteConfig = config,
             cachedForceUpdateBlocked = false
         )
@@ -44,16 +28,18 @@ class ForceUpdateEngineTest {
     }
 
     @Test
-    fun evaluate_version67_minimum66_returnsAllowed() {
+    fun evaluate_version116_minimum116_returnsAllowed() {
         val config = AppRemoteConfig(
-            minimumSupportedVersionCode = 66,
-            latestVersionCode = 66,
-            latestVersionName = "1.0.66",
+            minimumSupportedVersionCode = 116,
+            minimumSupportedVersionName = "1.1.16",
+            latestVersionCode = 116,
+            latestVersionName = "1.1.16",
             forceUpdate = true
         )
 
         val result = ForceUpdateEngine.evaluate(
-            currentVersionCode = 67,
+            currentVersionCode = 116,
+            currentVersionName = "1.1.16",
             remoteConfig = config,
             cachedForceUpdateBlocked = false
         )
@@ -62,16 +48,58 @@ class ForceUpdateEngineTest {
     }
 
     @Test
+    fun evaluate_version117_minimum116_returnsAllowed() {
+        val config = AppRemoteConfig(
+            minimumSupportedVersionCode = 116,
+            minimumSupportedVersionName = "1.1.16",
+            latestVersionCode = 116,
+            latestVersionName = "1.1.16",
+            forceUpdate = true
+        )
+
+        val result = ForceUpdateEngine.evaluate(
+            currentVersionCode = 117,
+            currentVersionName = "1.1.17",
+            remoteConfig = config,
+            cachedForceUpdateBlocked = false
+        )
+
+        assertEquals(ForceUpdateDecision.ALLOWED, result)
+    }
+
+    @Test
+    fun evaluate_semanticVersionOnly_withoutVersionCode_newerRemote_returnsBlocked() {
+        val config = AppRemoteConfig(
+            minimumSupportedVersionCode = 0,
+            minimumSupportedVersionName = "1.1.17",
+            latestVersionCode = 0,
+            latestVersionName = "1.1.17",
+            forceUpdate = true
+        )
+
+        val result = ForceUpdateEngine.evaluate(
+            currentVersionCode = 116,
+            currentVersionName = "1.1.16",
+            remoteConfig = config,
+            cachedForceUpdateBlocked = false
+        )
+
+        assertEquals(ForceUpdateDecision.BLOCKED_FORCE_UPDATE_REQUIRED, result)
+    }
+
+    @Test
     fun evaluate_forceUpdateFalse_olderVersion_returnsAllowed() {
         val config = AppRemoteConfig(
-            minimumSupportedVersionCode = 67,
-            latestVersionCode = 67,
-            latestVersionName = "1.0.67",
+            minimumSupportedVersionCode = 117,
+            minimumSupportedVersionName = "1.1.17",
+            latestVersionCode = 117,
+            latestVersionName = "1.1.17",
             forceUpdate = false
         )
 
         val result = ForceUpdateEngine.evaluate(
-            currentVersionCode = 66,
+            currentVersionCode = 116,
+            currentVersionName = "1.1.16",
             remoteConfig = config,
             cachedForceUpdateBlocked = false
         )
@@ -82,7 +110,8 @@ class ForceUpdateEngineTest {
     @Test
     fun evaluate_cachedBlockedTrue_offlineNullConfig_returnsBlocked() {
         val result = ForceUpdateEngine.evaluate(
-            currentVersionCode = 66,
+            currentVersionCode = 116,
+            currentVersionName = "1.1.16",
             remoteConfig = null,
             cachedForceUpdateBlocked = true
         )
@@ -93,7 +122,8 @@ class ForceUpdateEngineTest {
     @Test
     fun evaluate_cachedBlockedFalse_offlineNullConfig_returnsAllowed() {
         val result = ForceUpdateEngine.evaluate(
-            currentVersionCode = 66,
+            currentVersionCode = 116,
+            currentVersionName = "1.1.16",
             remoteConfig = null,
             cachedForceUpdateBlocked = false
         )
@@ -102,16 +132,18 @@ class ForceUpdateEngineTest {
     }
 
     @Test
-    fun evaluate_cachedBlockedTrue_nowUpdatedServerConfig_returnsAllowed() {
+    fun evaluate_cachedBlockedTrue_nowUpdatedApp_returnsAllowed() {
         val config = AppRemoteConfig(
-            minimumSupportedVersionCode = 66,
-            latestVersionCode = 66,
-            latestVersionName = "1.0.66",
+            minimumSupportedVersionCode = 117,
+            minimumSupportedVersionName = "1.1.17",
+            latestVersionCode = 117,
+            latestVersionName = "1.1.17",
             forceUpdate = true
         )
 
         val result = ForceUpdateEngine.evaluate(
-            currentVersionCode = 66,
+            currentVersionCode = 117,
+            currentVersionName = "1.1.17",
             remoteConfig = config,
             cachedForceUpdateBlocked = true
         )

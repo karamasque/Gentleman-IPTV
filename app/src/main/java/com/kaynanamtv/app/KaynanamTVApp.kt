@@ -183,7 +183,15 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
                     remotePublishedAt = result.data.publishedAt
                 )
                 if (isNewer) {
-                    preferencesRepository.setForceUpdateBlockedState(true, result.data.versionCode)
+                    preferencesRepository.setForceUpdateBlockedState(
+                        blocked = true,
+                        minVersionCode = result.data.versionCode,
+                        minVersionName = result.data.versionName,
+                        latestVersionName = result.data.versionName,
+                        latestVersionCode = result.data.versionCode,
+                        downloadUrl = result.data.downloadUrl,
+                        releaseNotes = result.data.releaseNotes
+                    )
                 } else {
                     preferencesRepository.setForceUpdateBlockedState(false, null)
                 }

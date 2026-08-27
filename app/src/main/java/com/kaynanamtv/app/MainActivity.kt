@@ -185,8 +185,15 @@ class MainActivity : ComponentActivity() {
             val appTimeFormat by preferencesRepository.appTimeFormat.collectAsState(initial = com.kaynanamtv.domain.model.AppTimeFormat.SYSTEM)
             val appColorTheme by preferencesRepository.appColorTheme.collectAsState(initial = initialTheme)
             val visualEffectsMode by preferencesRepository.visualEffectsMode.collectAsState(initial = com.kaynanamtv.domain.model.VisualEffectsMode.AUTO)
+            val initialForceUpdateBlocked = remember { preferencesRepository.getForceUpdateBlockedSynchronously() }
             val forceUpdateDecision by remoteConfigRepository.forceUpdateDecisionFlow
-                .collectAsState(initial = com.kaynanamtv.domain.model.ForceUpdateDecision.ALLOWED)
+                .collectAsState(
+                    initial = if (initialForceUpdateBlocked) {
+                        com.kaynanamtv.domain.model.ForceUpdateDecision.BLOCKED_FORCE_UPDATE_REQUIRED
+                    } else {
+                        com.kaynanamtv.domain.model.ForceUpdateDecision.ALLOWED
+                    }
+                )
             val currentContext = LocalContext.current
             val isTelevision = com.kaynanamtv.app.device.rememberIsTelevisionDevice()
             

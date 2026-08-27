@@ -1,9 +1,10 @@
 package com.kaynanamtv.domain.model
 
 data class AppRemoteConfig(
-    val minimumSupportedVersionCode: Int = 67,
-    val latestVersionCode: Int = 67,
-    val latestVersionName: String = "1.0.67",
+    val minimumSupportedVersionCode: Int = 0,
+    val minimumSupportedVersionName: String = "",
+    val latestVersionCode: Int = 0,
+    val latestVersionName: String = "",
     val forceUpdate: Boolean = true,
     val apkDownloadUrl: String = "",
     val releaseNotes: String = "",

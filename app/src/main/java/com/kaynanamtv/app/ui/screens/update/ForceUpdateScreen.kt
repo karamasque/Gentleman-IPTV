@@ -161,7 +161,7 @@ fun ForceUpdateScreen(
                             color = Color(0xFF94A3B8)
                         )
                         Text(
-                            text = "v$currentVersionName (Kod: $currentVersionCode)",
+                            text = "v$currentVersionName",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFEF4444),
                             fontWeight = FontWeight.Bold
@@ -178,7 +178,7 @@ fun ForceUpdateScreen(
                             color = Color(0xFF94A3B8)
                         )
                         Text(
-                            text = "v$latestVersionName (Kod: $minVersionCode)",
+                            text = "v$latestVersionName",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF22C55E),
                             fontWeight = FontWeight.Bold

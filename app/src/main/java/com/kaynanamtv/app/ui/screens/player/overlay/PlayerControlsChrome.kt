@@ -756,20 +756,19 @@ private fun PlayerBottomBar(
     modifier: Modifier = Modifier
 ) {
     val isVod = contentType != "LIVE" || isCatchUpPlayback
-    val bottomBarWidthFraction = if (isVod) 0.82f else 1f
     Box(
         modifier = modifier
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.84f))
+                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))
                 )
             )
-            .padding(horizontal = 32.dp, vertical = 20.dp),
+            .padding(horizontal = 28.dp, vertical = 14.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(bottomBarWidthFraction),
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (isVod) {
@@ -956,22 +955,11 @@ private fun PlayerLiveInfo(
         }
     }
 
-    Surface(
+    Column(
         modifier = modifier
-            .widthIn(max = 1100.dp)
-            .fillMaxWidth(0.80f),
-        shape = RoundedCornerShape(22.dp),
-        colors = SurfaceDefaults.colors(containerColor = VodControlsColors.DockBackground),
-        border = Border(
-            border = BorderStroke(1.2.dp, Brush.linearGradient(VodControlsColors.DockBorderGradient)),
-            shape = RoundedCornerShape(22.dp)
-        )
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
-        ) {
             // TOP SECTION: Left Info Block + Right Timeshift/Status Area
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1462,7 +1450,6 @@ private fun PlayerLiveInfo(
                 )
             }
         }
-    }
 }
 
 @Composable
@@ -1562,23 +1549,13 @@ private fun PlayerVodInfo(
         )
     }
 
-    Spacer(modifier = Modifier.height(10.dp))
+    Spacer(modifier = Modifier.height(8.dp))
 
-    // Unified VOD Player bar (Pill surface container)
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        colors = SurfaceDefaults.colors(containerColor = Color(0xFF0D1426).copy(alpha = 0.65f)),
-        border = Border(
-            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.12f)),
-            shape = RoundedCornerShape(18.dp)
-        ),
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Seek bar Slider section
+        // Seek bar Slider section
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 AnimatedVisibility(visible = seekPreview.visible) {
                     PlayerSeekPreviewCard(
@@ -1842,7 +1819,6 @@ private fun PlayerVodInfo(
                 }
             }
         }
-    }
 }
 
 /**
@@ -1906,7 +1882,7 @@ private fun TvVodControlButton(
     val tier = com.kaynanamtv.app.ui.theme.LocalVisualEffectsProfile.current.tier
     val scaleAnim = if (tier.isFocusScaleEnabled) {
         animateFloatAsState(
-            targetValue = if (isFocused) 1.08f else 1.0f,
+            targetValue = if (isFocused) 1.04f else 1.0f,
             label = "vodCtrlScale"
         ).value
     } else {
@@ -1922,25 +1898,25 @@ private fun TvVodControlButton(
 
     TvClickableSurface(
         onClick = onClick,
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (isPrimary) VodControlsColors.PrimaryButtonContainer else VodControlsColors.ButtonNormalContainer,
-            focusedContainerColor = if (isPrimary) VodControlsColors.PrimaryButtonFocusedContainer else VodControlsColors.ButtonFocusedContainer
+            containerColor = if (isPrimary) VodControlsColors.PrimaryButtonContainer else Color.White.copy(alpha = 0.08f),
+            focusedContainerColor = if (isPrimary) VodControlsColors.PrimaryButtonFocusedContainer else Color.White.copy(alpha = 0.20f)
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(
                 border = BorderStroke(
                     1.dp,
-                    if (isPrimary) VodControlsColors.PrimaryButtonBorder else VodControlsColors.ButtonNormalBorder
+                    if (isPrimary) VodControlsColors.PrimaryButtonBorder else Color.White.copy(alpha = 0.12f)
                 ),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(12.dp)
             ),
             focusedBorder = Border(
                 border = BorderStroke(
-                    2.2.dp,
-                    if (isPrimary) VodControlsColors.PrimaryButtonFocusedBorder else VodControlsColors.ButtonFocusedBorder
+                    2.dp,
+                    if (isPrimary) Color.White else focusColor
                 ),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(12.dp)
             )
         ),
         modifier = surfaceModifier
@@ -1948,24 +1924,24 @@ private fun TvVodControlButton(
         Box(contentAlignment = Alignment.Center) {
             Column(
                 modifier = Modifier.padding(
-                    horizontal = if (isPrimary) 22.dp else 14.dp,
-                    vertical = if (isPrimary) 13.dp else 10.dp
+                    horizontal = if (isPrimary) 18.dp else 12.dp,
+                    vertical = if (isPrimary) 8.dp else 6.dp
                 ),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 Box {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = if (isFocused) (if (isPrimary) Color.White else focusColor) else (if (isPrimary) Color.White else VodControlsColors.TextPrimary),
-                        modifier = Modifier.size(if (isPrimary) 26.dp else 22.dp)
+                        tint = if (isFocused) (if (isPrimary) Color.White else focusColor) else (if (isPrimary) Color.White else Color(0xFFF1F5F9)),
+                        modifier = Modifier.size(if (isPrimary) 24.dp else 20.dp)
                     )
                     if (badgeActive) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .size(6.dp)
+                                .size(5.dp)
                                 .background(VodControlsColors.PrimaryIndigo, CircleShape)
                         )
                     }
@@ -1975,12 +1951,12 @@ private fun TvVodControlButton(
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = if (isFocused || isPrimary) FontWeight.Bold else FontWeight.Medium
                     ),
-                    color = if (isFocused) (if (isPrimary) Color.White else focusColor) else VodControlsColors.TextSecondary,
+                    color = if (isFocused) (if (isPrimary) Color.White else focusColor) else Color(0xFF94A3B8),
                     maxLines = 1
                 )
-            }
         }
     }
+}
 }
 
 @Composable

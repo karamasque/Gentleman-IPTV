@@ -74,8 +74,13 @@ internal class SettingsAppUpdateActions(
                         release.publishedAt
                     )
                     preferencesRepository.setForceUpdateBlockedState(
-                        updateAvailable,
-                        if (updateAvailable) release.versionCode else null
+                        blocked = updateAvailable,
+                        minVersionCode = if (updateAvailable) release.versionCode else null,
+                        minVersionName = if (updateAvailable) release.versionName else null,
+                        latestVersionName = if (updateAvailable) release.versionName else null,
+                        latestVersionCode = if (updateAvailable) release.versionCode else null,
+                        downloadUrl = if (updateAvailable) release.downloadUrl else null,
+                        releaseNotes = if (updateAvailable) release.releaseNotes else null
                     )
                     var latestUpdateModel = AppUpdateUiModel(
                         latestVersionName = release.versionName,
