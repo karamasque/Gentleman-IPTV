@@ -1061,6 +1061,18 @@ class PlayerViewModel @Inject constructor(
     val playbackSpeed: StateFlow<Float> = activeEngineState(1f) { it.playbackSpeed }
     val audioVideoSyncEnabled: StateFlow<Boolean> = activeEngineState(false) { it.audioVideoSyncEnabled }
 
+    val remoteAudioTracks: StateFlow<List<com.kaynanamtv.app.cast.CastTrackInfo>> = castPlaybackCoordinator.remoteAudioTracks
+    val remoteCurrentPosition: StateFlow<Long> = castPlaybackCoordinator.remoteCurrentPosition
+    val remoteDuration: StateFlow<Long> = castPlaybackCoordinator.remoteDuration
+    val isRemotePlaying: StateFlow<Boolean> = castPlaybackCoordinator.isRemotePlaying
+    val isRemoteLiveSeekable: StateFlow<Boolean> = castPlaybackCoordinator.isRemoteLiveSeekable
+
+    fun castPlay() = castPlaybackCoordinator.play()
+    fun castPause() = castPlaybackCoordinator.pause()
+    fun castSeekTo(positionMs: Long) = castPlaybackCoordinator.seekTo(positionMs)
+    fun castSeekRelative(offsetMs: Long) = castPlaybackCoordinator.seekRelative(offsetMs)
+    fun castSelectAudioTrack(trackId: Long) = castPlaybackCoordinator.setActiveAudioTrack(trackId)
+
     val preventStandbyDuringPlayback: StateFlow<Boolean> by lazy(LazyThreadSafetyMode.NONE) {
         preferencesRepository.preventStandbyDuringPlayback
             .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), true)

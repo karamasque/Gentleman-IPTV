@@ -101,11 +101,7 @@ internal fun PlayerViewModel.finalizePreparedPlaybackContext(
     if (currentContentType == ContentType.LIVE && shouldResolveChannelPlaybackContext(currentContentType.name, internalChannelId)) {
         aspectRatioJob = viewModelScope.launch {
             preferencesRepository.getAspectRatioForChannel(internalChannelId).collect { savedRatio ->
-                _aspectRatio.value = try {
-                    savedRatio?.let { AspectRatio.valueOf(it) } ?: AspectRatio.FIT
-                } catch (_: Exception) {
-                    AspectRatio.FIT
-                }
+                _aspectRatio.value = AspectRatio.fromPersisted(savedRatio)
             }
         }
 

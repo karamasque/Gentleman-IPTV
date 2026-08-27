@@ -105,7 +105,13 @@ fun PlayerViewModel.onAppBackgrounded() {
 }
 
 fun PlayerViewModel.onAppForegrounded() {
-    if (isAppInForeground) return
+    if (isAppInForeground) {
+        if (shouldResumeAfterForeground && !resumePrompt.value.show && !playerEngine.isPlaying.value) {
+            playerEngine.play()
+            shouldResumeAfterForeground = false
+        }
+        return
+    }
     isAppInForeground = true
     if (shouldResumeAfterForeground && !resumePrompt.value.show) {
         playerEngine.play()

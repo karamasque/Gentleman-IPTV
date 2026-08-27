@@ -22,11 +22,20 @@ data class CastMediaRequest(
     val userAgent: String? = null,
     val allowInvalidSsl: Boolean = false,
     val proxyHost: String = "",
-    val proxyPort: Int? = null
+    val proxyPort: Int? = null,
+    val preferredAudioLanguage: String? = null,
+    val preferredAudioLabel: String? = null
 ) {
     val requiresCastRewrite: Boolean
         get() = rewriteRequiredReason != null
 }
+
+data class CastTrackInfo(
+    val id: Long,
+    val name: String,
+    val language: String? = null,
+    val isSelected: Boolean = false
+)
 
 enum class CastRewriteRequiredReason {
     LOCAL_URI,

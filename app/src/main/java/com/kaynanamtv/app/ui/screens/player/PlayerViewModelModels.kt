@@ -218,13 +218,21 @@ enum class PlayerNoticeAction {
 
 enum class AspectRatio(val modeName: String) {
     FIT("Fit"),
-    FILL("Stretch"),
+    FILL("Fill"),
     ZOOM("Zoom");
 
     fun getLabelRes(): Int = when (this) {
         FIT -> com.kaynanamtv.app.R.string.aspect_ratio_fit
         FILL -> com.kaynanamtv.app.R.string.aspect_ratio_stretch
         ZOOM -> com.kaynanamtv.app.R.string.aspect_ratio_zoom
+    }
+
+    companion object {
+        fun fromPersisted(name: String?): AspectRatio = when (name?.uppercase()) {
+            "FILL", "STRETCH" -> FILL
+            "ZOOM" -> ZOOM
+            else -> FIT
+        }
     }
 }
 

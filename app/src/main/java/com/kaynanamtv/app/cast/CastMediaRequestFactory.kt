@@ -15,7 +15,9 @@ class CastMediaRequestFactory @Inject constructor() {
         subtitle: String?,
         artworkUrl: String?,
         isLive: Boolean,
-        startPositionMs: Long
+        startPositionMs: Long,
+        preferredAudioLanguage: String? = null,
+        preferredAudioLabel: String? = null
     ): CastMediaRequestBuildResult {
         val resolvedUrl = streamInfo.url.takeIf { it.isNotBlank() }
             ?: return CastMediaRequestBuildResult.Unsupported(CastMediaRequestUnsupportedReason.EMPTY_URL)
@@ -49,7 +51,9 @@ class CastMediaRequestFactory @Inject constructor() {
                 userAgent = streamInfo.userAgent,
                 allowInvalidSsl = streamInfo.allowInvalidSsl,
                 proxyHost = streamInfo.proxyHost,
-                proxyPort = streamInfo.proxyPort
+                proxyPort = streamInfo.proxyPort,
+                preferredAudioLanguage = preferredAudioLanguage,
+                preferredAudioLabel = preferredAudioLabel
             )
         )
     }
@@ -60,7 +64,9 @@ class CastMediaRequestFactory @Inject constructor() {
         subtitle: String?,
         artworkUrl: String?,
         isLive: Boolean,
-        startPositionMs: Long
+        startPositionMs: Long,
+        preferredAudioLanguage: String? = null,
+        preferredAudioLabel: String? = null
     ): CastMediaRequest? {
         return (buildFromStreamInfo(
             streamInfo = streamInfo,
@@ -68,7 +74,9 @@ class CastMediaRequestFactory @Inject constructor() {
             subtitle = subtitle,
             artworkUrl = artworkUrl,
             isLive = isLive,
-            startPositionMs = startPositionMs
+            startPositionMs = startPositionMs,
+            preferredAudioLanguage = preferredAudioLanguage,
+            preferredAudioLabel = preferredAudioLabel
         ) as? CastMediaRequestBuildResult.Success)?.request
     }
 

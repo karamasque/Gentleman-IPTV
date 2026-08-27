@@ -217,24 +217,42 @@ internal suspend fun PlayerViewModel.buildCastRequestResult(): PlayerCastRequest
     return when (currentContentType) {
         ContentType.LIVE -> {
             val channel = currentChannel.value
+            val repositoryStreamInfo = channel?.let {
+                channelRepository.getStreamInfo(it, preferStableUrl = true).getOrNull()
+            }
+            val rawStreamInfo = repositoryStreamInfo
+                ?: currentResolvedStreamInfo?.takeIf { currentContentType == ContentType.LIVE }
+                ?: currentStreamUrl.takeIf { it.isNotBlank() }?.let { url ->
+                    StreamInfo(url = url, title = mediaTitle.value ?: channel?.name ?: currentTitle)
+                }
                 ?: return PlayerCastRequestResult.Failure(
                     toPlayerCastMessage(CastMediaRequestUnsupportedReason.STREAM_UNAVAILABLE)
                 )
-            // Use preferStableUrl = true for Cast: the credential-based portal URL
-            // does not expire, unlike the tokenized direct-source CDN URL.
-            val streamInfo = channelRepository.getStreamInfo(channel, preferStableUrl = true)
-                .getOrNull()
-                ?: return PlayerCastRequestResult.Failure(
-                    toPlayerCastMessage(CastMediaRequestUnsupportedReason.STREAM_UNAVAILABLE)
+
+            // Convert raw MPEG-TS (.ts) Xtream live URL to HLS (.m3u8) for Google Cast receiver compatibility
+            val castStreamInfo = if (rawStreamInfo.url.contains(".ts", ignoreCase = true) &&
+                (rawStreamInfo.url.contains("/live/", ignoreCase = true) || rawStreamInfo.url.contains("live.php", ignoreCase = true))
+            ) {
+                rawStreamInfo.copy(
+                    url = rawStreamInfo.url.replace(Regex("\\.ts($|\\?)", RegexOption.IGNORE_CASE)) { matchResult ->
+                        ".m3u8" + matchResult.groupValues[1]
+                    }
                 )
+            } else {
+                rawStreamInfo
+            }
+
+            val selectedAudio = availableAudioTracks.value.firstOrNull { it.isSelected }
             toPlayerCastRequestResult(
                 castMediaRequestFactory.buildFromStreamInfo(
-                    streamInfo = streamInfo,
-                    title = mediaTitle.value ?: channel.name,
+                    streamInfo = castStreamInfo,
+                    title = mediaTitle.value ?: channel?.name ?: currentTitle,
                     subtitle = currentProgram.value?.title,
-                    artworkUrl = channel.logoUrl ?: currentArtworkUrl,
+                    artworkUrl = channel?.logoUrl ?: currentArtworkUrl,
                     isLive = true,
-                    startPositionMs = 0L
+                    startPositionMs = 0L,
+                    preferredAudioLanguage = selectedAudio?.language,
+                    preferredAudioLabel = selectedAudio?.name
                 )
             )
         }
@@ -248,6 +266,7 @@ internal suspend fun PlayerViewModel.buildCastRequestResult(): PlayerCastRequest
                 fallbackStreamInfo = repositoryStreamInfo
             )
                 ?: return directCastRequest()
+            val selectedAudio = availableAudioTracks.value.firstOrNull { it.isSelected }
             toPlayerCastRequestResult(
                 castMediaRequestFactory.buildFromStreamInfo(
                     streamInfo = streamInfo,
@@ -255,7 +274,9 @@ internal suspend fun PlayerViewModel.buildCastRequestResult(): PlayerCastRequest
                     subtitle = movie?.genre,
                     artworkUrl = currentArtworkUrl ?: movie?.posterUrl ?: movie?.backdropUrl,
                     isLive = false,
-                    startPositionMs = playerEngine.currentPosition.value
+                    startPositionMs = playerEngine.currentPosition.value,
+                    preferredAudioLanguage = selectedAudio?.language,
+                    preferredAudioLabel = selectedAudio?.name
                 )
             )
         }
@@ -302,6 +323,7 @@ private suspend fun PlayerViewModel.buildSeriesCastRequestResult(): PlayerCastRe
     } else {
         currentTitle.ifBlank { episode?.let(::buildEpisodePlaybackTitle).orEmpty() }
     }
+    val selectedAudio = availableAudioTracks.value.firstOrNull { it.isSelected }
     return toPlayerCastRequestResult(
         castMediaRequestFactory.buildFromStreamInfo(
             streamInfo = streamInfo,
@@ -309,7 +331,9 @@ private suspend fun PlayerViewModel.buildSeriesCastRequestResult(): PlayerCastRe
             subtitle = episode?.title,
             artworkUrl = currentArtworkUrl ?: episode?.coverUrl ?: series?.posterUrl ?: series?.backdropUrl,
             isLive = false,
-            startPositionMs = playerEngine.currentPosition.value
+            startPositionMs = playerEngine.currentPosition.value,
+            preferredAudioLanguage = selectedAudio?.language,
+            preferredAudioLabel = selectedAudio?.name
         )
     )
 }

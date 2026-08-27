@@ -38,6 +38,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusable
 import androidx.lifecycle.ViewModel
@@ -233,6 +235,30 @@ fun PlayerScreen(
     val audioVideoSyncEnabled by viewModel.audioVideoSyncEnabled.collectAsStateWithLifecycle()
     val audioVideoOffsetState by viewModel.audioVideoOffsetUiState.collectAsStateWithLifecycle()
     val castConnectionState by viewModel.castConnectionState.collectAsStateWithLifecycle()
+    val isCastConnected = castConnectionState == CastConnectionState.CONNECTED
+    val isRemotePlaying by viewModel.isRemotePlaying.collectAsStateWithLifecycle()
+    val remoteCurrentPosition by viewModel.remoteCurrentPosition.collectAsStateWithLifecycle()
+    val remoteDuration by viewModel.remoteDuration.collectAsStateWithLifecycle()
+    val remoteAudioTracks by viewModel.remoteAudioTracks.collectAsStateWithLifecycle()
+    val isRemoteLiveSeekable by viewModel.isRemoteLiveSeekable.collectAsStateWithLifecycle()
+
+    val effectiveAudioTracks = remember(isCastConnected, availableAudioTracks, remoteAudioTracks) {
+        if (isCastConnected && remoteAudioTracks.isNotEmpty()) {
+            remoteAudioTracks.map { track ->
+                com.kaynanamtv.player.PlayerTrack(
+                    id = track.id.toString(),
+                    name = track.name,
+                    language = track.language,
+                    type = com.kaynanamtv.player.TrackType.AUDIO,
+                    isSelected = track.isSelected
+                )
+            }
+        } else {
+            availableAudioTracks
+        }
+    }
+    val effectiveIsPlaying = if (isCastConnected) isRemotePlaying else isPlaying
+
     val seekPreview by viewModel.seekPreview.collectAsStateWithLifecycle()
     val preventStandbyDuringPlayback by viewModel.preventStandbyDuringPlayback.collectAsStateWithLifecycle()
     val timeshiftUiState by viewModel.timeshiftUiState.collectAsStateWithLifecycle()
@@ -966,6 +992,36 @@ fun PlayerScreen(
             modifier = playerViewModifier
         )
 
+        if (isCastConnected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    modifier = Modifier
+                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(999.dp))
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CastConnected,
+                        contentDescription = null,
+                        tint = AppColors.NeonCyan,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        text = "Ekrana Yansıtılıyor",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
         // Premium Ambient Light (Ambilight) Glow
         val animatedAmbilightColor by androidx.compose.animation.animateColorAsState(
             targetValue = ambilightColor,
@@ -1174,7 +1230,7 @@ fun PlayerScreen(
             title = playbackTitle.ifBlank { title },
             contentType = contentType,
             isCatchUpPlayback = isCatchUpPlayback,
-            isPlaying = isPlaying,
+            isPlaying = effectiveIsPlaying,
             currentProgram = currentProgram,
             nextProgram = nextProgram,
             currentChannel = currentChannel,
@@ -1183,7 +1239,7 @@ fun PlayerScreen(
             aspectRatioLabel = stringResource(aspectRatio.getLabelRes()),
             subtitleTrackCount = availableSubtitleTracks.size,
             liveTranslationAvailable = liveTranslationAvailable,
-            audioTrackCount = availableAudioTracks.size,
+            audioTrackCount = effectiveAudioTracks.size,
             videoQualityCount = availableVideoQualities.size,
             currentRecordingStatus = currentChannelRecording?.status,
             isMuted = isMuted,
@@ -1197,10 +1253,26 @@ fun PlayerScreen(
             onClose = onBack,
             onCloseControls = { viewModel.toggleControls() },
             onTogglePlayPause = {
-                if (isPlaying) viewModel.pause() else viewModel.play()
+                if (isCastConnected) {
+                    if (isRemotePlaying) viewModel.castPause() else viewModel.castPlay()
+                } else {
+                    if (isPlaying) viewModel.pause() else viewModel.play()
+                }
             },
-            onSeekBackward = { viewModel.seekBackward() },
-            onSeekForward = { viewModel.seekForward() },
+            onSeekBackward = {
+                if (isCastConnected) {
+                    viewModel.castSeekRelative(-10_000L)
+                } else {
+                    viewModel.seekBackward()
+                }
+            },
+            onSeekForward = {
+                if (isCastConnected) {
+                    viewModel.castSeekRelative(10_000L)
+                } else {
+                    viewModel.seekForward()
+                }
+            },
             onRestartProgram = viewModel::restartCurrentProgram,
             onOpenArchive = { activeDialog = PlayerDialogState.ProgramHistory },
             onStartRecording = {
@@ -1238,16 +1310,24 @@ fun PlayerScreen(
             onOpenSplitScreen = { activeDialog = PlayerDialogState.SplitScreen },
             onEnterPictureInPicture = enterPictureInPicture,
             onToggleMute = viewModel::toggleMute,
-            isCastConnected = castConnectionState == CastConnectionState.CONNECTED,
+            isCastConnected = isCastConnected,
             onCast = { viewModel.castCurrentMedia { mainActivity?.openCastRouteChooser() } },
             onStopCasting = viewModel::stopCasting,
             onOpenChannelList = viewModel::openChannelListOverlay,
             onSeekToLiveEdge = viewModel::seekToLiveEdge,
-            onSeekToPosition = viewModel::seekTo,
+            onSeekToPosition = {
+                if (isCastConnected) {
+                    viewModel.castSeekTo(it)
+                } else {
+                    viewModel.seekTo(it)
+                }
+            },
             onSetScrubbingMode = viewModel::setScrubbingMode,
             seekPreview = seekPreview,
             onSeekPreviewPositionChanged = viewModel::updateSeekPreview,
             onToggleDiagnostics = viewModel::toggleDiagnostics,
+            remoteCurrentPosition = remoteCurrentPosition,
+            remoteDuration = remoteDuration,
             onOpenGuide = {
                 viewModel.openEpgOverlay()
             },
@@ -1338,13 +1418,19 @@ fun PlayerScreen(
         if (!isInPictureInPictureMode) {
             PlayerTrackSelectionDialog(
                 trackType = (activeDialog as? PlayerDialogState.TrackSelection)?.trackType,
-                audioTracks = availableAudioTracks,
+                audioTracks = effectiveAudioTracks,
                 subtitleTracks = availableSubtitleTracks,
                 videoTracks = availableVideoQualities,
                 liveTranslationAvailable = liveTranslationAvailable,
                 liveTranslationActive = liveTranslationActive,
                 onDismiss = { activeDialog = null },
-                onSelectAudio = viewModel::selectAudioTrack,
+                onSelectAudio = { trackId ->
+                    if (isCastConnected) {
+                        trackId.toLongOrNull()?.let(viewModel::castSelectAudioTrack)
+                    } else {
+                        viewModel.selectAudioTrack(trackId)
+                    }
+                },
                 onSelectVideo = viewModel::selectVideoQuality,
                 onSelectSubtitle = { trackId ->
                     viewModel.deactivateLiveTranslation()
@@ -1557,19 +1643,35 @@ fun PlayerScreen(
                     onToggleAspectRatio = { viewModel.toggleAspectRatio() },
                     onToggleDiagnostics = { viewModel.toggleDiagnostics() },
                     onTogglePlayPause = {
-                        android.util.Log.d("PlayerActionTrace", "[LIVE_PAUSE_TRACE] clickReceived=true isPlaying=$isPlaying")
-                        if (isPlaying) viewModel.pause() else viewModel.play()
+                        android.util.Log.d("PlayerActionTrace", "[LIVE_PAUSE_TRACE] clickReceived=true isPlaying=$isPlaying isCastConnected=$isCastConnected")
+                        if (isCastConnected) {
+                            if (isRemotePlaying) viewModel.castPause() else viewModel.castPlay()
+                        } else {
+                            if (isPlaying) viewModel.pause() else viewModel.play()
+                        }
                     },
-                    onSeekBackward = viewModel::seekBackward,
-                    onSeekForward = viewModel::seekForward,
+                    onSeekBackward = {
+                        if (isCastConnected) {
+                            viewModel.castSeekRelative(-10_000L)
+                        } else {
+                            viewModel.seekBackward()
+                        }
+                    },
+                    onSeekForward = {
+                        if (isCastConnected) {
+                            viewModel.castSeekRelative(10_000L)
+                        } else {
+                            viewModel.seekForward()
+                        }
+                    },
                     onSeekToLiveEdge = viewModel::seekToLiveEdge,
-                    isPlaying = isPlaying,
+                    isPlaying = effectiveIsPlaying,
                     currentAspectRatio = stringResource(aspectRatio.getLabelRes()),
                     isDiagnosticsEnabled = showDiagnostics,
                     onOpenSplitScreen = { activeDialog = PlayerDialogState.SplitScreen },
                     subtitleTrackCount = availableSubtitleTracks.size,
                     liveTranslationAvailable = liveTranslationAvailable,
-                    audioTrackCount = availableAudioTracks.size,
+                    audioTrackCount = effectiveAudioTracks.size,
                     videoQualityCount = availableVideoQualities.size,
                     channelVariantCount = currentChannel?.variants?.size ?: 0,
                     isMuted = isMuted,
@@ -1581,14 +1683,20 @@ fun PlayerScreen(
                     onOpenAudioVideoSync = { activeDialog = PlayerDialogState.AudioVideoOffset },
                     audioVideoSyncEnabled = audioVideoSyncEnabled,
                     onEnterPictureInPicture = enterPictureInPicture,
-                    isCastConnected = castConnectionState == CastConnectionState.CONNECTED,
+                    isCastConnected = isCastConnected,
                     onCast = { viewModel.castCurrentMedia { mainActivity?.openCastRouteChooser() } },
                     onStopCasting = viewModel::stopCasting,
                     onOpenChannelList = {
                         viewModel.closeChannelInfoOverlay()
                         viewModel.openChannelListOverlay()
                     },
-                    onSeekToPosition = viewModel::seekTo,
+                    onSeekToPosition = {
+                        if (isCastConnected) {
+                            viewModel.castSeekTo(it)
+                        } else {
+                            viewModel.seekTo(it)
+                        }
+                    },
                     timeshiftUiState = timeshiftUiState,
                     onTransientPanelVisibilityChanged = { channelInfoSubPanelOpen = it },
                     resolutionLabel = videoFormat.resolutionLabel.takeIf { it.isNotBlank() && !videoFormat.isEmpty },
@@ -1679,6 +1787,8 @@ private fun PlayerControlsOverlayHost(
     onSetScrubbingMode: (Boolean) -> Unit,
     seekPreview: SeekPreviewState,
     onSeekPreviewPositionChanged: (Long?) -> Unit,
+    remoteCurrentPosition: Long = 0L,
+    remoteDuration: Long = 0L,
     nextProgram: com.kaynanamtv.domain.model.Program? = null,
     onToggleDiagnostics: () -> Unit = {},
     onOpenGuide: () -> Unit = {},
@@ -1686,8 +1796,10 @@ private fun PlayerControlsOverlayHost(
     onCloseControls: () -> Unit = {},
     onUserInteraction: () -> Unit
 ) {
-    val currentPosition = playerEngine.currentPosition.collectAsStateWithLifecycle().value
-    val duration = playerEngine.duration.collectAsStateWithLifecycle().value
+    val localPosition = playerEngine.currentPosition.collectAsStateWithLifecycle().value
+    val localDuration = playerEngine.duration.collectAsStateWithLifecycle().value
+    val currentPosition = if (isCastConnected && (remoteDuration > 0L || remoteCurrentPosition > 0L)) remoteCurrentPosition else localPosition
+    val duration = if (isCastConnected && remoteDuration > 0L) remoteDuration else localDuration
 
     PlayerControlsOverlay(
         visible = visible,

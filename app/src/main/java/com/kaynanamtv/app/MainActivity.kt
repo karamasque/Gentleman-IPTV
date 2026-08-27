@@ -296,11 +296,11 @@ class MainActivity : ComponentActivity() {
             wasInPictureInPictureMode = true
         } else if (wasInPictureInPictureMode) {
             wasInPictureInPictureMode = false
-            // When PiP is dismissed by user (X button or swipe), the Activity is not resumed.
-            // Check post-transition after short delay: if not resumed, trigger cleanup.
+            // When PiP is dismissed by user (X button or swipe away), the Activity is stopped/finishing.
+            // When PiP is expanded back to fullscreen, the Activity transitions to STARTED / RESUMED.
             lifecycleScope.launch {
-                delay(250)
-                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                delay(500)
+                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) || isFinishing) {
                     onPictureInPictureDismissed?.invoke()
                 }
             }
