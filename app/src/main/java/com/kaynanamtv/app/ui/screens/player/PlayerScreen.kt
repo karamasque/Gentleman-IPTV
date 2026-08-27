@@ -323,7 +323,7 @@ fun PlayerScreen(
 
     DisposableEffect(mainActivity) {
         mainActivity?.onPictureInPictureDismissed = {
-            viewModel.onPlayerScreenDisposed()
+            viewModel.onPictureInPictureDismissed()
         }
         onDispose {
             mainActivity?.onPictureInPictureDismissed = null
@@ -791,14 +791,7 @@ fun PlayerScreen(
                                     true
                                 } else false
                             } else if (!showControls && !showChannelListOverlay && !showCategoryListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
-                                val repeatCount = event.nativeKeyEvent.repeatCount
-                                val deltaMs = when {
-                                    repeatCount == 0 -> 10_000L
-                                    repeatCount < 5 -> 15_000L
-                                    repeatCount < 10 -> 30_000L
-                                    else -> 60_000L
-                                }
-                                if (isRtl) viewModel.coalescedSeek(deltaMs) else viewModel.coalescedSeek(-deltaMs)
+                                viewModel.toggleControls()
                                 true
                             } else {
                                 false
@@ -815,14 +808,7 @@ fun PlayerScreen(
                                     true
                                 } else false
                             } else if (!showControls && !showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
-                                val repeatCount = event.nativeKeyEvent.repeatCount
-                                val deltaMs = when {
-                                    repeatCount == 0 -> 10_000L
-                                    repeatCount < 5 -> 15_000L
-                                    repeatCount < 10 -> 30_000L
-                                    else -> 60_000L
-                                }
-                                if (isRtl) viewModel.coalescedSeek(-deltaMs) else viewModel.coalescedSeek(deltaMs)
+                                viewModel.toggleControls()
                                 true
                             } else {
                                 false

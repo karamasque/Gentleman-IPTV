@@ -113,6 +113,21 @@ fun PlayerViewModel.onAppForegrounded() {
     shouldResumeAfterForeground = false
 }
 
+fun PlayerViewModel.onPictureInPictureDismissed() {
+    isAppInForeground = false
+    shouldResumeAfterForeground = false
+    playerEngine.pause()
+    if (currentContentType != ContentType.LIVE) {
+        viewModelScope.launch {
+            persistPlaybackProgress()
+            playbackHistoryRepository.flushPendingProgress()
+        }
+    }
+    playerEngine.stopLiveTimeshift()
+    stopLiveTranslationSession()
+    clearPlaybackTimers()
+}
+
 fun PlayerViewModel.onPlayerScreenDisposed() {
     val activeEngine = playerEngine
     activeEngine.pause()

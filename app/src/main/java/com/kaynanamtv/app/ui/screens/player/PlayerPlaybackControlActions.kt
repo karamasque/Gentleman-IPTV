@@ -10,13 +10,14 @@ import kotlinx.coroutines.launch
 
 private const val PLAYBACK_CONTROL_MUTE_TOGGLE_DEBOUNCE_MS = 250L
 
-fun PlayerViewModel.coalescedSeek(deltaMs: Long) {
+fun PlayerViewModel.coalescedSeek(deltaMs: Long, source: String = "DPAD_COALESCED") {
     notifyUserActivity()
     if (currentContentType != ContentType.LIVE || isCatchUpPlayback.value) {
         val duration = playerEngine.duration.value
         if (duration <= 0L) return
         val currentBase = pendingSeekTargetMs ?: playerEngine.currentPosition.value
         val targetPos = (currentBase + deltaMs).coerceIn(0L, duration)
+        android.util.Log.d("PlayerSeekTrace", "VOD_SEEK source=$source old=$currentBase target=$targetPos delta=$deltaMs")
         pendingSeekTargetMs = targetPos
         updateSeekPreview(targetPos)
 
@@ -41,6 +42,7 @@ fun PlayerViewModel.seekForward(deltaMs: Long = 10_000L) {
         if (duration <= 0L) return
         val currentPos = playerEngine.currentPosition.value
         val targetPos = (currentPos + deltaMs).coerceIn(0L, duration)
+        android.util.Log.d("PlayerSeekTrace", "VOD_SEEK source=BUTTON_FORWARD old=$currentPos target=$targetPos delta=$deltaMs")
         seekTo(targetPos)
     } else {
         playerEngine.seekForward()
@@ -54,6 +56,7 @@ fun PlayerViewModel.seekBackward(deltaMs: Long = 10_000L) {
         if (duration <= 0L) return
         val currentPos = playerEngine.currentPosition.value
         val targetPos = (currentPos - deltaMs).coerceIn(0L, duration)
+        android.util.Log.d("PlayerSeekTrace", "VOD_SEEK source=BUTTON_BACKWARD old=$currentPos target=$targetPos delta=-$deltaMs")
         seekTo(targetPos)
     } else {
         playerEngine.seekBackward()

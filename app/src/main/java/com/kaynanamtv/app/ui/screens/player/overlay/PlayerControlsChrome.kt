@@ -270,8 +270,14 @@ fun PlayerControlsOverlay(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically(),
+        enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(200)) + slideInVertically(
+            animationSpec = androidx.compose.animation.core.tween(200),
+            initialOffsetY = { it / 6 }
+        ),
+        exit = fadeOut(animationSpec = androidx.compose.animation.core.tween(180)) + slideOutVertically(
+            animationSpec = androidx.compose.animation.core.tween(180),
+            targetOffsetY = { it / 6 }
+        ),
         modifier = modifier
     ) {
         Box(
@@ -1832,9 +1838,6 @@ private fun VodInteractiveTimeline(
                 .weight(1f)
                 .padding(horizontal = 14.dp)
                 .height(36.dp)
-                .focusProperties { down = playButtonFocusRequester }
-                .focusable()
-                .onFocusChanged { isTimelineFocused = it.isFocused }
                 .semantics { contentDescription = playbackLabel }
                 .pointerInput(duration) {
                     detectTapGestures(
@@ -1890,45 +1893,6 @@ private fun VodInteractiveTimeline(
                             latestSeekPreviewPositionChanged(null)
                         }
                     )
-                }
-                .onPreviewKeyEvent { event ->
-                    if (duration <= 0L) return@onPreviewKeyEvent false
-                    val native = event.nativeKeyEvent
-                    val repeat = native.repeatCount
-                    val stepMs = when {
-                        repeat == 0 -> 10_000L
-                        repeat < 5 -> 20_000L
-                        repeat < 10 -> 30_000L
-                        else -> 60_000L
-                    }
-                    when {
-                        event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight -> {
-                            val curMs = userScrubbingPositionMs ?: currentPosition
-                            val newMs = (curMs + stepMs).coerceIn(0L, duration)
-                            userScrubbingPositionMs = newMs
-                            latestSetScrubbingMode(true)
-                            latestSeekPreviewPositionChanged(newMs)
-                            true
-                        }
-                        event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft -> {
-                            val curMs = userScrubbingPositionMs ?: currentPosition
-                            val newMs = (curMs - stepMs).coerceIn(0L, duration)
-                            userScrubbingPositionMs = newMs
-                            latestSetScrubbingMode(true)
-                            latestSeekPreviewPositionChanged(newMs)
-                            true
-                        }
-                        event.type == KeyEventType.KeyUp &&
-                            (event.key == Key.DirectionCenter || event.key == Key.Enter) &&
-                            userScrubbingPositionMs != null -> {
-                            latestSeekToPosition(userScrubbingPositionMs!!)
-                            userScrubbingPositionMs = null
-                            latestSetScrubbingMode(false)
-                            latestSeekPreviewPositionChanged(null)
-                            true
-                        }
-                        else -> false
-                    }
                 },
             contentAlignment = Alignment.CenterStart
         ) {
