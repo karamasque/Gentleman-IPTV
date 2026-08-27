@@ -946,18 +946,24 @@ fun PlayerScreen(
                 }
             }
     ) {
+        val playerViewModifier = if (!isTelevisionDevice && videoZoomScale != 1f) {
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = videoZoomScale
+                    scaleY = videoZoomScale
+                }
+        } else {
+            Modifier.fillMaxSize()
+        }
+
         // ExoPlayer Video Surface
         PlayerRenderView(
             playerEngine = playerEngine,
             resizeMode = aspectRatio.toPlayerSurfaceResizeMode(),
             surfaceType = renderSurfaceType,
             onColorDetected = { ambilightColor = it },
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = videoZoomScale
-                    scaleY = videoZoomScale
-                }
+            modifier = playerViewModifier
         )
 
         // Premium Ambient Light (Ambilight) Glow
@@ -1189,6 +1195,7 @@ fun PlayerScreen(
             quickActionsFocusRequester = quickActionsFocusRequester,
             modifier = Modifier.fillMaxSize(),
             onClose = onBack,
+            onCloseControls = { viewModel.toggleControls() },
             onTogglePlayPause = {
                 if (isPlaying) viewModel.pause() else viewModel.play()
             },
@@ -1676,6 +1683,7 @@ private fun PlayerControlsOverlayHost(
     onToggleDiagnostics: () -> Unit = {},
     onOpenGuide: () -> Unit = {},
     onLockScreen: () -> Unit = {},
+    onCloseControls: () -> Unit = {},
     onUserInteraction: () -> Unit
 ) {
     val currentPosition = playerEngine.currentPosition.collectAsStateWithLifecycle().value
@@ -1709,6 +1717,7 @@ private fun PlayerControlsOverlayHost(
         quickActionsFocusRequester = quickActionsFocusRequester,
         modifier = modifier,
         onClose = onClose,
+        onCloseControls = onCloseControls,
         onTogglePlayPause = onTogglePlayPause,
         onSeekBackward = onSeekBackward,
         onSeekForward = onSeekForward,

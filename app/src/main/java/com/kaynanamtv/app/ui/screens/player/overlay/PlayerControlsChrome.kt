@@ -225,6 +225,7 @@ fun PlayerControlsOverlay(
     playButtonFocusRequester: FocusRequester,
     quickActionsFocusRequester: FocusRequester = FocusRequester(),
     onClose: () -> Unit,
+    onCloseControls: () -> Unit = {},
     onTogglePlayPause: () -> Unit,
     onSeekBackward: () -> Unit,
     onSeekForward: () -> Unit,
@@ -270,14 +271,8 @@ fun PlayerControlsOverlay(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(200)) + slideInVertically(
-            animationSpec = androidx.compose.animation.core.tween(200),
-            initialOffsetY = { it / 6 }
-        ),
-        exit = fadeOut(animationSpec = androidx.compose.animation.core.tween(180)) + slideOutVertically(
-            animationSpec = androidx.compose.animation.core.tween(180),
-            targetOffsetY = { it / 6 }
-        ),
+        enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(150)),
+        exit = fadeOut(animationSpec = androidx.compose.animation.core.tween(150)),
         modifier = modifier
     ) {
         Box(
@@ -285,7 +280,7 @@ fun PlayerControlsOverlay(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     detectTapGestures {
-                        onClose()
+                        onCloseControls()
                     }
                 }
                 .onPreviewKeyEvent { event ->
@@ -760,117 +755,122 @@ private fun PlayerBottomBar(
     onClose: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    if (contentType == "LIVE") {
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            PlayerLiveInfo(
-                currentProgram = currentProgram,
-                nextProgram = nextProgram,
-                currentChannel = currentChannel,
-                currentChannelName = currentChannelName,
-                displayChannelNumber = displayChannelNumber,
-                aspectRatioLabel = aspectRatioLabel,
-                subtitleTrackCount = subtitleTrackCount,
-                liveTranslationAvailable = liveTranslationAvailable,
-                audioTrackCount = audioTrackCount,
-                videoQualityCount = videoQualityCount,
-                currentRecordingStatus = currentRecordingStatus,
-                isMuted = isMuted,
-                mediaTitle = mediaTitle,
-                sleepTimerUiState = sleepTimerUiState,
-                timeshiftUiState = timeshiftUiState,
-                playButtonFocusRequester = playButtonFocusRequester,
-                quickActionsFocusRequester = quickActionsFocusRequester,
-                onRestartProgram = onRestartProgram,
-                onOpenArchive = onOpenArchive,
-                onStartRecording = onStartRecording,
-                onStopRecording = onStopRecording,
-                onScheduleRecording = onScheduleRecording,
-                onScheduleDailyRecording = onScheduleDailyRecording,
-                onScheduleWeeklyRecording = onScheduleWeeklyRecording,
-                onToggleAspectRatio = onToggleAspectRatio,
-                onOpenSubtitleTracks = onOpenSubtitleTracks,
-                onOpenAudioTracks = onOpenAudioTracks,
-                onOpenVideoTracks = onOpenVideoTracks,
-                onOpenStopPlaybackTimer = onOpenStopPlaybackTimer,
-                onOpenIdleStandbyTimer = onOpenIdleStandbyTimer,
-                onOpenAudioVideoSync = onOpenAudioVideoSync,
-                audioVideoSyncEnabled = audioVideoSyncEnabled,
-                onOpenSplitScreen = onOpenSplitScreen,
-                onEnterPictureInPicture = onEnterPictureInPicture,
-                onToggleMute = onToggleMute,
-                isCastConnected = isCastConnected,
-                onCast = onCast,
-                onStopCasting = onStopCasting,
-                onOpenChannelList = onOpenChannelList,
-                isPlaying = isPlaying,
-                onTogglePlayPause = onTogglePlayPause,
-                onSeekBackward = onSeekBackward,
-                onSeekForward = onSeekForward,
-                onSeekToLiveEdge = onSeekToLiveEdge,
-                onSeekToPosition = onSeekToPosition,
-                onSetScrubbingMode = onSetScrubbingMode,
-                onToggleDiagnostics = onToggleDiagnostics,
-                showExternalPlayerAction = showExternalPlayerAction,
-                onOpenExternalPlayer = onOpenExternalPlayer,
-                isCatchUpPlayback = isCatchUpPlayback,
-                onOpenGuide = onOpenGuide
+    val isVod = contentType != "LIVE" || isCatchUpPlayback
+    val bottomBarWidthFraction = if (isVod) 0.82f else 1f
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.84f))
+                )
             )
-        }
-    } else {
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            contentAlignment = Alignment.BottomCenter
+            .padding(horizontal = 32.dp, vertical = 20.dp),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(bottomBarWidthFraction),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            PlayerVodInfo(
-                title = title,
-                contentType = contentType,
-                isPlaying = isPlaying,
-                currentPosition = currentPosition,
-                duration = duration,
-                aspectRatioLabel = aspectRatioLabel,
-                subtitleTrackCount = subtitleTrackCount,
-                audioTrackCount = audioTrackCount,
-                videoQualityCount = videoQualityCount,
-                isMuted = isMuted,
-                playbackSpeed = playbackSpeed,
-                sleepTimerUiState = sleepTimerUiState,
-                playButtonFocusRequester = playButtonFocusRequester,
-                quickActionsFocusRequester = quickActionsFocusRequester,
-                onSeekToPosition = onSeekToPosition,
-                onSetScrubbingMode = onSetScrubbingMode,
-                onToggleAspectRatio = onToggleAspectRatio,
-                onOpenSubtitleTracks = onOpenSubtitleTracks,
-                onOpenAudioTracks = onOpenAudioTracks,
-                onOpenVideoTracks = onOpenVideoTracks,
-                onOpenPlaybackSpeed = onOpenPlaybackSpeed,
-                onOpenStopPlaybackTimer = onOpenStopPlaybackTimer,
-                onOpenIdleStandbyTimer = onOpenIdleStandbyTimer,
-                onOpenAudioVideoSync = onOpenAudioVideoSync,
-                audioVideoSyncEnabled = audioVideoSyncEnabled,
-                showEpisodesAction = showEpisodesAction,
-                onOpenEpisodes = onOpenEpisodes,
-                onEnterPictureInPicture = onEnterPictureInPicture,
-                onToggleMute = onToggleMute,
-                isCastConnected = isCastConnected,
-                onCast = onCast,
-                onStopCasting = onStopCasting,
-                onTogglePlayPause = onTogglePlayPause,
-                onSeekBackward = onSeekBackward,
-                onSeekForward = onSeekForward,
-                seekPreview = seekPreview,
-                onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
-                showExternalPlayerAction = showExternalPlayerAction,
-                onOpenExternalPlayer = onOpenExternalPlayer,
-                onLockScreen = onLockScreen,
-                onClose = onClose
-            )
+            if (isVod) {
+                PlayerVodInfo(
+                    title = title,
+                    contentType = contentType,
+                    isPlaying = isPlaying,
+                    currentPosition = currentPosition,
+                    duration = duration,
+                    aspectRatioLabel = aspectRatioLabel,
+                    subtitleTrackCount = subtitleTrackCount,
+                    audioTrackCount = audioTrackCount,
+                    videoQualityCount = videoQualityCount,
+                    isMuted = isMuted,
+                    playbackSpeed = playbackSpeed,
+                    sleepTimerUiState = sleepTimerUiState,
+                    playButtonFocusRequester = playButtonFocusRequester,
+                    quickActionsFocusRequester = quickActionsFocusRequester,
+                    onSeekToPosition = onSeekToPosition,
+                    onSetScrubbingMode = onSetScrubbingMode,
+                    onToggleAspectRatio = onToggleAspectRatio,
+                    onOpenSubtitleTracks = onOpenSubtitleTracks,
+                    onOpenAudioTracks = onOpenAudioTracks,
+                    onOpenVideoTracks = onOpenVideoTracks,
+                    onOpenPlaybackSpeed = onOpenPlaybackSpeed,
+                    onOpenStopPlaybackTimer = onOpenStopPlaybackTimer,
+                    onOpenIdleStandbyTimer = onOpenIdleStandbyTimer,
+                    onOpenAudioVideoSync = onOpenAudioVideoSync,
+                    audioVideoSyncEnabled = audioVideoSyncEnabled,
+                    showEpisodesAction = showEpisodesAction,
+                    onOpenEpisodes = onOpenEpisodes,
+                    onEnterPictureInPicture = onEnterPictureInPicture,
+                    onToggleMute = onToggleMute,
+                    isCastConnected = isCastConnected,
+                    onCast = onCast,
+                    onStopCasting = onStopCasting,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onSeekBackward = onSeekBackward,
+                    onSeekForward = onSeekForward,
+                    seekPreview = seekPreview,
+                    onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
+                    showExternalPlayerAction = showExternalPlayerAction,
+                    onOpenExternalPlayer = onOpenExternalPlayer,
+                    onLockScreen = onLockScreen,
+                    onClose = onClose
+                )
+            } else {
+                PlayerLiveInfo(
+                    currentProgram = currentProgram,
+                    nextProgram = nextProgram,
+                    currentChannel = currentChannel,
+                    currentChannelName = currentChannelName,
+                    displayChannelNumber = displayChannelNumber,
+                    aspectRatioLabel = aspectRatioLabel,
+                    subtitleTrackCount = subtitleTrackCount,
+                    liveTranslationAvailable = liveTranslationAvailable,
+                    audioTrackCount = audioTrackCount,
+                    videoQualityCount = videoQualityCount,
+                    currentRecordingStatus = currentRecordingStatus,
+                    isMuted = isMuted,
+                    mediaTitle = mediaTitle,
+                    sleepTimerUiState = sleepTimerUiState,
+                    timeshiftUiState = timeshiftUiState,
+                    playButtonFocusRequester = playButtonFocusRequester,
+                    quickActionsFocusRequester = quickActionsFocusRequester,
+                    onRestartProgram = onRestartProgram,
+                    onOpenArchive = onOpenArchive,
+                    onStartRecording = onStartRecording,
+                    onStopRecording = onStopRecording,
+                    onScheduleRecording = onScheduleRecording,
+                    onScheduleDailyRecording = onScheduleDailyRecording,
+                    onScheduleWeeklyRecording = onScheduleWeeklyRecording,
+                    onToggleAspectRatio = onToggleAspectRatio,
+                    onOpenSubtitleTracks = onOpenSubtitleTracks,
+                    onOpenAudioTracks = onOpenAudioTracks,
+                    onOpenVideoTracks = onOpenVideoTracks,
+                    onOpenStopPlaybackTimer = onOpenStopPlaybackTimer,
+                    onOpenIdleStandbyTimer = onOpenIdleStandbyTimer,
+                    onOpenAudioVideoSync = onOpenAudioVideoSync,
+                    audioVideoSyncEnabled = audioVideoSyncEnabled,
+                    onOpenSplitScreen = onOpenSplitScreen,
+                    onEnterPictureInPicture = onEnterPictureInPicture,
+                    onToggleMute = onToggleMute,
+                    isCastConnected = isCastConnected,
+                    onCast = onCast,
+                    onStopCasting = onStopCasting,
+                    onOpenChannelList = onOpenChannelList,
+                    isPlaying = isPlaying,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onSeekBackward = onSeekBackward,
+                    onSeekForward = onSeekForward,
+                    onSeekToLiveEdge = onSeekToLiveEdge,
+                    onSeekToPosition = onSeekToPosition,
+                    onSetScrubbingMode = onSetScrubbingMode,
+                    onToggleDiagnostics = onToggleDiagnostics,
+                    showExternalPlayerAction = showExternalPlayerAction,
+                    onOpenExternalPlayer = onOpenExternalPlayer,
+                    isCatchUpPlayback = isCatchUpPlayback,
+                    onOpenGuide = onOpenGuide
+                )
+            }
         }
     }
 }
@@ -1510,208 +1510,337 @@ private fun PlayerVodInfo(
     onClose: () -> Unit = {}
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val playbackLabel = stringResource(R.string.player_playback_label)
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        AnimatedVisibility(visible = seekPreview.visible) {
-            PlayerSeekPreviewCard(
-                preview = seekPreview,
-                previewHeight = if (screenWidth < 700.dp) 96.dp else 114.dp,
-                modifier = Modifier
-                    .width(if (screenWidth < 700.dp) 148.dp else 180.dp)
-                    .padding(bottom = 8.dp)
-            )
+    var sliderValue by remember(duration, currentPosition) {
+        mutableStateOf(if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f)
+    }
+    var isScrubbing by remember { mutableStateOf(false) }
+    val latestSeekCallback by rememberUpdatedState(onSeekToPosition)
+    val latestScrubbingCallback by rememberUpdatedState(onSetScrubbingMode)
+    val latestSeekPreviewPositionChanged by rememberUpdatedState(onSeekPreviewPositionChanged)
+
+    LaunchedEffect(duration, currentPosition, isScrubbing) {
+        if (!isScrubbing) {
+            sliderValue = if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f
         }
+    }
 
-        val dockBorderBrush = Brush.linearGradient(VodControlsColors.DockBorderGradient)
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth(if (screenWidth < 700.dp) 0.94f else 0.76f)
-                .widthIn(max = 940.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = SurfaceDefaults.colors(containerColor = VodControlsColors.DockBackground),
-            border = Border(
-                border = BorderStroke(1.2.dp, dockBorderBrush),
-                shape = RoundedCornerShape(22.dp)
-            )
+    LaunchedEffect(sliderValue, isScrubbing) {
+        if (isScrubbing && duration > 0) {
+            kotlinx.coroutines.delay(1000L)
+            latestSeekCallback((sliderValue * duration).toLong())
+            latestScrubbingCallback(false)
+            isScrubbing = false
+            latestSeekPreviewPositionChanged(null)
+        }
+    }
+
+    // Title / Meta Info Row
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PlayerMetaPill(
+            text = if (contentType == "MOVIE") {
+                stringResource(R.string.player_type_movie)
+            } else {
+                stringResource(R.string.player_type_series)
+            },
+            accent = true
+        )
+        if (isMuted) {
+            PlayerMetaPill(text = stringResource(R.string.player_muted_badge))
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White.copy(alpha = 0.82f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    // Unified VOD Player bar (Pill surface container)
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        colors = SurfaceDefaults.colors(containerColor = Color(0xFF0D1426).copy(alpha = 0.65f)),
+        border = Border(
+            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.12f)),
+            shape = RoundedCornerShape(18.dp)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                VodInteractiveTimeline(
-                    currentPosition = currentPosition,
-                    duration = duration,
-                    isPlaying = isPlaying,
-                    playbackSpeed = playbackSpeed,
-                    seekPreview = seekPreview,
-                    playButtonFocusRequester = playButtonFocusRequester,
-                    onSeekToPosition = onSeekToPosition,
-                    onSetScrubbingMode = onSetScrubbingMode,
-                    onSeekPreviewPositionChanged = onSeekPreviewPositionChanged
-                )
+            // Seek bar Slider section
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                AnimatedVisibility(visible = seekPreview.visible) {
+                    PlayerSeekPreviewCard(
+                        preview = seekPreview,
+                        previewHeight = if (screenWidth < 700.dp) 96.dp else 114.dp,
+                        modifier = Modifier
+                            .width(if (screenWidth < 700.dp) 148.dp else 180.dp)
+                            .padding(bottom = 8.dp)
+                    )
+                }
 
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TvVodControlButton(
-                        icon = Replay10Icon,
-                        label = "-10 sn",
-                        onClick = onSeekBackward,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    Text(
+                        text = formatDuration(
+                            if (isScrubbing && duration > 0) {
+                                (sliderValue * duration).toLong()
+                            } else {
+                                currentPosition
+                            }
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White
                     )
 
-                    TvVodControlButton(
-                        icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        label = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
-                        onClick = onTogglePlayPause,
-                        isPrimary = true,
-                        focusRequester = playButtonFocusRequester,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = Forward10Icon,
-                        label = "+10 sn",
-                        onClick = onSeekForward,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = Icons.Default.Stop,
-                        label = "Durdur",
-                        onClick = onClose,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                        label = if (isMuted) stringResource(R.string.player_muted_badge) else stringResource(R.string.player_audio),
-                        onClick = onOpenAudioTracks,
-                        accentColor = if (isMuted) Color(0xFFFF6B6B) else Color.White,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = Icons.Default.Subtitles,
-                        label = stringResource(R.string.player_subs),
-                        onClick = onOpenSubtitleTracks,
-                        badgeActive = subtitleTrackCount > 0,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = Icons.Default.HighQuality,
-                        label = stringResource(R.string.player_video_quality),
-                        onClick = onOpenVideoTracks,
-                        badgeActive = videoQualityCount > 1,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = Icons.Default.Speed,
-                        label = formatPlaybackSpeedLabel(playbackSpeed),
-                        onClick = onOpenPlaybackSpeed,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = Icons.Default.AspectRatio,
-                        label = aspectRatioLabel.ifBlank { "Fit" },
-                        onClick = onToggleAspectRatio,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = if (isCastConnected) Icons.Default.CastConnected else Icons.Default.Cast,
-                        label = if (isCastConnected) stringResource(R.string.player_stop_casting) else stringResource(R.string.player_cast),
-                        onClick = if (isCastConnected) onStopCasting else onCast,
-                        badgeActive = isCastConnected,
-                        accentColor = if (isCastConnected) VodControlsColors.PrimaryIndigo else Color.White,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = Icons.Default.PictureInPicture,
-                        label = "PiP",
-                        onClick = onEnterPictureInPicture,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = Icons.Default.Lock,
-                        label = stringResource(R.string.player_lock_screen),
-                        onClick = onLockScreen,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = Icons.Default.Timer,
-                        label = "Uyku",
-                        onClick = onOpenStopPlaybackTimer,
-                        badgeActive = sleepTimerUiState.stopTimerActive,
-                        accentColor = if (sleepTimerUiState.stopTimerActive) VodControlsColors.PrimaryIndigo else Color.White,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    TvVodControlButton(
-                        icon = Icons.Default.Snooze,
-                        label = "Boşta",
-                        onClick = onOpenIdleStandbyTimer,
-                        badgeActive = sleepTimerUiState.idleTimerActive,
-                        accentColor = if (sleepTimerUiState.idleTimerActive) VodControlsColors.PrimaryIndigo else Color.White,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                    )
-
-                    if (audioVideoSyncEnabled) {
-                        TvVodControlButton(
-                            icon = Icons.Default.Schedule,
-                            label = "A/V Senkron",
-                            onClick = onOpenAudioVideoSync,
-                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { newValue ->
+                            val clampedValue = newValue.coerceIn(0f, 1f)
+                            if (!isScrubbing) {
+                                isScrubbing = true
+                                latestScrubbingCallback(true)
+                            }
+                            sliderValue = clampedValue
+                            if (duration > 0) {
+                                latestSeekPreviewPositionChanged((clampedValue * duration).toLong())
+                            }
+                        },
+                        onValueChangeFinished = {
+                            if (duration > 0) {
+                                latestSeekCallback((sliderValue.coerceIn(0f, 1f) * duration).toLong())
+                            }
+                            if (isScrubbing) {
+                                latestScrubbingCallback(false)
+                                isScrubbing = false
+                            }
+                            latestSeekPreviewPositionChanged(null)
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 12.dp)
+                            .focusProperties { down = playButtonFocusRequester }
+                            .semantics { contentDescription = playbackLabel }
+                            .onPreviewKeyEvent { event ->
+                                if (duration <= 0L) return@onPreviewKeyEvent false
+                                val native = event.nativeKeyEvent
+                                val repeat = native.repeatCount
+                                val stepMs = when {
+                                    repeat == 0 -> 10_000L
+                                    repeat < 5 -> 15_000L
+                                    repeat < 10 -> 30_000L
+                                    else -> 60_000L
+                                }
+                                when {
+                                    event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                    (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) -> {
+                                        val currentMs = (sliderValue * duration).toLong()
+                                        val newMs = (currentMs + stepMs).coerceIn(0L, duration)
+                                        val newValue = newMs.toFloat() / duration.toFloat()
+                                        if (!isScrubbing) {
+                                            isScrubbing = true
+                                            latestScrubbingCallback(true)
+                                        }
+                                        sliderValue = newValue
+                                        latestSeekPreviewPositionChanged(newMs)
+                                        true
+                                    }
+                                    event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                    (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) -> {
+                                        val currentMs = (sliderValue * duration).toLong()
+                                        val newMs = (currentMs - stepMs).coerceIn(0L, duration)
+                                        val newValue = newMs.toFloat() / duration.toFloat()
+                                        if (!isScrubbing) {
+                                            isScrubbing = true
+                                            latestScrubbingCallback(true)
+                                        }
+                                        sliderValue = newValue
+                                        latestSeekPreviewPositionChanged(newMs)
+                                        true
+                                    }
+                                    event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP &&
+                                    (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                                     event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ENTER) &&
+                                    isScrubbing -> {
+                                        latestSeekCallback((sliderValue * duration).toLong())
+                                        latestScrubbingCallback(false)
+                                        isScrubbing = false
+                                        latestSeekPreviewPositionChanged(null)
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            },
+                        enabled = duration > 0,
+                        colors = SliderDefaults.colors(
+                            activeTrackColor = AppColors.NeonCyan,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.12f)
                         )
-                    }
+                    )
 
-                    if (showEpisodesAction) {
-                        TvVodControlButton(
-                            icon = Icons.Default.Tv,
-                            label = stringResource(R.string.player_episodes),
-                            onClick = onOpenEpisodes,
-                            accentColor = VodControlsColors.PrimaryViolet,
-                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                        )
-                    }
-
-                    if (showExternalPlayerAction) {
-                        TvVodControlButton(
-                            icon = Icons.Default.MovieFilter,
-                            label = stringResource(R.string.player_open_in_external_player),
-                            onClick = onOpenExternalPlayer,
-                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                        )
-                    }
+                    Text(
+                        text = formatDuration(duration),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White
+                    )
                 }
             }
-        }
 
-        Row(
-            modifier = Modifier.padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "\u2725 Seç   |   \u2194 10 sn ileri/geri   |   \u2630 Menü   |   \u21A9 Geri",
-                style = MaterialTheme.typography.labelSmall,
-                color = VodControlsColors.HintText
-            )
+            // TV-First Control Buttons Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 1. -10 sn Rewind
+                TvVodControlButton(
+                    icon = Replay10Icon,
+                    label = "-10 sn",
+                    onClick = onSeekBackward,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 2. Play / Pause (Primary)
+                TvVodControlButton(
+                    icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    label = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
+                    onClick = onTogglePlayPause,
+                    isPrimary = true,
+                    focusRequester = playButtonFocusRequester,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 3. +10 sn Forward
+                TvVodControlButton(
+                    icon = Forward10Icon,
+                    label = "+10 sn",
+                    onClick = onSeekForward,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 4. Durdur
+                TvVodControlButton(
+                    icon = Icons.Default.Stop,
+                    label = "Durdur",
+                    onClick = onClose,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 5. Altyazı
+                TvVodControlButton(
+                    icon = Icons.Default.Subtitles,
+                    label = stringResource(R.string.player_subs),
+                    onClick = onOpenSubtitleTracks,
+                    badgeActive = subtitleTrackCount > 0,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 6. Ses (Audio Tracks & Mute Indicator)
+                TvVodControlButton(
+                    icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    label = if (isMuted) stringResource(R.string.player_muted_badge) else stringResource(R.string.player_audio),
+                    onClick = onOpenAudioTracks,
+                    accentColor = if (isMuted) Color(0xFFFF6B6B) else Color.White,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 7. Görüntü Kalitesi
+                TvVodControlButton(
+                    icon = Icons.Default.HighQuality,
+                    label = stringResource(R.string.player_video_quality),
+                    onClick = onOpenVideoTracks,
+                    badgeActive = videoQualityCount > 1,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 8. Oynatma Hızı
+                TvVodControlButton(
+                    icon = Icons.Default.Speed,
+                    label = formatPlaybackSpeedLabel(playbackSpeed),
+                    onClick = onOpenPlaybackSpeed,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 9. En-Boy Oranı
+                TvVodControlButton(
+                    icon = Icons.Default.AspectRatio,
+                    label = aspectRatioLabel.ifBlank { "Fit" },
+                    onClick = onToggleAspectRatio,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 10. PiP
+                TvVodControlButton(
+                    icon = Icons.Default.PictureInPicture,
+                    label = "PiP",
+                    onClick = onEnterPictureInPicture,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 11. Kilit
+                TvVodControlButton(
+                    icon = Icons.Default.Lock,
+                    label = stringResource(R.string.player_lock_screen),
+                    onClick = onLockScreen,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 12. Uyku Zamanlayıcı
+                TvVodControlButton(
+                    icon = Icons.Default.Timer,
+                    label = "Uyku",
+                    onClick = onOpenStopPlaybackTimer,
+                    badgeActive = sleepTimerUiState.stopTimerActive,
+                    accentColor = if (sleepTimerUiState.stopTimerActive) Color(0xFF6366F1) else Color.White,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 13. Boşta Bekleme
+                TvVodControlButton(
+                    icon = Icons.Default.Snooze,
+                    label = "Boşta",
+                    onClick = onOpenIdleStandbyTimer,
+                    badgeActive = sleepTimerUiState.idleTimerActive,
+                    accentColor = if (sleepTimerUiState.idleTimerActive) Color(0xFF6366F1) else Color.White,
+                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                )
+
+                // 14. Bölümler (Dizi ise)
+                if (showEpisodesAction) {
+                    TvVodControlButton(
+                        icon = Icons.Default.Tv,
+                        label = stringResource(R.string.player_episodes),
+                        onClick = onOpenEpisodes,
+                        accentColor = AppColors.NeonCyan,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+                }
+
+                // 15. Harici Oynatıcı (opsiyonel)
+                if (showExternalPlayerAction) {
+                    TvVodControlButton(
+                        icon = Icons.Default.Cast,
+                        label = stringResource(R.string.player_open_in_external_player),
+                        onClick = onOpenExternalPlayer,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+                }
+            }
         }
     }
 }
@@ -1753,204 +1882,6 @@ private object VodControlsColors {
     val TextPrimary = Color(0xFFF8FAFC)
     val TextSecondary = Color(0xFF94A3B8)
     val HintText = Color(0xFF94A3B8).copy(alpha = 0.70f)
-}
-
-/**
- * Direct Interactive Timeline Component:
- * - Direct touch / tap anywhere on track seeks instantly: fraction = touchX / trackWidth, target = duration * fraction
- * - Smooth horizontal drag / scrubbing support
- * - TV remote D-Pad LEFT/RIGHT step preview (+10s, +20s, +30s, +60s) with Center/OK commit
- * - Single source of truth: stays synced with player position without 00:00 resets
- * - Primary Indigo -> Violet gradient progress bar with white/violet glowing thumb
- */
-@Composable
-private fun VodInteractiveTimeline(
-    currentPosition: Long,
-    duration: Long,
-    isPlaying: Boolean,
-    playbackSpeed: Float,
-    seekPreview: SeekPreviewState,
-    playButtonFocusRequester: FocusRequester,
-    onSeekToPosition: (Long) -> Unit,
-    onSetScrubbingMode: (Boolean) -> Unit,
-    onSeekPreviewPositionChanged: (Long?) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val playbackLabel = stringResource(R.string.player_playback_label)
-    var isTimelineFocused by remember { mutableStateOf(false) }
-    var userScrubbingPositionMs by remember { mutableStateOf<Long?>(null) }
-    val latestSeekToPosition by rememberUpdatedState(onSeekToPosition)
-    val latestSetScrubbingMode by rememberUpdatedState(onSetScrubbingMode)
-    val latestSeekPreviewPositionChanged by rememberUpdatedState(onSeekPreviewPositionChanged)
-
-    // Smooth continuous position interpolation anchored to last genuine ExoPlayer sample
-    var lastSamplePositionMs by remember { mutableLongStateOf(currentPosition) }
-    var lastSampleTimestampNs by remember { mutableLongStateOf(System.nanoTime()) }
-    var interpolatedPositionMs by remember { mutableLongStateOf(currentPosition) }
-
-    LaunchedEffect(currentPosition) {
-        lastSamplePositionMs = currentPosition
-        lastSampleTimestampNs = System.nanoTime()
-        interpolatedPositionMs = currentPosition
-    }
-
-    val isScrubbingActive = userScrubbingPositionMs != null
-    val isSeekPreviewActive = seekPreview.visible && seekPreview.positionMs >= 0L
-
-    LaunchedEffect(isPlaying, isScrubbingActive, isSeekPreviewActive, playbackSpeed, duration) {
-        if (isPlaying && !isScrubbingActive && !isSeekPreviewActive && duration > 0L) {
-            while (isActive) {
-                withFrameNanos { frameTimeNanos ->
-                    val elapsedNanos = (frameTimeNanos - lastSampleTimestampNs).coerceAtLeast(0L)
-                    val elapsedMs = ((elapsedNanos / 1_000_000.0) * playbackSpeed).toLong()
-                    interpolatedPositionMs = (lastSamplePositionMs + elapsedMs).coerceIn(0L, duration)
-                }
-            }
-        } else if (!isPlaying) {
-            interpolatedPositionMs = currentPosition
-        }
-    }
-
-    val displayedPositionMs = userScrubbingPositionMs
-        ?: (if (isSeekPreviewActive) seekPreview.positionMs else if (isPlaying) interpolatedPositionMs else currentPosition).coerceIn(
-            0L,
-            if (duration > 0L) duration else Long.MAX_VALUE
-        )
-
-    val progressFraction = if (duration > 0L) {
-        (displayedPositionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-    } else 0f
-
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Left: Current / scrubbed position
-        Text(
-            text = formatDuration(displayedPositionMs),
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            color = VodControlsColors.TextPrimary
-        )
-
-        // Center: Interactive Track
-        BoxWithConstraints(
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 14.dp)
-                .height(36.dp)
-                .semantics { contentDescription = playbackLabel }
-                .pointerInput(duration) {
-                    detectTapGestures(
-                        onPress = { offset ->
-                            if (duration <= 0L) return@detectTapGestures
-                            val widthPx = size.width.toFloat()
-                            if (widthPx <= 0f) return@detectTapGestures
-                            val fraction = (offset.x / widthPx).coerceIn(0f, 1f)
-                            val targetMs = (fraction * duration).toLong().coerceIn(0L, duration)
-                            userScrubbingPositionMs = targetMs
-                            latestSetScrubbingMode(true)
-                            latestSeekToPosition(targetMs)
-                            latestSeekPreviewPositionChanged(null)
-                            tryAwaitRelease()
-                            userScrubbingPositionMs = null
-                            latestSetScrubbingMode(false)
-                        }
-                    )
-                }
-                .pointerInput(duration) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { offset ->
-                            if (duration <= 0L) return@detectHorizontalDragGestures
-                            val widthPx = size.width.toFloat()
-                            if (widthPx <= 0f) return@detectHorizontalDragGestures
-                            latestSetScrubbingMode(true)
-                            val fraction = (offset.x / widthPx).coerceIn(0f, 1f)
-                            val targetMs = (fraction * duration).toLong().coerceIn(0L, duration)
-                            userScrubbingPositionMs = targetMs
-                            latestSeekPreviewPositionChanged(targetMs)
-                        },
-                        onHorizontalDrag = { change, _ ->
-                            change.consume()
-                            if (duration <= 0L) return@detectHorizontalDragGestures
-                            val widthPx = size.width.toFloat()
-                            if (widthPx <= 0f) return@detectHorizontalDragGestures
-                            val fraction = (change.position.x / widthPx).coerceIn(0f, 1f)
-                            val targetMs = (fraction * duration).toLong().coerceIn(0L, duration)
-                            userScrubbingPositionMs = targetMs
-                            latestSeekPreviewPositionChanged(targetMs)
-                        },
-                        onDragEnd = {
-                            if (duration > 0L && userScrubbingPositionMs != null) {
-                                latestSeekToPosition(userScrubbingPositionMs!!)
-                            }
-                            userScrubbingPositionMs = null
-                            latestSetScrubbingMode(false)
-                            latestSeekPreviewPositionChanged(null)
-                        },
-                        onDragCancel = {
-                            userScrubbingPositionMs = null
-                            latestSetScrubbingMode(false)
-                            latestSeekPreviewPositionChanged(null)
-                        }
-                    )
-                },
-            contentAlignment = Alignment.CenterStart
-        ) {
-            val isScrubbingActive = userScrubbingPositionMs != null
-            val progressBrush = Brush.horizontalGradient(VodControlsColors.ProgressGradient)
-
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(if (isTimelineFocused || isScrubbingActive) 8.dp else 6.dp)
-            ) {
-                val trackHeight = size.height
-                val cornerRadius = CornerRadius(trackHeight / 2f, trackHeight / 2f)
-
-                // Background track
-                drawRoundRect(
-                    color = VodControlsColors.TrackBackground,
-                    size = size,
-                    cornerRadius = cornerRadius
-                )
-
-                // Played track with Indigo -> Violet gradient
-                if (progressFraction > 0f) {
-                    val playedWidth = size.width * progressFraction
-                    drawRoundRect(
-                        brush = progressBrush,
-                        size = Size(playedWidth, trackHeight),
-                        cornerRadius = cornerRadius
-                    )
-                }
-
-                // Glowing White + Light Violet Thumb
-                val thumbX = size.width * progressFraction
-                val thumbRadius = if (isTimelineFocused || isScrubbingActive) 9.dp.toPx() else 7.dp.toPx()
-                val glowRadius = thumbRadius + 4.dp.toPx()
-
-                // Glow ring
-                drawCircle(
-                    color = VodControlsColors.ThumbGlow.copy(alpha = if (isTimelineFocused || isScrubbingActive) 0.60f else 0.30f),
-                    radius = glowRadius,
-                    center = Offset(thumbX, trackHeight / 2f)
-                )
-                // Solid White center
-                drawCircle(
-                    color = VodControlsColors.ThumbWhite,
-                    radius = thumbRadius,
-                    center = Offset(thumbX, trackHeight / 2f)
-                )
-            }
-        }
-
-        // Right: Total duration
-        Text(
-            text = formatDuration(duration),
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = VodControlsColors.TextSecondary
-        )
-    }
 }
 
 /**

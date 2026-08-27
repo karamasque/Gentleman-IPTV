@@ -1225,7 +1225,6 @@ class Media3PlayerEngine @Inject constructor(
             .build()
             .apply {
                 videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
                 playbackParameters = PlaybackParameters(_playbackSpeed.value)
                 setVideoFrameMetadataListener { presentationTimeUs, _, _, _ ->
                     videoStallDetector.onVideoFrameRendered((presentationTimeUs / 1_000L).coerceAtLeast(0L))
