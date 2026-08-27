@@ -5,7 +5,7 @@
   - Kullanıcı yeni sürümü indirmeden/kurmadan pencereyi kapatabilir ama bu yapılırsa uygulamada kapatılmalı, arka plana geçememeli ve eski sürümü kullanmaya devam edememelidir.
 
 ## GitHub Dağıtım ve Release Politikası (GitHub Release & Push Workflow)
-- **KESİN KURAL (Açık Onay Şartı):** Kullanıcı açıkça *"GitHub'a yolla / push et / release yap"* şeklinde doğrudan talimat vermediği sürece **ASLA** GitHub'a git push veya GitHub Release işlemi YAPILMAYACAKTIR. Yapılan derlemeler yalnızca yerel olarak üretilecek ve doğrudan kullanıcıya verilecektir.
+- **KESİN KURAL (Açık Onay Şartı):** Kullanıcı açıkça *"paylaş / GitHub'a yolla / push et / release yap"* şeklinde doğrudan talimat vermediği sürece **ASLA** GitHub'a git push veya GitHub Release işlemi YAPILMAYACAKTIR. Kullanıcı *"paylaş"* veya *"GitHub'a yolla"* dediğinde otomatik olarak sürüm yükseltilir (`versionCode` ve `versionName`), release derlenir ve GitHub'a push/release edilir. Normal durumlarda yapılan derlemeler yalnızca yerel olarak üretilir.
 - **Hedef Repository:** `karamasque/Gentleman-IPTV`
 - **Branch:** `master`
 - **Sürüm Yükseltme:** `app/build.gradle.kts` içinde `versionCode` ve `versionName` artırılır.
