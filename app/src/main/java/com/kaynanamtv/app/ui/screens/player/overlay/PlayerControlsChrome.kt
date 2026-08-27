@@ -88,6 +88,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.withFrameNanos
@@ -1499,28 +1501,52 @@ private fun PlayerVodInfo(
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val playbackLabel = stringResource(R.string.player_playback_label)
 
-    var sliderValue by remember(duration, currentPosition) {
-        mutableStateOf(if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f)
-    }
-    var isScrubbing by remember { mutableStateOf(false) }
+    var isSliderFocused by remember { mutableStateOf(false) }
+    var userScrubPositionMs by remember { mutableStateOf<Long?>(null) }
+    var pendingSeekTargetMs by remember { mutableStateOf<Long?>(null) }
+    var lastSeekCommitElapsedRealtime by remember { mutableStateOf(0L) }
+    var lastRenderedPositionMs by remember { mutableStateOf(0L) }
+
     val latestSeekCallback by rememberUpdatedState(onSeekToPosition)
     val latestScrubbingCallback by rememberUpdatedState(onSetScrubbingMode)
     val latestSeekPreviewPositionChanged by rememberUpdatedState(onSeekPreviewPositionChanged)
 
-    LaunchedEffect(duration, currentPosition, isScrubbing) {
-        if (!isScrubbing) {
-            sliderValue = if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f
+    // Authoritative calculation of displayed position to eliminate jitter:
+    val displayPositionMs = when {
+        userScrubPositionMs != null -> userScrubPositionMs!!
+        pendingSeekTargetMs != null -> {
+            val elapsedSinceCommit = SystemClock.elapsedRealtime() - lastSeekCommitElapsedRealtime
+            val reachedTarget = Math.abs(currentPosition - pendingSeekTargetMs!!) < 2_000L
+            if (reachedTarget || elapsedSinceCommit > 1_500L) {
+                pendingSeekTargetMs = null
+                lastRenderedPositionMs = currentPosition
+                currentPosition
+            } else {
+                pendingSeekTargetMs!!
+            }
+        }
+        else -> {
+            if (isPlaying && currentPosition in (lastRenderedPositionMs - 1_500L)..lastRenderedPositionMs) {
+                lastRenderedPositionMs
+            } else {
+                lastRenderedPositionMs = currentPosition
+                currentPosition
+            }
         }
     }
 
-    LaunchedEffect(sliderValue, isScrubbing) {
-        if (isScrubbing && duration > 0) {
-            kotlinx.coroutines.delay(1000L)
-            latestSeekCallback((sliderValue * duration).toLong())
-            latestScrubbingCallback(false)
-            isScrubbing = false
-            latestSeekPreviewPositionChanged(null)
-        }
+    val sliderFraction = if (duration > 0) (displayPositionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
+
+    // Debounced automatic seek commit for continuous D-Pad seek operations:
+    LaunchedEffect(userScrubPositionMs) {
+        val targetMs = userScrubPositionMs ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(750L)
+        pendingSeekTargetMs = targetMs
+        lastSeekCommitElapsedRealtime = SystemClock.elapsedRealtime()
+        latestSeekCallback(targetMs)
+        userScrubPositionMs = null
+        latestScrubbingCallback(false)
+        latestSeekPreviewPositionChanged(null)
     }
 
     // Title / Meta Info Row
@@ -1556,128 +1582,136 @@ private fun PlayerVodInfo(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Seek bar Slider section
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                AnimatedVisibility(visible = seekPreview.visible) {
-                    PlayerSeekPreviewCard(
-                        preview = seekPreview,
-                        previewHeight = if (screenWidth < 700.dp) 96.dp else 114.dp,
-                        modifier = Modifier
-                            .width(if (screenWidth < 700.dp) 148.dp else 180.dp)
-                            .padding(bottom = 8.dp)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = formatDuration(
-                            if (isScrubbing && duration > 0) {
-                                (sliderValue * duration).toLong()
-                            } else {
-                                currentPosition
-                            }
-                        ),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White
-                    )
-
-                    Slider(
-                        value = sliderValue,
-                        onValueChange = { newValue ->
-                            val clampedValue = newValue.coerceIn(0f, 1f)
-                            if (!isScrubbing) {
-                                isScrubbing = true
-                                latestScrubbingCallback(true)
-                            }
-                            sliderValue = clampedValue
-                            if (duration > 0) {
-                                latestSeekPreviewPositionChanged((clampedValue * duration).toLong())
-                            }
-                        },
-                        onValueChangeFinished = {
-                            if (duration > 0) {
-                                latestSeekCallback((sliderValue.coerceIn(0f, 1f) * duration).toLong())
-                            }
-                            if (isScrubbing) {
-                                latestScrubbingCallback(false)
-                                isScrubbing = false
-                            }
-                            latestSeekPreviewPositionChanged(null)
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 12.dp)
-                            .focusProperties { down = playButtonFocusRequester }
-                            .semantics { contentDescription = playbackLabel }
-                            .onPreviewKeyEvent { event ->
-                                if (duration <= 0L) return@onPreviewKeyEvent false
-                                val native = event.nativeKeyEvent
-                                val repeat = native.repeatCount
-                                val stepMs = when {
-                                    repeat == 0 -> 10_000L
-                                    repeat < 5 -> 15_000L
-                                    repeat < 10 -> 30_000L
-                                    else -> 60_000L
-                                }
-                                when {
-                                    event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                    (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) -> {
-                                        val currentMs = (sliderValue * duration).toLong()
-                                        val newMs = (currentMs + stepMs).coerceIn(0L, duration)
-                                        val newValue = newMs.toFloat() / duration.toFloat()
-                                        if (!isScrubbing) {
-                                            isScrubbing = true
-                                            latestScrubbingCallback(true)
-                                        }
-                                        sliderValue = newValue
-                                        latestSeekPreviewPositionChanged(newMs)
-                                        true
-                                    }
-                                    event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                    (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) -> {
-                                        val currentMs = (sliderValue * duration).toLong()
-                                        val newMs = (currentMs - stepMs).coerceIn(0L, duration)
-                                        val newValue = newMs.toFloat() / duration.toFloat()
-                                        if (!isScrubbing) {
-                                            isScrubbing = true
-                                            latestScrubbingCallback(true)
-                                        }
-                                        sliderValue = newValue
-                                        latestSeekPreviewPositionChanged(newMs)
-                                        true
-                                    }
-                                    event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP &&
-                                    (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
-                                     event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ENTER) &&
-                                    isScrubbing -> {
-                                        latestSeekCallback((sliderValue * duration).toLong())
-                                        latestScrubbingCallback(false)
-                                        isScrubbing = false
-                                        latestSeekPreviewPositionChanged(null)
-                                        true
-                                    }
-                                    else -> false
-                                }
-                            },
-                        enabled = duration > 0,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color.White,
-                            activeTrackColor = AppColors.NeonCyan,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.20f)
-                        )
-                    )
-
-                    Text(
-                        text = formatDuration(duration),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White
-                    )
-                }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            AnimatedVisibility(visible = seekPreview.visible) {
+                PlayerSeekPreviewCard(
+                    preview = seekPreview,
+                    previewHeight = if (screenWidth < 700.dp) 96.dp else 114.dp,
+                    modifier = Modifier
+                        .width(if (screenWidth < 700.dp) 148.dp else 180.dp)
+                        .padding(bottom = 8.dp)
+                )
             }
 
-            // TV-First Control Buttons Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = formatDuration(displayPositionMs),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White
+                )
+
+                @OptIn(ExperimentalMaterial3Api::class)
+                Slider(
+                    value = sliderFraction,
+                    onValueChange = { newValue ->
+                        val targetMs = (newValue.coerceIn(0f, 1f) * duration).toLong()
+                        userScrubPositionMs = targetMs
+                        latestScrubbingCallback(true)
+                        if (duration > 0) {
+                            latestSeekPreviewPositionChanged(targetMs)
+                        }
+                    },
+                    onValueChangeFinished = {
+                        val targetMs = userScrubPositionMs ?: (sliderFraction * duration).toLong()
+                        pendingSeekTargetMs = targetMs
+                        lastSeekCommitElapsedRealtime = SystemClock.elapsedRealtime()
+                        latestSeekCallback(targetMs)
+                        userScrubPositionMs = null
+                        latestScrubbingCallback(false)
+                        latestSeekPreviewPositionChanged(null)
+                    },
+                    thumb = {
+                        Box(
+                            modifier = Modifier
+                                .size(if (isSliderFocused) 14.dp else 10.dp)
+                                .background(Color.White, CircleShape)
+                                .border(
+                                    width = if (isSliderFocused) 2.dp else 1.dp,
+                                    color = if (isSliderFocused) AppColors.NeonCyan else Color.White.copy(alpha = 0.85f),
+                                    shape = CircleShape
+                                )
+                        )
+                    },
+                    track = { sliderState ->
+                        SliderDefaults.Track(
+                            sliderState = sliderState,
+                            colors = SliderDefaults.colors(
+                                activeTrackColor = AppColors.NeonCyan,
+                                inactiveTrackColor = Color.White.copy(alpha = 0.22f)
+                            )
+                        )
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp)
+                        .onFocusChanged { isSliderFocused = it.isFocused }
+                        .focusProperties { down = playButtonFocusRequester }
+                        .semantics { contentDescription = playbackLabel }
+                        .onPreviewKeyEvent { event ->
+                            if (duration <= 0L) return@onPreviewKeyEvent false
+                            val native = event.nativeKeyEvent
+                            val repeat = native.repeatCount
+                            val stepMs = when {
+                                repeat == 0 -> 10_000L
+                                repeat < 5 -> 15_000L
+                                repeat < 10 -> 30_000L
+                                else -> 60_000L
+                            }
+                            when {
+                                event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) -> {
+                                    val baseMs = userScrubPositionMs ?: pendingSeekTargetMs ?: displayPositionMs
+                                    val newMs = (baseMs + stepMs).coerceIn(0L, duration)
+                                    userScrubPositionMs = newMs
+                                    latestScrubbingCallback(true)
+                                    latestSeekPreviewPositionChanged(newMs)
+                                    true
+                                }
+                                event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) -> {
+                                    val baseMs = userScrubPositionMs ?: pendingSeekTargetMs ?: displayPositionMs
+                                    val newMs = (baseMs - stepMs).coerceIn(0L, duration)
+                                    userScrubPositionMs = newMs
+                                    latestScrubbingCallback(true)
+                                    latestSeekPreviewPositionChanged(newMs)
+                                    true
+                                }
+                                event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP &&
+                                (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                                 event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ENTER) &&
+                                userScrubPositionMs != null -> {
+                                    val targetMs = userScrubPositionMs!!
+                                    pendingSeekTargetMs = targetMs
+                                    lastSeekCommitElapsedRealtime = SystemClock.elapsedRealtime()
+                                    latestSeekCallback(targetMs)
+                                    userScrubPositionMs = null
+                                    latestScrubbingCallback(false)
+                                    latestSeekPreviewPositionChanged(null)
+                                    true
+                                }
+                                else -> false
+                            }
+                        },
+                    enabled = duration > 0,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = AppColors.NeonCyan,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.22f)
+                    )
+                )
+
+                Text(
+                    text = formatDuration(duration),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White
+                )
+            }
+        }
+
+        // TV-First Control Buttons Row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
