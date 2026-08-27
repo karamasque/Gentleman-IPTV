@@ -1549,350 +1549,276 @@ private fun PlayerVodInfo(
         latestSeekPreviewPositionChanged(null)
     }
 
-    // Title / Meta Info Row
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        PlayerMetaPill(
-            text = if (contentType == "MOVIE") {
-                stringResource(R.string.player_type_movie)
-            } else {
-                stringResource(R.string.player_type_series)
-            },
-            accent = true
+    val dockBorderBrush = Brush.linearGradient(
+        listOf(
+            Color(0xFF6366F1).copy(alpha = 0.40f),
+            Color(0xFF38BDF8).copy(alpha = 0.20f)
         )
-        if (isMuted) {
-            PlayerMetaPill(text = stringResource(R.string.player_muted_badge))
-        }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.82f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
+    )
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Seek bar Slider section
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            AnimatedVisibility(visible = seekPreview.visible) {
-                PlayerSeekPreviewCard(
-                    preview = seekPreview,
-                    previewHeight = if (screenWidth < 700.dp) 96.dp else 114.dp,
-                    modifier = Modifier
-                        .width(if (screenWidth < 700.dp) 148.dp else 180.dp)
-                        .padding(bottom = 8.dp)
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = formatDuration(displayPositionMs),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White
-                )
-
-                @OptIn(ExperimentalMaterial3Api::class)
-                Slider(
-                    value = sliderFraction,
-                    onValueChange = { newValue ->
-                        val targetMs = (newValue.coerceIn(0f, 1f) * duration).toLong()
-                        userScrubPositionMs = targetMs
-                        latestScrubbingCallback(true)
-                        if (duration > 0) {
-                            latestSeekPreviewPositionChanged(targetMs)
-                        }
-                    },
-                    onValueChangeFinished = {
-                        val targetMs = userScrubPositionMs ?: (sliderFraction * duration).toLong()
-                        pendingSeekTargetMs = targetMs
-                        lastSeekCommitElapsedRealtime = SystemClock.elapsedRealtime()
-                        latestSeekCallback(targetMs)
-                        userScrubPositionMs = null
-                        latestScrubbingCallback(false)
-                        latestSeekPreviewPositionChanged(null)
-                    },
-                    thumb = {
-                        Box(
-                            modifier = Modifier
-                                .size(if (isSliderFocused) 14.dp else 10.dp)
-                                .background(Color.White, CircleShape)
-                                .border(
-                                    width = if (isSliderFocused) 2.dp else 1.dp,
-                                    color = if (isSliderFocused) AppColors.NeonCyan else Color.White.copy(alpha = 0.85f),
-                                    shape = CircleShape
-                                )
-                        )
-                    },
-                    track = { sliderState ->
-                        SliderDefaults.Track(
-                            sliderState = sliderState,
-                            colors = SliderDefaults.colors(
-                                activeTrackColor = AppColors.NeonCyan,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.22f)
-                            )
-                        )
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 12.dp)
-                        .onFocusChanged { isSliderFocused = it.isFocused }
-                        .focusProperties { down = playButtonFocusRequester }
-                        .semantics { contentDescription = playbackLabel }
-                        .onPreviewKeyEvent { event ->
-                            if (duration <= 0L) return@onPreviewKeyEvent false
-                            val native = event.nativeKeyEvent
-                            val repeat = native.repeatCount
-                            val stepMs = when {
-                                repeat == 0 -> 10_000L
-                                repeat < 5 -> 15_000L
-                                repeat < 10 -> 30_000L
-                                else -> 60_000L
-                            }
-                            when {
-                                event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) -> {
-                                    val baseMs = userScrubPositionMs ?: pendingSeekTargetMs ?: displayPositionMs
-                                    val newMs = (baseMs + stepMs).coerceIn(0L, duration)
-                                    userScrubPositionMs = newMs
-                                    latestScrubbingCallback(true)
-                                    latestSeekPreviewPositionChanged(newMs)
-                                    true
-                                }
-                                event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) -> {
-                                    val baseMs = userScrubPositionMs ?: pendingSeekTargetMs ?: displayPositionMs
-                                    val newMs = (baseMs - stepMs).coerceIn(0L, duration)
-                                    userScrubPositionMs = newMs
-                                    latestScrubbingCallback(true)
-                                    latestSeekPreviewPositionChanged(newMs)
-                                    true
-                                }
-                                event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP &&
-                                (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
-                                 event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ENTER) &&
-                                userScrubPositionMs != null -> {
-                                    val targetMs = userScrubPositionMs!!
-                                    pendingSeekTargetMs = targetMs
-                                    lastSeekCommitElapsedRealtime = SystemClock.elapsedRealtime()
-                                    latestSeekCallback(targetMs)
-                                    userScrubPositionMs = null
-                                    latestScrubbingCallback(false)
-                                    latestSeekPreviewPositionChanged(null)
-                                    true
-                                }
-                                else -> false
-                            }
-                        },
-                    enabled = duration > 0,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = AppColors.NeonCyan,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.22f)
-                    )
-                )
-
-                Text(
-                    text = formatDuration(duration),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White
-                )
-            }
-        }
-
-        // TV-First Control Buttons Row
-            Row(
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(if (screenWidth < 700.dp) 0.94f else 0.78f)
+                .widthIn(max = 940.dp),
+            shape = RoundedCornerShape(22.dp),
+            colors = SurfaceDefaults.colors(containerColor = Color(0xFF090D1A).copy(alpha = 0.88f)),
+            border = Border(
+                border = BorderStroke(1.2.dp, dockBorderBrush),
+                shape = RoundedCornerShape(22.dp)
+            )
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 1. -10 sn Rewind
-                TvVodControlButton(
-                    icon = Replay10Icon,
-                    label = "-10 sn",
-                    onClick = onSeekBackward,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 2. Play / Pause (Primary)
-                TvVodControlButton(
-                    icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    label = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
-                    onClick = onTogglePlayPause,
-                    isPrimary = true,
-                    focusRequester = playButtonFocusRequester,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 3. +10 sn Forward
-                TvVodControlButton(
-                    icon = Forward10Icon,
-                    label = "+10 sn",
-                    onClick = onSeekForward,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 4. Durdur
-                TvVodControlButton(
-                    icon = Icons.Default.Stop,
-                    label = "Durdur",
-                    onClick = onClose,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 5. Altyazı
-                TvVodControlButton(
-                    icon = Icons.Default.Subtitles,
-                    label = stringResource(R.string.player_subs),
-                    onClick = onOpenSubtitleTracks,
-                    badgeActive = subtitleTrackCount > 0,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 6. Ses (Audio Tracks & Mute Indicator)
-                TvVodControlButton(
-                    icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                    label = if (isMuted) stringResource(R.string.player_muted_badge) else stringResource(R.string.player_audio),
-                    onClick = onOpenAudioTracks,
-                    accentColor = if (isMuted) Color(0xFFFF6B6B) else Color.White,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 7. Görüntü Kalitesi
-                TvVodControlButton(
-                    icon = Icons.Default.HighQuality,
-                    label = stringResource(R.string.player_video_quality),
-                    onClick = onOpenVideoTracks,
-                    badgeActive = videoQualityCount > 1,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 8. Oynatma Hızı
-                TvVodControlButton(
-                    icon = Icons.Default.Speed,
-                    label = formatPlaybackSpeedLabel(playbackSpeed),
-                    onClick = onOpenPlaybackSpeed,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 9. En-Boy Oranı
-                TvVodControlButton(
-                    icon = Icons.Default.AspectRatio,
-                    label = aspectRatioLabel.ifBlank { "Fit" },
-                    onClick = onToggleAspectRatio,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 10. PiP
-                TvVodControlButton(
-                    icon = Icons.Default.PictureInPicture,
-                    label = "PiP",
-                    onClick = onEnterPictureInPicture,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 11. Kilit
-                TvVodControlButton(
-                    icon = Icons.Default.Lock,
-                    label = stringResource(R.string.player_lock_screen),
-                    onClick = onLockScreen,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 12. Uyku Zamanlayıcı
-                TvVodControlButton(
-                    icon = Icons.Default.Timer,
-                    label = "Uyku",
-                    onClick = onOpenStopPlaybackTimer,
-                    badgeActive = sleepTimerUiState.stopTimerActive,
-                    accentColor = if (sleepTimerUiState.stopTimerActive) Color(0xFF6366F1) else Color.White,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 13. Boşta Bekleme
-                TvVodControlButton(
-                    icon = Icons.Default.Snooze,
-                    label = "Boşta",
-                    onClick = onOpenIdleStandbyTimer,
-                    badgeActive = sleepTimerUiState.idleTimerActive,
-                    accentColor = if (sleepTimerUiState.idleTimerActive) Color(0xFF6366F1) else Color.White,
-                    modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
-                )
-
-                // 14. Bölümler (Dizi ise)
-                if (showEpisodesAction) {
-                    TvVodControlButton(
-                        icon = Icons.Default.Tv,
-                        label = stringResource(R.string.player_episodes),
-                        onClick = onOpenEpisodes,
-                        accentColor = AppColors.NeonCyan,
-                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                AnimatedVisibility(visible = seekPreview.visible) {
+                    PlayerSeekPreviewCard(
+                        preview = seekPreview,
+                        previewHeight = if (screenWidth < 700.dp) 96.dp else 114.dp,
+                        modifier = Modifier
+                            .width(if (screenWidth < 700.dp) 148.dp else 180.dp)
+                            .padding(bottom = 8.dp)
                     )
                 }
 
-                // 15. Harici Oynatıcı (opsiyonel)
-                if (showExternalPlayerAction) {
+                // 1. Timeline: 01:25:05 ━━━━━━━━━●━━━━━━━━ 02:28:23
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = formatDuration(displayPositionMs),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    Slider(
+                        value = sliderFraction,
+                        onValueChange = { newValue ->
+                            val targetMs = (newValue.coerceIn(0f, 1f) * duration).toLong()
+                            userScrubPositionMs = targetMs
+                            latestScrubbingCallback(true)
+                            if (duration > 0) {
+                                latestSeekPreviewPositionChanged(targetMs)
+                            }
+                        },
+                        onValueChangeFinished = {
+                            val targetMs = userScrubPositionMs ?: (sliderFraction * duration).toLong()
+                            pendingSeekTargetMs = targetMs
+                            lastSeekCommitElapsedRealtime = SystemClock.elapsedRealtime()
+                            latestSeekCallback(targetMs)
+                            userScrubPositionMs = null
+                            latestScrubbingCallback(false)
+                            latestSeekPreviewPositionChanged(null)
+                        },
+                        thumb = {
+                            Box(
+                                modifier = Modifier
+                                    .size(if (isSliderFocused) 14.dp else 10.dp)
+                                    .background(Color.White, CircleShape)
+                                    .border(
+                                        width = if (isSliderFocused) 2.dp else 1.dp,
+                                        color = if (isSliderFocused) Color(0xFF818CF8) else Color.White.copy(alpha = 0.85f),
+                                        shape = CircleShape
+                                    )
+                            )
+                        },
+                        track = { sliderState ->
+                            SliderDefaults.Track(
+                                sliderState = sliderState,
+                                colors = SliderDefaults.colors(
+                                    activeTrackColor = Color(0xFF6366F1),
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.18f)
+                                )
+                            )
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 14.dp)
+                            .onFocusChanged { isSliderFocused = it.isFocused }
+                            .focusProperties { down = playButtonFocusRequester }
+                            .semantics { contentDescription = playbackLabel }
+                            .onPreviewKeyEvent { event ->
+                                if (duration <= 0L) return@onPreviewKeyEvent false
+                                val native = event.nativeKeyEvent
+                                val repeat = native.repeatCount
+                                val stepMs = when {
+                                    repeat == 0 -> 10_000L
+                                    repeat < 5 -> 15_000L
+                                    repeat < 10 -> 30_000L
+                                    else -> 60_000L
+                                }
+                                when {
+                                    event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                    (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) -> {
+                                        val baseMs = userScrubPositionMs ?: pendingSeekTargetMs ?: displayPositionMs
+                                        val newMs = (baseMs + stepMs).coerceIn(0L, duration)
+                                        userScrubPositionMs = newMs
+                                        latestScrubbingCallback(true)
+                                        latestSeekPreviewPositionChanged(newMs)
+                                        true
+                                    }
+                                    event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                    (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) -> {
+                                        val baseMs = userScrubPositionMs ?: pendingSeekTargetMs ?: displayPositionMs
+                                        val newMs = (baseMs - stepMs).coerceIn(0L, duration)
+                                        userScrubPositionMs = newMs
+                                        latestScrubbingCallback(true)
+                                        latestSeekPreviewPositionChanged(newMs)
+                                        true
+                                    }
+                                    event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP &&
+                                    (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                                     event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ENTER) &&
+                                    userScrubPositionMs != null -> {
+                                        val targetMs = userScrubPositionMs!!
+                                        pendingSeekTargetMs = targetMs
+                                        lastSeekCommitElapsedRealtime = SystemClock.elapsedRealtime()
+                                        latestSeekCallback(targetMs)
+                                        userScrubPositionMs = null
+                                        latestScrubbingCallback(false)
+                                        latestSeekPreviewPositionChanged(null)
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            },
+                        enabled = duration > 0,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color(0xFF6366F1),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.18f)
+                        )
+                    )
+
+                    Text(
+                        text = formatDuration(duration),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                }
+
+                // 2. Control Buttons Row: -10 sn | Duraklat | +10 sn | Altyazılar | Ses | Video Kalitesi | 1x | Sığdır
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 1. -10 sn Rewind
                     TvVodControlButton(
-                        icon = Icons.Default.Cast,
-                        label = stringResource(R.string.player_open_in_external_player),
-                        onClick = onOpenExternalPlayer,
+                        icon = Replay10Icon,
+                        label = "-10 sn",
+                        onClick = onSeekBackward,
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
+
+                    // 2. Play / Pause (Primary)
+                    TvVodControlButton(
+                        icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        label = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
+                        onClick = onTogglePlayPause,
+                        isPrimary = true,
+                        focusRequester = playButtonFocusRequester,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 3. +10 sn Forward
+                    TvVodControlButton(
+                        icon = Forward10Icon,
+                        label = "+10 sn",
+                        onClick = onSeekForward,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 4. Altyazılar
+                    TvVodControlButton(
+                        icon = Icons.Default.Subtitles,
+                        label = stringResource(R.string.player_subs),
+                        onClick = onOpenSubtitleTracks,
+                        badgeActive = subtitleTrackCount > 0,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 5. Ses
+                    TvVodControlButton(
+                        icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                        label = if (isMuted) stringResource(R.string.player_muted_badge) else stringResource(R.string.player_audio),
+                        onClick = onOpenAudioTracks,
+                        accentColor = if (isMuted) Color(0xFFFF6B6B) else Color.White,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 6. Video Kalitesi
+                    TvVodControlButton(
+                        icon = Icons.Default.HighQuality,
+                        label = stringResource(R.string.player_video_quality),
+                        onClick = onOpenVideoTracks,
+                        badgeActive = videoQualityCount > 1,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 7. 1x (Hız)
+                    TvVodControlButton(
+                        icon = Icons.Default.Speed,
+                        label = formatPlaybackSpeedLabel(playbackSpeed),
+                        onClick = onOpenPlaybackSpeed,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 8. Sığdır (Aspect Ratio)
+                    TvVodControlButton(
+                        icon = Icons.Default.AspectRatio,
+                        label = if (aspectRatioLabel.isBlank() || aspectRatioLabel.equals("Fit", ignoreCase = true)) "Sığdır" else aspectRatioLabel,
+                        onClick = onToggleAspectRatio,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 9. Bölümler (Dizi ise)
+                    if (showEpisodesAction) {
+                        TvVodControlButton(
+                            icon = Icons.Default.Tv,
+                            label = stringResource(R.string.player_episodes),
+                            onClick = onOpenEpisodes,
+                            accentColor = Color(0xFF6366F1),
+                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                        )
+                    }
+
+                    // 10. Harici Oynatıcı (opsiyonel)
+                    if (showExternalPlayerAction) {
+                        TvVodControlButton(
+                            icon = Icons.Default.Cast,
+                            label = stringResource(R.string.player_open_in_external_player),
+                            onClick = onOpenExternalPlayer,
+                            modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                        )
+                    }
                 }
             }
         }
-}
 
-/**
- * Centralized VOD Color Tokens:
- * - Primary: Indigo / Violet
- * - Secondary / Border: Slim Cyan / Blue
- * - Track & Background: Deep navy / black glass
- */
-private object VodControlsColors {
-    val DockBackground = Color(0xFF070B14).copy(alpha = 0.88f)
-    val DockBorderGradient = listOf(
-        Color(0xFF2563EB).copy(alpha = 0.50f),
-        Color(0xFF6366F1).copy(alpha = 0.40f),
-        Color(0xFF00E5FF).copy(alpha = 0.30f)
-    )
-    val PrimaryIndigo = Color(0xFF6366F1)
-    val PrimaryViolet = Color(0xFF8B5CF6)
-    val ProgressGradient = listOf(
-        Color(0xFF4F46E5),
-        Color(0xFF6366F1),
-        Color(0xFF8B5CF6)
-    )
-    val TrackBackground = Color(0xFF1E293B).copy(alpha = 0.70f)
-    val ThumbWhite = Color(0xFFFFFFFF)
-    val ThumbGlow = Color(0xFF818CF8)
-
-    val ButtonNormalContainer = Color(0xFF0F172A).copy(alpha = 0.60f)
-    val ButtonNormalBorder = Color.White.copy(alpha = 0.10f)
-    val ButtonFocusedContainer = Color(0xFF4338CA).copy(alpha = 0.35f)
-    val ButtonFocusedBorder = Color(0xFF818CF8)
-
-    val PrimaryButtonContainer = Color(0xFF4F46E5).copy(alpha = 0.28f)
-    val PrimaryButtonBorder = Color(0xFF6366F1).copy(alpha = 0.55f)
-    val PrimaryButtonFocusedContainer = Color(0xFF6366F1).copy(alpha = 0.45f)
-    val PrimaryButtonFocusedBorder = Color(0xFFA5B4FC)
-
-    val TextPrimary = Color(0xFFF8FAFC)
-    val TextSecondary = Color(0xFF94A3B8)
-    val HintText = Color(0xFF94A3B8).copy(alpha = 0.70f)
+        // ── Alt Kumanda İpuçları ──────────────────────────────────────
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "✤ Seç   |   ↔ 10 sn ileri/geri   |   ☰ Menü   |   ↩ Geri",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.50f)
+            )
+        }
+    }
 }
 
 /**
@@ -1923,7 +1849,7 @@ private fun TvVodControlButton(
     } else {
         1.0f
     }
-    val focusColor = if (isPrimary) VodControlsColors.PrimaryIndigo else accentColor
+    val focusColor = if (isPrimary) Color(0xFF6366F1) else accentColor
 
     val surfaceModifier = modifier
         .scale(scaleAnim)
@@ -1933,25 +1859,22 @@ private fun TvVodControlButton(
 
     TvClickableSurface(
         onClick = onClick,
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (isPrimary) VodControlsColors.PrimaryButtonContainer else Color.White.copy(alpha = 0.08f),
-            focusedContainerColor = if (isPrimary) VodControlsColors.PrimaryButtonFocusedContainer else Color.White.copy(alpha = 0.20f)
+            containerColor = if (isPrimary) Color(0xFF4F46E5).copy(alpha = 0.22f) else Color.White.copy(alpha = 0.05f),
+            focusedContainerColor = focusColor.copy(alpha = 0.30f)
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(
                 border = BorderStroke(
                     1.dp,
-                    if (isPrimary) VodControlsColors.PrimaryButtonBorder else Color.White.copy(alpha = 0.12f)
+                    if (isPrimary) Color(0xFF6366F1).copy(alpha = 0.50f) else Color.White.copy(alpha = 0.10f)
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(16.dp)
             ),
             focusedBorder = Border(
-                border = BorderStroke(
-                    2.dp,
-                    if (isPrimary) Color.White else focusColor
-                ),
-                shape = RoundedCornerShape(12.dp)
+                border = BorderStroke(2.2.dp, if (isPrimary) Color(0xFF818CF8) else focusColor),
+                shape = RoundedCornerShape(16.dp)
             )
         ),
         modifier = surfaceModifier
@@ -1959,25 +1882,25 @@ private fun TvVodControlButton(
         Box(contentAlignment = Alignment.Center) {
             Column(
                 modifier = Modifier.padding(
-                    horizontal = if (isPrimary) 18.dp else 12.dp,
-                    vertical = if (isPrimary) 8.dp else 6.dp
+                    horizontal = if (isPrimary) 22.dp else 14.dp,
+                    vertical = if (isPrimary) 13.dp else 10.dp
                 ),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Box {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = if (isFocused) (if (isPrimary) Color.White else focusColor) else (if (isPrimary) Color.White else Color(0xFFF1F5F9)),
-                        modifier = Modifier.size(if (isPrimary) 24.dp else 20.dp)
+                        tint = if (isFocused) (if (isPrimary) Color(0xFF818CF8) else focusColor) else Color.White.copy(alpha = 0.90f),
+                        modifier = Modifier.size(if (isPrimary) 26.dp else 22.dp)
                     )
                     if (badgeActive) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .size(5.dp)
-                                .background(VodControlsColors.PrimaryIndigo, CircleShape)
+                                .size(6.dp)
+                                .background(Color(0xFF818CF8), CircleShape)
                         )
                     }
                 }
@@ -1986,12 +1909,12 @@ private fun TvVodControlButton(
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = if (isFocused || isPrimary) FontWeight.Bold else FontWeight.Medium
                     ),
-                    color = if (isFocused) (if (isPrimary) Color.White else focusColor) else Color(0xFF94A3B8),
+                    color = if (isFocused) (if (isPrimary) Color(0xFF818CF8) else focusColor) else Color.White.copy(alpha = 0.75f),
                     maxLines = 1
                 )
+            }
         }
     }
-}
 }
 
 @Composable
