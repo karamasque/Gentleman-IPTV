@@ -1562,8 +1562,8 @@ private fun PlayerVodInfo(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(if (screenWidth < 700.dp) 0.94f else 0.78f)
-                .widthIn(max = 940.dp),
+                .fillMaxWidth(if (screenWidth < 700.dp) 0.96f else 0.88f)
+                .widthIn(max = 1140.dp),
             shape = RoundedCornerShape(22.dp),
             colors = SurfaceDefaults.colors(containerColor = Color(0xFF090D1A).copy(alpha = 0.88f)),
             border = Border(
@@ -1574,8 +1574,8 @@ private fun PlayerVodInfo(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 AnimatedVisibility(visible = seekPreview.visible) {
                     PlayerSeekPreviewCard(
@@ -1587,7 +1587,7 @@ private fun PlayerVodInfo(
                     )
                 }
 
-                // 1. Timeline: 01:25:05 ━━━━━━━━━●━━━━━━━━ 02:28:23
+                // 1. Timeline: 01:25:05 ━━━━━━━━━●━━━━━━━━ 02:28:23 (Zero-gap continuous track)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -1631,13 +1631,32 @@ private fun PlayerVodInfo(
                             )
                         },
                         track = { sliderState ->
-                            SliderDefaults.Track(
-                                sliderState = sliderState,
-                                colors = SliderDefaults.colors(
-                                    activeTrackColor = Color(0xFF6366F1),
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.18f)
+                            val fraction = sliderState.value
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                            ) {
+                                val w = size.width
+                                val h = size.height
+                                val activeW = (w * fraction).coerceIn(0f, w)
+
+                                // Inactive track: full width (Zero gap on right)
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.18f),
+                                    size = Size(w, h),
+                                    cornerRadius = CornerRadius(h / 2, h / 2)
                                 )
-                            )
+
+                                // Active track: up to activeW (Zero gap on left)
+                                if (activeW > 0f) {
+                                    drawRoundRect(
+                                        color = Color(0xFF6366F1),
+                                        size = Size(activeW, h),
+                                        cornerRadius = CornerRadius(h / 2, h / 2)
+                                    )
+                                }
+                            }
                         },
                         modifier = Modifier
                             .weight(1f)
@@ -1705,12 +1724,12 @@ private fun PlayerVodInfo(
                     )
                 }
 
-                // 2. Control Buttons Row: -10 sn | Duraklat | +10 sn | Altyazılar | Ses | Video Kalitesi | 1x | Sığdır
+                // 2. Control Buttons Row: All VOD Actions Fully Restored & Responsive
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // 1. -10 sn Rewind
@@ -1739,7 +1758,15 @@ private fun PlayerVodInfo(
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
 
-                    // 4. Altyazılar
+                    // 4. Durdur (Stop)
+                    TvVodControlButton(
+                        icon = Icons.Default.Stop,
+                        label = "Durdur",
+                        onClick = onClose,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 5. Altyazılar
                     TvVodControlButton(
                         icon = Icons.Default.Subtitles,
                         label = stringResource(R.string.player_subs),
@@ -1748,7 +1775,7 @@ private fun PlayerVodInfo(
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
 
-                    // 5. Ses
+                    // 6. Ses
                     TvVodControlButton(
                         icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
                         label = if (isMuted) stringResource(R.string.player_muted_badge) else stringResource(R.string.player_audio),
@@ -1757,7 +1784,7 @@ private fun PlayerVodInfo(
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
 
-                    // 6. Video Kalitesi
+                    // 7. Video Kalitesi
                     TvVodControlButton(
                         icon = Icons.Default.HighQuality,
                         label = stringResource(R.string.player_video_quality),
@@ -1766,7 +1793,7 @@ private fun PlayerVodInfo(
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
 
-                    // 7. 1x (Hız)
+                    // 8. 1x (Hız)
                     TvVodControlButton(
                         icon = Icons.Default.Speed,
                         label = formatPlaybackSpeedLabel(playbackSpeed),
@@ -1774,7 +1801,7 @@ private fun PlayerVodInfo(
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
 
-                    // 8. Sığdır (Aspect Ratio)
+                    // 9. Sığdır (Aspect Ratio)
                     TvVodControlButton(
                         icon = Icons.Default.AspectRatio,
                         label = if (aspectRatioLabel.isBlank() || aspectRatioLabel.equals("Fit", ignoreCase = true)) "Sığdır" else aspectRatioLabel,
@@ -1782,7 +1809,51 @@ private fun PlayerVodInfo(
                         modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
                     )
 
-                    // 9. Bölümler (Dizi ise)
+                    // 10. PiP
+                    TvVodControlButton(
+                        icon = Icons.Default.PictureInPicture,
+                        label = "PiP",
+                        onClick = onEnterPictureInPicture,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 11. Kilit
+                    TvVodControlButton(
+                        icon = Icons.Default.Lock,
+                        label = stringResource(R.string.player_lock_screen),
+                        onClick = onLockScreen,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 12. Uyku Zamanlayıcı
+                    TvVodControlButton(
+                        icon = Icons.Default.Timer,
+                        label = "Uyku",
+                        onClick = onOpenStopPlaybackTimer,
+                        badgeActive = sleepTimerUiState.stopTimerActive,
+                        accentColor = if (sleepTimerUiState.stopTimerActive) Color(0xFF6366F1) else Color.White,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 13. Boşta Bekleme
+                    TvVodControlButton(
+                        icon = Icons.Default.Snooze,
+                        label = "Boşta",
+                        onClick = onOpenIdleStandbyTimer,
+                        badgeActive = sleepTimerUiState.idleTimerActive,
+                        accentColor = if (sleepTimerUiState.idleTimerActive) Color(0xFF6366F1) else Color.White,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 14. A/V Senkron
+                    TvVodControlButton(
+                        icon = Icons.Default.SyncAlt,
+                        label = "A/V Senkron",
+                        onClick = onOpenAudioVideoSync,
+                        modifier = Modifier.focusProperties { down = quickActionsFocusRequester }
+                    )
+
+                    // 15. Bölümler (Dizi ise)
                     if (showEpisodesAction) {
                         TvVodControlButton(
                             icon = Icons.Default.Tv,
@@ -1793,7 +1864,7 @@ private fun PlayerVodInfo(
                         )
                     }
 
-                    // 10. Harici Oynatıcı (opsiyonel)
+                    // 16. Harici Oynatıcı (opsiyonel)
                     if (showExternalPlayerAction) {
                         TvVodControlButton(
                             icon = Icons.Default.Cast,
@@ -1859,7 +1930,7 @@ private fun TvVodControlButton(
 
     TvClickableSurface(
         onClick = onClick,
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (isPrimary) Color(0xFF4F46E5).copy(alpha = 0.22f) else Color.White.copy(alpha = 0.05f),
             focusedContainerColor = focusColor.copy(alpha = 0.30f)
@@ -1870,11 +1941,11 @@ private fun TvVodControlButton(
                     1.dp,
                     if (isPrimary) Color(0xFF6366F1).copy(alpha = 0.50f) else Color.White.copy(alpha = 0.10f)
                 ),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(14.dp)
             ),
             focusedBorder = Border(
                 border = BorderStroke(2.2.dp, if (isPrimary) Color(0xFF818CF8) else focusColor),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(14.dp)
             )
         ),
         modifier = surfaceModifier
@@ -1882,24 +1953,24 @@ private fun TvVodControlButton(
         Box(contentAlignment = Alignment.Center) {
             Column(
                 modifier = Modifier.padding(
-                    horizontal = if (isPrimary) 22.dp else 14.dp,
-                    vertical = if (isPrimary) 13.dp else 10.dp
+                    horizontal = if (isPrimary) 18.dp else 11.dp,
+                    vertical = if (isPrimary) 10.dp else 7.dp
                 ),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 Box {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
                         tint = if (isFocused) (if (isPrimary) Color(0xFF818CF8) else focusColor) else Color.White.copy(alpha = 0.90f),
-                        modifier = Modifier.size(if (isPrimary) 26.dp else 22.dp)
+                        modifier = Modifier.size(if (isPrimary) 24.dp else 20.dp)
                     )
                     if (badgeActive) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .size(6.dp)
+                                .size(5.dp)
                                 .background(Color(0xFF818CF8), CircleShape)
                         )
                     }
