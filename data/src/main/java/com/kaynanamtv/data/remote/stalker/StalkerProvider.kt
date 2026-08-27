@@ -1387,7 +1387,7 @@ class StalkerProvider(
                 }
                 Season(
                     seasonNumber = season.seasonNumber.coerceAtLeast(0),
-                    name = season.name.ifBlank { "Season ${season.seasonNumber}" },
+                    name = season.name.ifBlank { "Sezon ${season.seasonNumber}" },
                     coverUrl = season.coverUrl,
                     episodes = episodes,
                     episodeCount = episodes.size

@@ -741,10 +741,10 @@ class FavoritesViewModel @Inject constructor(
 
     private val ContentType.displayName: String
         get() = when (this) {
-            ContentType.LIVE -> "Live"
-            ContentType.MOVIE -> "Movie"
-            ContentType.SERIES -> "Series"
-            ContentType.SERIES_EPISODE -> "Episode"
+            ContentType.LIVE -> "Canlı TV"
+            ContentType.MOVIE -> "Film"
+            ContentType.SERIES -> "Dizi"
+            ContentType.SERIES_EPISODE -> "Bölüm"
         }
 
     companion object {

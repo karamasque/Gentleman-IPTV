@@ -453,7 +453,7 @@ class XtreamProvider(
                 val seasonMetadata = seasonMetadataByNumber[resolvedSeasonNumber]
                 Season(
                     seasonNumber = resolvedSeasonNumber,
-                    name = seasonMetadata?.name?.takeIf { it.isNotBlank() } ?: "Season $resolvedSeasonNumber",
+                    name = seasonMetadata?.name?.takeIf { it.isNotBlank() } ?: "Sezon $resolvedSeasonNumber",
                     coverUrl = seasonMetadata?.cover,
                     airDate = seasonMetadata?.airDate,
                     episodes = mappedEpisodes,
@@ -466,7 +466,7 @@ class XtreamProvider(
                 .map { season ->
                     Season(
                         seasonNumber = season.seasonNumber,
-                        name = season.name.takeIf { it.isNotBlank() } ?: "Season ${season.seasonNumber}",
+                        name = season.name.takeIf { it.isNotBlank() } ?: "Sezon ${season.seasonNumber}",
                         coverUrl = season.cover,
                         airDate = season.airDate,
                         episodes = emptyList(),

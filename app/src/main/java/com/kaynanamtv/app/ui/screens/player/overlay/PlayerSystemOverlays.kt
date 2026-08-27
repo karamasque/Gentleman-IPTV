@@ -991,11 +991,11 @@ fun PlayerEpisodeSelectionDialog(
                         )
 
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            PlayerEpisodeStatPill(text = "${availableSeasons.size} seasons")
-                            PlayerEpisodeStatPill(text = "$totalEpisodeCount episodes")
+                            PlayerEpisodeStatPill(text = "${availableSeasons.size} Sezon")
+                            PlayerEpisodeStatPill(text = "$totalEpisodeCount Bölüm")
                             PlayerEpisodeStatPill(
-                                text = selectedEpisode?.let { "Now on S${it.seasonNumber}E${it.episodeNumber}" }
-                                    ?: selectedSeason.name,
+                                text = selectedEpisode?.let { "Şu an: Sezon ${it.seasonNumber} • Bölüm ${it.episodeNumber}" }
+                                    ?: formatSeasonDisplayName(selectedSeason.name, selectedSeason.seasonNumber),
                                 accent = true
                             )
                         }
@@ -1025,7 +1025,7 @@ fun PlayerEpisodeSelectionDialog(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Choose a season, then move right for episodes.",
+                                    text = "Bir sezon seçin, ardından bölümlere geçmek için sağa ilerleyin.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = AppColors.TextTertiary
                                 )
@@ -1067,14 +1067,14 @@ fun PlayerEpisodeSelectionDialog(
                                                 verticalArrangement = Arrangement.spacedBy(2.dp)
                                             ) {
                                                 Text(
-                                                    text = season.name,
+                                                    text = formatSeasonDisplayName(season.name, season.seasonNumber),
                                                     style = MaterialTheme.typography.labelMedium,
                                                     fontWeight = FontWeight.Bold,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                                 Text(
-                                                    text = "${season.episodes.size} episodes",
+                                                    text = "${season.episodes.size} Bölüm",
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = if (isSelectedSeason) AppColors.TextPrimary else AppColors.TextSecondary
                                                 )
@@ -1103,13 +1103,13 @@ fun PlayerEpisodeSelectionDialog(
                                 ) {
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text(
-                                            text = selectedSeason.name,
+                                            text = formatSeasonDisplayName(selectedSeason.name, selectedSeason.seasonNumber),
                                             style = MaterialTheme.typography.titleMedium,
                                             color = Color.White,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = "${selectedSeason.episodes.size} episodes ready to play",
+                                            text = "${selectedSeason.episodes.size} bölüm izlemeye hazır",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = TextSecondary
                                         )
@@ -1239,7 +1239,7 @@ private fun PlayerEpisodeListItem(
                 )
             } else {
                 Text(
-                    text = buildEpisodeCodeLabel(episode),
+                    text = "B${episode.episodeNumber}",
                     style = MaterialTheme.typography.labelSmall,
                     color = AppColors.TextSecondary
                 )
@@ -1276,6 +1276,17 @@ private fun PlayerEpisodeListItem(
             }
         }
     }
+}
+
+private fun formatSeasonDisplayName(name: String?, seasonNumber: Int): String {
+    if (name.isNullOrBlank()) return "Sezon $seasonNumber"
+    val trimmed = name.trim()
+    val match = Regex("^(?i)season\\s*(\\d+)$").find(trimmed)
+    if (match != null) {
+        val num = match.groupValues[1]
+        return "Sezon $num"
+    }
+    return trimmed
 }
 
 private fun formatPlaybackSpeedLabel(speed: Float): String {
@@ -1379,21 +1390,22 @@ private fun TrackSelectionItem(
 }
 
 private fun buildEpisodeCodeLabel(episode: Episode): String = buildString {
-    append("S")
+    append("Sezon ")
     append(episode.seasonNumber)
-    append("E")
+    append(" • Bölüm ")
     append(episode.episodeNumber)
 }
 
 private fun buildEpisodeMetaLabel(episode: Episode): String = buildString {
-    append(stringResourceFallbackEpisode(episode.episodeNumber))
+    append("Bölüm ")
+    append(episode.episodeNumber)
     episode.duration?.takeIf { it.isNotBlank() }?.let {
         append(" • ")
         append(it)
     }
 }
 
-private fun stringResourceFallbackEpisode(episodeNumber: Int): String = "Episode $episodeNumber"
+private fun stringResourceFallbackEpisode(episodeNumber: Int): String = "Bölüm $episodeNumber"
 
 @Composable
 fun PlayerResumePrompt(
@@ -1589,7 +1601,7 @@ fun NextEpisodeCountdownOverlay(
                 // Title and subtitle
                 Column(modifier = Modifier.weight(1f)) {
                     val episodeLabel = buildString {
-                        append("S${nextEpisode.seasonNumber}E${nextEpisode.episodeNumber}")
+                        append("Sezon ${nextEpisode.seasonNumber} • Bölüm ${nextEpisode.episodeNumber}")
                         if (nextEpisode.title.isNotBlank()) append(" · ${nextEpisode.title}")
                     }
                     Text(

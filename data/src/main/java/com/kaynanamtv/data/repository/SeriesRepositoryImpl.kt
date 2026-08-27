@@ -549,7 +549,7 @@ class SeriesRepositoryImpl @Inject constructor(
                             val seasonMetadata = remoteSeasonMetadataByNumber[seasonNumber]
                             Season(
                                 seasonNumber = seasonNumber,
-                                name = seasonMetadata?.name?.takeIf { it.isNotBlank() } ?: "Season $seasonNumber",
+                                name = seasonMetadata?.name?.takeIf { it.isNotBlank() } ?: "Sezon $seasonNumber",
                                 coverUrl = seasonMetadata?.coverUrl,
                                 airDate = seasonMetadata?.airDate,
                                 episodes = episodes,
@@ -565,7 +565,7 @@ class SeriesRepositoryImpl @Inject constructor(
                         .map { (seasonNumber, episodes) ->
                             Season(
                                 seasonNumber = seasonNumber,
-                                name = "Season $seasonNumber",
+                                name = "Sezon $seasonNumber",
                                 episodes = episodes,
                                 episodeCount = episodes.size
                             )
@@ -634,7 +634,7 @@ class SeriesRepositoryImpl @Inject constructor(
             .map { (seasonNumber, seasonEpisodes) ->
                 Season(
                     seasonNumber = seasonNumber,
-                    name = "Season $seasonNumber",
+                    name = "Sezon $seasonNumber",
                     episodes = seasonEpisodes,
                     episodeCount = seasonEpisodes.size
                 )

@@ -38,7 +38,7 @@ data class Series(
 
 data class Season(
     val seasonNumber: Int,
-    val name: String = "Season $seasonNumber",
+    val name: String = "Sezon $seasonNumber",
     val coverUrl: String? = null,
     val episodes: List<Episode> = emptyList(),
     val airDate: String? = null,

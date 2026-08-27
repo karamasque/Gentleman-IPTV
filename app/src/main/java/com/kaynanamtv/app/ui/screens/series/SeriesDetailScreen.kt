@@ -343,7 +343,7 @@ private fun SeriesDetailContent(
                                 values = listOf(
                                     series.releaseDate.orEmpty(),
                                     series.genre.orEmpty(),
-                                    selectedSeason?.name.orEmpty()
+                                    selectedSeason?.let { formatSeasonDisplayName(it.name, it.seasonNumber) }.orEmpty()
                                 )
                             )
                             ExternalRatingsStrip(
@@ -431,7 +431,7 @@ private fun SeriesDetailContent(
                                 values = listOf(
                                     series.releaseDate.orEmpty(),
                                     series.genre.orEmpty(),
-                                    selectedSeason?.name.orEmpty()
+                                    selectedSeason?.let { formatSeasonDisplayName(it.name, it.seasonNumber) }.orEmpty()
                                 )
                             )
                             ExternalRatingsStrip(
@@ -504,7 +504,7 @@ private fun SeriesDetailContent(
                             color = AppColors.TextPrimary
                         )
                         Text(
-                            text = season.name,
+                            text = formatSeasonDisplayName(season.name, season.seasonNumber),
                             style = MaterialTheme.typography.bodyMedium,
                             color = AppColors.TextTertiary
                         )
@@ -695,11 +695,22 @@ fun SeasonChip(
         )
     ) {
         Text(
-            text = season.name,
+            text = formatSeasonDisplayName(season.name, season.seasonNumber),
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
             style = MaterialTheme.typography.labelLarge
         )
     }
+}
+
+private fun formatSeasonDisplayName(name: String?, seasonNumber: Int): String {
+    if (name.isNullOrBlank()) return "Sezon $seasonNumber"
+    val trimmed = name.trim()
+    val match = Regex("^(?i)season\\s*(\\d+)$").find(trimmed)
+    if (match != null) {
+        val num = match.groupValues[1]
+        return "Sezon $num"
+    }
+    return trimmed
 }
 
 @Composable

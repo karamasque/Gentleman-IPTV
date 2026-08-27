@@ -1034,8 +1034,8 @@
     <string name="series_loading_details">Ayrıntılar yükleniyor...</string>
     <string name="series_not_found">Seri bulunamadı</string>
     <string name="series_detail_back">Kitaplığa dön</string>
-    <string name="series_plot_fallback">Mevcut arsa yok</string>
-    <string name="series_seasons">Mevsimler</string>
+    <string name="series_plot_fallback">Özet bilgisi bulunmuyor</string>
+    <string name="series_seasons">Sezonlar</string>
     <string name="series_episodes">Bölümler (%1$d)</string>
     <string name="series_unwatched_badge">%1$d bitirmeye kaldı</string>
     <string name="vod_external_ratings_heading">Puanlar</string>
@@ -1303,8 +1303,8 @@
     <string name="search_error_title">Arama kullanılamıyor</string>
     <string name="search_loading_subtitle">İndekslenmiş canlı TV, filmler ve diziler kontrol ediliyor.</string>
     <string name="search_loading_title">Kitaplık aranıyor...</string>
-    <string name="series_detail_play_episode">Oynat · Sezon %1$d Bl %2$d</string>
-    <string name="series_detail_resume">Devam Et · Sezon %1$d Bl %2$d · %3$s</string>
+    <string name="series_detail_play_episode">Oynat · Sezon %1$d • Bölüm %2$d</string>
+    <string name="series_detail_resume">Devam Et · Sezon %1$d • Bölüm %2$d · %3$s</string>
     <string name="settings_audio_video_sync_default">A/V Senkronizasyon Varsayılanı</string>
     <string name="settings_audio_video_sync_default_subtitle">Pozitif değerler sesi videoya göre geciktirir.</string>
     <string name="settings_audio_video_sync_enabled">A/V Senkronizasyon Ayarını Etkinleştir</string>
