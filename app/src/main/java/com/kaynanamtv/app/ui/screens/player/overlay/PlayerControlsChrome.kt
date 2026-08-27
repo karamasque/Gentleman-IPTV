@@ -1663,8 +1663,9 @@ private fun PlayerVodInfo(
                             },
                         enabled = duration > 0,
                         colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
                             activeTrackColor = AppColors.NeonCyan,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.12f)
+                            inactiveTrackColor = Color.White.copy(alpha = 0.20f)
                         )
                     )
 
