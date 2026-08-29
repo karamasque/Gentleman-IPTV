@@ -151,18 +151,21 @@ fun SearchInput(
     val backgroundColor = if (isFocused) SurfaceHighlight else SurfaceElevated
     val borderWidth = if (isFocused) 2.dp else 1.dp
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(40.dp)
+    val baseContainerModifier = modifier
+        .fillMaxWidth()
+        .height(40.dp)
+        .bringIntoViewRequester(bringIntoViewRequester)
+        .background(backgroundColor, RoundedCornerShape(8.dp))
+        .border(borderWidth, borderColor, RoundedCornerShape(8.dp))
+        .semantics(mergeDescendants = true) {
+            contentDescription = placeholder
+            stateDescription = value.ifBlank { placeholder }
+        }
+        .padding(horizontal = 12.dp)
+
+    val finalContainerModifier = if (isTelevisionDevice) {
+        baseContainerModifier
             .focusRequester(focusRequester)
-            .bringIntoViewRequester(bringIntoViewRequester)
-            .background(backgroundColor, RoundedCornerShape(8.dp))
-            .border(borderWidth, borderColor, RoundedCornerShape(8.dp))
-            .semantics(mergeDescendants = true) {
-                contentDescription = placeholder
-                stateDescription = value.ifBlank { placeholder }
-            }
             .onFocusChanged {
                 hasContainerFocus = enabled && it.isFocused
             }
@@ -176,7 +179,12 @@ fun SearchInput(
                 activateInput()
             }
             .focusable(enabled = enabled)
-            .padding(horizontal = 12.dp),
+    } else {
+        baseContainerModifier
+    }
+
+    Box(
+        modifier = finalContainerModifier,
         contentAlignment = Alignment.CenterStart
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

@@ -1504,16 +1504,6 @@ private fun PlayerVodInfo(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        AnimatedVisibility(visible = seekPreview.visible) {
-            PlayerSeekPreviewCard(
-                preview = seekPreview,
-                previewHeight = if (screenWidth < 700.dp) 96.dp else 114.dp,
-                modifier = Modifier
-                    .width(if (screenWidth < 700.dp) 148.dp else 180.dp)
-                    .padding(bottom = 8.dp)
-            )
-        }
-
         val dockBorderBrush = Brush.linearGradient(VodControlsColors.DockBorderGradient)
         Surface(
             modifier = Modifier
@@ -1829,7 +1819,15 @@ private fun VodInteractiveTimeline(
                 .height(36.dp)
                 .focusProperties { down = playButtonFocusRequester }
                 .focusable()
-                .onFocusChanged { isTimelineFocused = it.isFocused }
+                .onFocusChanged {
+                    isTimelineFocused = it.isFocused
+                    if (!it.isFocused && userScrubbingPositionMs != null) {
+                        latestSeekToPosition(userScrubbingPositionMs!!)
+                        userScrubbingPositionMs = null
+                        latestSetScrubbingMode(false)
+                        latestSeekPreviewPositionChanged(null)
+                    }
+                }
                 .semantics { contentDescription = playbackLabel }
                 .pointerInput(duration) {
                     detectTapGestures(
@@ -1914,9 +1912,15 @@ private fun VodInteractiveTimeline(
                             true
                         }
                         event.type == KeyEventType.KeyUp &&
-                            (event.key == Key.DirectionCenter || event.key == Key.Enter) &&
+                            (event.key == Key.DirectionRight || event.key == Key.DirectionLeft || event.key == Key.DirectionCenter || event.key == Key.Enter) &&
                             userScrubbingPositionMs != null -> {
                             latestSeekToPosition(userScrubbingPositionMs!!)
+                            userScrubbingPositionMs = null
+                            latestSetScrubbingMode(false)
+                            latestSeekPreviewPositionChanged(null)
+                            true
+                        }
+                        event.type == KeyEventType.KeyDown && event.key == Key.Back && userScrubbingPositionMs != null -> {
                             userScrubbingPositionMs = null
                             latestSetScrubbingMode(false)
                             latestSeekPreviewPositionChanged(null)

@@ -53,9 +53,9 @@ class GetContinueWatching @Inject constructor(
         }
 
         val historyFlow = if (normalizedProviderIds.size == 1) {
-            playbackHistoryRepository.getRecentlyWatchedByProvider(normalizedProviderIds.first(), limit)
+            playbackHistoryRepository.getContinueWatchingCandidatesByProvider(normalizedProviderIds.first(), limit)
         } else {
-            playbackHistoryRepository.getRecentlyWatchedByProviders(normalizedProviderIds, limit)
+            playbackHistoryRepository.getContinueWatchingCandidatesByProviders(normalizedProviderIds, limit)
         }
 
         return historyFlow

@@ -250,7 +250,14 @@
  }
  
  internal fun safePlayerNavigationRequest(request: PlayerNavigationRequest?): PlayerNavigationRequest? =
-     request?.takeIf { isStreamUrlSafe(it.streamUrl) }
+    request?.takeIf {
+        isStreamUrlSafe(it.streamUrl) || (
+            it.streamUrl.isBlank() &&
+                it.internalId > 0L &&
+                it.providerId != null &&
+                it.providerId > 0L
+            )
+    }
  
  private fun NavHostController.navigateIfResumed(route: String, builder: NavOptionsBuilder.() -> Unit = {}): Boolean {
      if (currentBackStackEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != true) return false
@@ -931,8 +938,8 @@
  ): PlayerNavigationRequest? {
      val context = resolveLiveStartupContext(mainActivity) ?: return null
      val recentHistory = when (context) {
-         is LiveStartupContext.Provider -> mainActivity.playbackHistoryRepository.getRecentlyWatchedByProvider(context.providerId, limit = 24).first()
-         is LiveStartupContext.Combined -> mainActivity.playbackHistoryRepository.getRecentlyWatchedByProviders(context.providerIds.toSet(), limit = 24).first()
+         is LiveStartupContext.Provider -> mainActivity.playbackHistoryRepository.getRecentLiveHistoryByProvider(context.providerId, limit = 24).first()
+         is LiveStartupContext.Combined -> mainActivity.playbackHistoryRepository.getRecentLiveHistoryByProviders(context.providerIds.toSet(), limit = 24).first()
      }
      return resolveStartupChannelTarget(
          mainActivity = mainActivity,

@@ -9,6 +9,10 @@ interface PlaybackHistoryRepository {
     fun getRecentlyWatched(limit: Int = 100): Flow<List<PlaybackHistory>>
     fun getRecentlyWatchedByProvider(providerId: Long, limit: Int = 100): Flow<List<PlaybackHistory>>
     fun getRecentlyWatchedByProviders(providerIds: Set<Long>, limit: Int = 100): Flow<List<PlaybackHistory>>
+    fun getContinueWatchingCandidatesByProvider(providerId: Long, limit: Int = 100): Flow<List<PlaybackHistory>>
+    fun getContinueWatchingCandidatesByProviders(providerIds: Set<Long>, limit: Int = 100): Flow<List<PlaybackHistory>>
+    fun getRecentLiveHistoryByProvider(providerId: Long, limit: Int = 100): Flow<List<PlaybackHistory>>
+    fun getRecentLiveHistoryByProviders(providerIds: Set<Long>, limit: Int = 100): Flow<List<PlaybackHistory>>
     fun getUnwatchedCount(providerId: Long, seriesId: Long): Flow<Int>
     suspend fun getPlaybackHistory(
         contentId: Long,

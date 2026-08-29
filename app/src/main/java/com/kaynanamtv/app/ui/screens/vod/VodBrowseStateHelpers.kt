@@ -9,9 +9,11 @@ import kotlinx.coroutines.flow.update
 inline fun <State> selectVodCategory(
     categoryName: String?,
     selectedCategoryLoadLimit: MutableStateFlow<Int>,
-    selectedLibraryFilterType: StateFlow<LibraryFilterType>,
-    selectedLibrarySortBy: StateFlow<LibrarySortBy>,
+    selectedLibraryFilterType: MutableStateFlow<LibraryFilterType>,
+    selectedLibrarySortBy: MutableStateFlow<LibrarySortBy>,
     uiState: MutableStateFlow<State>,
+    resetFilterOnCategoryChange: Boolean = true,
+    crossinline getSelectedCategory: (State) -> String?,
     crossinline updateState: State.(
         selectedCategory: String?,
         filterType: LibraryFilterType,
@@ -19,6 +21,11 @@ inline fun <State> selectVodCategory(
         isLoadingSelectedCategory: Boolean
     ) -> State
 ) {
+    val previousCategory = getSelectedCategory(uiState.value)
+    if (resetFilterOnCategoryChange && previousCategory != categoryName) {
+        selectedLibraryFilterType.value = LibraryFilterType.ALL
+        selectedLibrarySortBy.value = LibrarySortBy.LIBRARY
+    }
     selectedCategoryLoadLimit.value = VodBrowseDefaults.SELECTED_CATEGORY_PAGE_SIZE
     uiState.update { state ->
         state.updateState(

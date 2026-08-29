@@ -186,6 +186,7 @@ fun PlayerScreen(
     val isPlaying by playerEngine.isPlaying.collectAsStateWithLifecycle()
     val renderSurfaceType by playerEngine.renderSurfaceType.collectAsStateWithLifecycle()
     val showControls by viewModel.showControls.collectAsStateWithLifecycle()
+    val isScrubbing by viewModel.isScrubbing.collectAsStateWithLifecycle()
     val videoFormat by viewModel.videoFormat.collectAsStateWithLifecycle()
     val playerError by viewModel.playerError.collectAsStateWithLifecycle()
     val currentProgram by viewModel.currentProgram.collectAsStateWithLifecycle()
@@ -530,10 +531,8 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, activeDialog) {
-        if (!showControls) {
-            viewModel.cancelControlsAutoHide()
-        } else if (activeDialog != null) {
+    LaunchedEffect(showControls, activeDialog, isScrubbing) {
+        if (shouldCancelControlsAutoHide(showControls, isScrubbing, activeDialog != null)) {
             viewModel.cancelControlsAutoHide()
         } else {
             viewModel.hideControlsAfterDelay()
@@ -817,7 +816,8 @@ fun PlayerScreen(
                                     true
                                 } else false
                             } else if (!showControls && !showChannelListOverlay && !showCategoryListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
-                                viewModel.toggleControls()
+                                viewModel.seekBackward()
+                                if (!showControls) viewModel.toggleControls()
                                 true
                             } else {
                                 false
@@ -834,7 +834,8 @@ fun PlayerScreen(
                                     true
                                 } else false
                             } else if (!showControls && !showChannelListOverlay && !showEpgOverlay && !showChannelInfoOverlay) {
-                                viewModel.toggleControls()
+                                viewModel.seekForward()
+                                if (!showControls) viewModel.toggleControls()
                                 true
                             } else {
                                 false

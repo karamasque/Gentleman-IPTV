@@ -12,6 +12,7 @@ interface CommunityChatRepository {
     fun getGeneralRoom(): ChatRoom
     fun getAnnouncementsRoom(): ChatRoom
     fun observeMessages(roomId: String = "genel"): Flow<List<ChatMessage>>
+    suspend fun loadOlderMessages(roomId: String = "genel", beforeTimestamp: Long, limit: Long = 50L): List<ChatMessage>
     suspend fun sendMessage(
         roomId: String = "genel",
         text: String,
@@ -56,14 +57,17 @@ interface CommunityChatRepository {
 
     // Private chat (DM)
     fun observePrivateMessages(otherUserId: String): Flow<List<PrivateChatMessage>>
+    suspend fun loadOlderPrivateMessages(otherUserId: String, beforeTimestamp: Long, limit: Long = 30L): List<PrivateChatMessage>
     suspend fun sendPrivateMessage(toUserId: String, toUserName: String, text: String, imageUrl: String? = null): Result<Unit>
     suspend fun markPrivateMessagesRead(otherUserId: String)
-    fun getKnownChatPartners(): Flow<List<Pair<String, String>>> // userId to nickname
+    fun getKnownChatPartners(limit: Long = 20L): Flow<List<Pair<String, String>>> // userId to nickname
 
     // Admin Dashboard
-    fun observeAllReports(): Flow<List<ChatReport>>
+    suspend fun loadReports(beforeTimestamp: Long? = null, limit: Long = 30L): List<ChatReport>
     suspend fun dismissReport(reportId: String): Result<Unit>
-    fun observeAllBannedUsers(): Flow<List<BannedUserInfo>>
+    suspend fun loadBannedUsers(beforeTimestamp: Long? = null, limit: Long = 30L): List<BannedUserInfo>
+    fun observeAllReports(): Flow<List<ChatReport>> = kotlinx.coroutines.flow.flowOf(emptyList())
+    fun observeAllBannedUsers(): Flow<List<BannedUserInfo>> = kotlinx.coroutines.flow.flowOf(emptyList())
 }
 
 

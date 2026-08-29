@@ -346,6 +346,33 @@ class MovieDetailViewModel @Inject constructor(
             )
         }
     }
+
+    fun refreshPlaybackState() {
+        val currentMovie = _uiState.value.movie ?: return
+        viewModelScope.launch {
+            val playbackHistory = playbackHistoryRepository.getPlaybackHistory(
+                contentId = currentMovie.id,
+                contentType = ContentType.MOVIE,
+                providerId = currentMovie.providerId
+            )
+            val movieDurationMs = currentMovie.durationSeconds.takeIf { it > 0 }?.times(1000L) ?: 0L
+            val resumePositionMs = playbackHistory?.resumePositionMs ?: currentMovie.watchProgress
+            val hasResume = resumePositionMs > 5000L && !isPlaybackComplete(
+                progressMs = resumePositionMs,
+                totalDurationMs = playbackHistory?.totalDurationMs?.takeIf { it > 0L } ?: movieDurationMs
+            )
+            _uiState.update { state ->
+                if (state.hasResume == hasResume && state.resumePositionMs == (if (hasResume) resumePositionMs else 0L)) {
+                    state
+                } else {
+                    state.copy(
+                        hasResume = hasResume,
+                        resumePositionMs = if (hasResume) resumePositionMs else 0L
+                    )
+                }
+            }
+        }
+    }
 }
 
 data class MovieDetailUiState(

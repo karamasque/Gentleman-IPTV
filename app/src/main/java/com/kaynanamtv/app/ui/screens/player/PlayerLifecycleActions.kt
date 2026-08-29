@@ -23,7 +23,7 @@ internal fun PlayerViewModel.startProgressTracking() {
     }
 }
 
-internal suspend fun PlayerViewModel.persistPlaybackProgress() {
+internal suspend fun PlayerViewModel.persistPlaybackProgress(forceCloudSync: Boolean = false) {
     val pos = playerEngine.currentPosition.value
     val dur = playerEngine.duration.value
 
@@ -36,7 +36,8 @@ internal suspend fun PlayerViewModel.persistPlaybackProgress() {
         watchNextManager.refreshWatchNext()
         launcherRecommendationsManager.refreshRecommendations()
 
-        // Asynchronous non-blocking Cloud User State Sync (E2EE multi-device)
+        // Asynchronous non-blocking Cloud User State Sync (OCC multi-device)
+        currentCheckpointSeq++
         cloudUserStateSyncManager.recordPlaybackProgress(
             providerId = currentProviderId,
             contentId = currentContentId,
@@ -46,7 +47,10 @@ internal suspend fun PlayerViewModel.persistPlaybackProgress() {
             seriesId = currentSeriesId,
             seasonNumber = currentEpisode.value?.seasonNumber,
             episodeNumber = currentEpisode.value?.episodeNumber,
-            forceCloudSync = false
+            forceCloudSync = forceCloudSync,
+            playbackSessionId = currentPlaybackSessionId,
+            baseRevision = currentBaseRevision,
+            checkpointSeq = currentCheckpointSeq
         )
 
         // Trakt.tv scrobble pause/progress update (Fire-and-forget, zero traffic if disconnected)
@@ -98,7 +102,7 @@ fun PlayerViewModel.onAppBackgrounded() {
     }
     if (currentContentType != ContentType.LIVE) {
         viewModelScope.launch {
-            persistPlaybackProgress()
+            persistPlaybackProgress(forceCloudSync = true)
             playbackHistoryRepository.flushPendingProgress()
         }
     }
@@ -125,7 +129,7 @@ fun PlayerViewModel.onPictureInPictureDismissed() {
     playerEngine.pause()
     if (currentContentType != ContentType.LIVE) {
         viewModelScope.launch {
-            persistPlaybackProgress()
+            persistPlaybackProgress(forceCloudSync = true)
             playbackHistoryRepository.flushPendingProgress()
         }
     }
@@ -147,7 +151,7 @@ fun PlayerViewModel.onPlayerScreenDisposed() {
     }
     if (currentContentType != ContentType.LIVE) {
         viewModelScope.launch {
-            persistPlaybackProgress()
+            persistPlaybackProgress(forceCloudSync = true)
             playbackHistoryRepository.flushPendingProgress()
         }
     }

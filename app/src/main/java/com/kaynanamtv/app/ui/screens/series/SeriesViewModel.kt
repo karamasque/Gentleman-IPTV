@@ -495,7 +495,7 @@ class SeriesViewModel @Inject constructor(
         }
     }
 
-    fun selectCategory(categoryName: String?) {
+    fun selectCategory(categoryName: String?, resetFilterOnCategoryChange: Boolean = true) {
         _previewBatchSize.value = INITIAL_PREVIEW_BATCH_SIZE
         activeProviderId?.let { providerId ->
             parentalControlManager.retainUnlockedCategory(
@@ -508,7 +508,9 @@ class SeriesViewModel @Inject constructor(
             selectedCategoryLoadLimit = _selectedCategoryLoadLimit,
             selectedLibraryFilterType = _selectedLibraryFilterType,
             selectedLibrarySortBy = _selectedLibrarySortBy,
-            uiState = _uiState
+            uiState = _uiState,
+            resetFilterOnCategoryChange = resetFilterOnCategoryChange,
+            getSelectedCategory = { it.selectedCategory }
         ) { selectedCategory, filterType, sortBy, isLoadingSelectedCategory ->
             copy(
                 selectedCategory = selectedCategory,
@@ -523,10 +525,28 @@ class SeriesViewModel @Inject constructor(
         }
     }
 
+    fun openContinueWatching() {
+        _selectedLibraryFilterType.value = LibraryFilterType.IN_PROGRESS
+        _selectedLibrarySortBy.value = LibrarySortBy.LIBRARY
+        selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY, resetFilterOnCategoryChange = false)
+    }
+
+    fun openTopRated() {
+        _selectedLibraryFilterType.value = LibraryFilterType.TOP_RATED
+        _selectedLibrarySortBy.value = LibrarySortBy.RATING
+        selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY, resetFilterOnCategoryChange = false)
+    }
+
+    fun openFresh() {
+        _selectedLibraryFilterType.value = LibraryFilterType.RECENTLY_UPDATED
+        _selectedLibrarySortBy.value = LibrarySortBy.RELEASE
+        selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY, resetFilterOnCategoryChange = false)
+    }
+
     fun selectFullLibraryBrowse() {
         _selectedLibraryFilterType.value = LibraryFilterType.ALL
         _selectedLibrarySortBy.value = LibrarySortBy.LIBRARY
-        selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY)
+        selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY, resetFilterOnCategoryChange = false)
     }
 
     fun loadMoreSelectedCategory() {

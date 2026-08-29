@@ -81,6 +81,9 @@ import com.kaynanamtv.app.ui.interaction.TvIconButton
 import com.kaynanamtv.domain.model.Result
 import kotlinx.coroutines.launch
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+
 @Composable
 fun MovieDetailScreen(
     onPlay: (Movie) -> Unit,
@@ -91,6 +94,10 @@ fun MovieDetailScreen(
     val movie = uiState.movie
     val context = LocalContext.current
     val mainActivity = remember(context) { context.findMainActivity() }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refreshPlaybackState()
+    }
 
     LaunchedEffect(viewModel, context, mainActivity) {
         viewModel.castEvents.collect { event ->

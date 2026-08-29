@@ -235,6 +235,8 @@ class PlayerViewModel @Inject constructor(
     val audioVideoOffsetUiState: StateFlow<PlayerAudioVideoOffsetUiState> = _audioVideoOffsetUiState.asStateFlow()
     internal val _seekPreview = MutableStateFlow(SeekPreviewState())
     val seekPreview: StateFlow<SeekPreviewState> = _seekPreview.asStateFlow()
+    internal val _isScrubbing = MutableStateFlow(false)
+    val isScrubbing: StateFlow<Boolean> = _isScrubbing.asStateFlow()
     private val _recordingItems = MutableStateFlow<List<RecordingItem>>(emptyList())
     val recordingItems: StateFlow<List<RecordingItem>> = _recordingItems.asStateFlow()
     private val currentChannelFlowRecording = MutableStateFlow<RecordingItem?>(null)
@@ -279,6 +281,9 @@ class PlayerViewModel @Inject constructor(
     internal var lastRecordedVariantObservationSignature: String? = null
     internal var lastRecordedVodVariantObservationSignature: String? = null
     internal var prepareRequestVersion: Long = 0L
+    internal var currentPlaybackSessionId: String = java.util.UUID.randomUUID().toString()
+    internal var currentBaseRevision: Long = 0L
+    internal var currentCheckpointSeq: Long = 0L
     internal var readySideEffectsRequestVersion: Long? = null
     internal var currentArtworkUrl: String? = null
     internal var currentResolvedPlaybackUrl: String = ""
@@ -1512,7 +1517,7 @@ class PlayerViewModel @Inject constructor(
                 // Doing this after preparePlayer ensures pause() acts on the live player instance,
                 // not a stale one that may have already been replaced by prepareInternal().
                 if (showResumePrompt && currentContentType != ContentType.LIVE && currentContentId != -1L && currentProviderId != -1L) {
-                    val history = playbackHistoryRepository.getPlaybackHistory(
+                    val localHistory = playbackHistoryRepository.getPlaybackHistory(
                         contentId = currentContentId,
                         contentType = currentContentType,
                         providerId = currentProviderId,
@@ -1520,12 +1525,65 @@ class PlayerViewModel @Inject constructor(
                         seasonNumber = currentSeasonNumber,
                         episodeNumber = currentEpisodeNumber
                     )
+
+                    // Targeted non-blocking cloud progress lookup with max 1500ms timeout
+                    val cloudProgress = runCatching {
+                        kotlinx.coroutines.withTimeoutOrNull(1500L) {
+                            cloudUserStateSyncManager.fetchTargetedPlaybackProgress(
+                                providerId = currentProviderId,
+                                contentId = currentContentId,
+                                contentType = currentContentType,
+                                seriesId = currentSeriesId,
+                                seasonNumber = currentSeasonNumber,
+                                episodeNumber = currentEpisodeNumber
+                            )
+                        }
+                    }.getOrNull()
+
+                    if (cloudProgress != null) {
+                        currentBaseRevision = cloudProgress.revision
+                    }
+
+                    val effectivePositionMs: Long
+                    val effectiveDurationMs: Long
+                    val effectiveIsCompleted: Boolean
+
+                    if (cloudProgress != null && (localHistory == null || cloudProgress.revision > 0L || cloudProgress.updatedAt > localHistory.lastWatchedAt)) {
+                        effectivePositionMs = cloudProgress.resumePositionMs
+                        effectiveDurationMs = cloudProgress.totalDurationMs
+                        effectiveIsCompleted = cloudProgress.isCompleted
+
+                        // Background persist to local Room DB for offline/next playback
+                        cloudUserStateSyncManager.recordPlaybackProgress(
+                            providerId = currentProviderId,
+                            contentId = currentContentId,
+                            contentType = currentContentType,
+                            positionMs = effectivePositionMs,
+                            durationMs = effectiveDurationMs,
+                            seriesId = currentSeriesId,
+                            seasonNumber = currentSeasonNumber,
+                            episodeNumber = currentEpisodeNumber,
+                            forceCloudSync = false,
+                            playbackSessionId = currentPlaybackSessionId,
+                            baseRevision = currentBaseRevision,
+                            checkpointSeq = ++currentCheckpointSeq
+                        )
+                    } else if (localHistory != null) {
+                        effectivePositionMs = localHistory.resumePositionMs
+                        effectiveDurationMs = localHistory.totalDurationMs
+                        effectiveIsCompleted = isPlaybackComplete(localHistory.resumePositionMs, localHistory.totalDurationMs)
+                    } else {
+                        effectivePositionMs = 0L
+                        effectiveDurationMs = 0L
+                        effectiveIsCompleted = false
+                    }
+
                     if (isActivePlaybackSession(requestVersion, playbackLogicalUrl)) {
-                        if (history != null && history.resumePositionMs > 5000L && !isPlaybackComplete(history.resumePositionMs, history.totalDurationMs)) {
+                        if (effectivePositionMs >= 60_000L && !effectiveIsCompleted && !isPlaybackComplete(effectivePositionMs, effectiveDurationMs)) {
                             playerEngine.pause()
                             _resumePrompt.value = ResumePromptState(
                                 show = true,
-                                positionMs = history.resumePositionMs,
+                                positionMs = effectivePositionMs,
                                 title = currentTitle
                             )
                         }

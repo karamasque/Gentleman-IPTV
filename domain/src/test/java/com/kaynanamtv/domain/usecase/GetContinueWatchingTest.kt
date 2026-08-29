@@ -181,6 +181,16 @@ class GetContinueWatchingTest {
             lastRequestedProviderIds = providerIds
             return historyFlow ?: flowOf(multiProviderHistory.filter { it.providerId in providerIds }.take(limit))
         }
+        override fun getContinueWatchingCandidatesByProvider(providerId: Long, limit: Int): Flow<List<PlaybackHistory>> =
+            historyFlow ?: flowOf(history.filter { it.providerId == providerId && it.contentType != ContentType.LIVE }.take(limit))
+        override fun getContinueWatchingCandidatesByProviders(providerIds: Set<Long>, limit: Int): Flow<List<PlaybackHistory>> {
+            lastRequestedProviderIds = providerIds
+            return historyFlow ?: flowOf(multiProviderHistory.filter { it.providerId in providerIds && it.contentType != ContentType.LIVE }.take(limit))
+        }
+        override fun getRecentLiveHistoryByProvider(providerId: Long, limit: Int): Flow<List<PlaybackHistory>> =
+            historyFlow ?: flowOf(history.filter { it.providerId == providerId && it.contentType == ContentType.LIVE }.take(limit))
+        override fun getRecentLiveHistoryByProviders(providerIds: Set<Long>, limit: Int): Flow<List<PlaybackHistory>> =
+            historyFlow ?: flowOf(multiProviderHistory.filter { it.providerId in providerIds && it.contentType == ContentType.LIVE }.take(limit))
         override fun getUnwatchedCount(providerId: Long, seriesId: Long): Flow<Int> = flowOf(0)
         override suspend fun getPlaybackHistory(
             contentId: Long,

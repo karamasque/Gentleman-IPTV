@@ -27,7 +27,7 @@ import javax.inject.Singleton
 
 @Singleton
 class CommunityChatRepositoryImpl @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : CommunityChatRepository {
 
     private companion object {
@@ -189,52 +189,18 @@ class CommunityChatRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun observeOnlineUsers(): Flow<List<String>> = flow {
-        while (currentCoroutineContext().isActive) {
-            emit(fetchOnlineUsersOnce())
-            delay(60_000L)
-        }
-    }
+    override fun observeOnlineUsers(): Flow<List<String>> = kotlinx.coroutines.flow.flowOf(emptyList())
 
-    override fun observeOnlineUsersInfo(): Flow<List<com.kaynanamtv.domain.model.OnlineUserInfo>> = flow {
-        val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull()
-        if (firestore == null) { emit(emptyList()); return@flow }
-        while (currentCoroutineContext().isActive) {
-            try {
-                val cutoff = System.currentTimeMillis() - ACTIVE_THRESHOLD_MS
-                val snapshot = firestore.collection("active_users").get().await()
-                val list = snapshot.documents.mapNotNull { doc ->
-                    val lastActive = doc.getLong("lastActive") ?: 0L
-                    if (lastActive >= cutoff) {
-                        val userCreatedAt = doc.getLong("userCreatedAt") ?: doc.getLong("accountCreatedAt") ?: 0L
-                        val rawRole = doc.getString("userRole")
-                        val userRole = UserRole.entries.firstOrNull { it.name == rawRole } ?: UserRole.USER
-                        com.kaynanamtv.domain.model.OnlineUserInfo(
-                            senderId = formatShortUserId(doc.getString("senderId") ?: doc.id),
-                            senderName = doc.getString("senderName") ?: "Anonim",
-                            userEmail = doc.getString("userEmail") ?: "E-posta Yok",
-                            userRole = userRole,
-                            userCreatedAt = userCreatedAt,
-                            lastActive = lastActive
-                        )
-                    } else null
-                }
-                emit(list)
-            } catch (e: Exception) {
-                Log.w(TAG, "Error observing online users info: ${e.message}")
-                emit(emptyList())
-            }
-            delay(30_000L)
-        }
-    }
+    override fun observeOnlineUsersInfo(): Flow<List<com.kaynanamtv.domain.model.OnlineUserInfo>> = kotlinx.coroutines.flow.flowOf(emptyList())
 
-    override fun getKnownChatPartners(): Flow<List<Pair<String, String>>> = callbackFlow {
+    override fun getKnownChatPartners(limit: Long): Flow<List<Pair<String, String>>> = callbackFlow {
         val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull()
         val myId = getDeviceSenderId()
         if (firestore == null) { trySend(emptyList()); close(); return@callbackFlow }
 
         val listener = firestore.collection("private_chats")
             .whereArrayContains("participants", myId)
+            .limit(limit)
             .addSnapshotListener { snapshot, _ ->
                 val partners = snapshot?.documents?.mapNotNull { doc ->
                     @Suppress("UNCHECKED_CAST")
@@ -246,22 +212,6 @@ class CommunityChatRepositoryImpl @Inject constructor(
                 trySend(partners)
             }
         awaitClose { listener.remove() }
-    }
-
-    private suspend fun fetchOnlineUsersOnce(): List<String> {
-        val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull()
-            ?: return listOf(getNickname())
-        return try {
-            val cutoff = System.currentTimeMillis() - ACTIVE_THRESHOLD_MS
-            val snapshot = firestore.collection("active_users").get().await()
-            snapshot.documents.mapNotNull { doc ->
-                val lastActive = doc.getLong("lastActive") ?: 0L
-                if (lastActive >= cutoff) doc.getString("senderName") ?: "Anonim" else null
-            }.distinct().ifEmpty { listOf(getNickname()) }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error fetching online presence: ${e.message}")
-            listOf(getNickname())
-        }
     }
 
     override fun observeBannedStatus(): Flow<Boolean> = callbackFlow {
@@ -289,6 +239,62 @@ class CommunityChatRepositoryImpl @Inject constructor(
         awaitClose { listener.remove() }
     }
 
+    private fun parseChatMessage(doc: com.google.firebase.firestore.DocumentSnapshot, roomId: String): ChatMessage? {
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        if (isDeleted) return null
+
+        val text = doc.getString("message") ?: return null
+        val senderId = doc.getString("senderId") ?: ""
+        val senderName = doc.getString("senderName") ?: "Anonim"
+        val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
+        val color = doc.getString("avatarColorHex") ?: getAvatarColorHex(senderId)
+        val rawRole = doc.getString("userRole")
+        val role = UserRole.entries.firstOrNull { it.name == rawRole } ?: UserRole.USER
+        val imageUrl = doc.getString("imageUrl")
+        val replyToId = doc.getString("replyToId")
+        val replyToSender = doc.getString("replyToSender")
+        val replyToText = doc.getString("replyToText")
+        val userBadge = doc.getString("userBadge") 
+            ?: getUserBadge(senderId) 
+            ?: if (role == UserRole.ADMIN) "👑 Kurucu" else "⚡ Aktif Üye"
+        @Suppress("UNCHECKED_CAST")
+        val rawReactions = doc.get("reactions") as? Map<String, Long> ?: emptyMap()
+        val reactions = rawReactions.mapValues { it.value.toInt() }
+        @Suppress("UNCHECKED_CAST")
+        val mentions = doc.get("mentions") as? List<String> ?: emptyList()
+        @Suppress("UNCHECKED_CAST")
+        val seenBy = doc.get("seenBy") as? List<String> ?: emptyList()
+        val isEdited = doc.getBoolean("isEdited") ?: false
+        val editedAt = doc.getLong("editedAt")
+        val userCreatedAt = doc.getLong("userCreatedAt") 
+            ?: doc.getLong("senderCreatedAt") 
+            ?: doc.getLong("accountCreatedAt") 
+            ?: 0L
+
+        return ChatMessage(
+            id = doc.id,
+            roomId = roomId,
+            senderId = senderId,
+            senderName = senderName,
+            message = text,
+            timestamp = timestamp,
+            avatarColorHex = color,
+            userRole = role,
+            isDeleted = false,
+            imageUrl = imageUrl,
+            replyToId = replyToId,
+            replyToSender = replyToSender,
+            replyToText = replyToText,
+            userBadge = userBadge,
+            reactions = reactions,
+            mentions = mentions,
+            seenBy = seenBy,
+            isEdited = isEdited,
+            editedAt = editedAt,
+            userCreatedAt = userCreatedAt
+        )
+    }
+
     override fun observeMessages(roomId: String): Flow<List<ChatMessage>> = callbackFlow {
         val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull()
         if (firestore == null) { trySend(emptyList()); close(); return@callbackFlow }
@@ -297,7 +303,7 @@ class CommunityChatRepositoryImpl @Inject constructor(
             .document(roomId)
             .collection("messages")
             .orderBy("timestamp", Query.Direction.ASCENDING)
-            .limitToLast(150)
+            .limitToLast(50)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.w(TAG, "Error observing messages: ${error.message}")
@@ -305,64 +311,37 @@ class CommunityChatRepositoryImpl @Inject constructor(
                 }
                 if (snapshot != null) {
                     val messages = snapshot.documents.mapNotNull { doc ->
-                        val isDeleted = doc.getBoolean("isDeleted") ?: false
-                        if (isDeleted) return@mapNotNull null
-
-                        val text = doc.getString("message") ?: return@mapNotNull null
-                        val senderId = doc.getString("senderId") ?: ""
-                        val senderName = doc.getString("senderName") ?: "Anonim"
-                        val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
-                        val color = doc.getString("avatarColorHex") ?: getAvatarColorHex(senderId)
-                        val rawRole = doc.getString("userRole")
-                        val role = UserRole.entries.firstOrNull { it.name == rawRole } ?: UserRole.USER
-                        val imageUrl = doc.getString("imageUrl")
-                        val replyToId = doc.getString("replyToId")
-                        val replyToSender = doc.getString("replyToSender")
-                        val replyToText = doc.getString("replyToText")
-                        val userBadge = doc.getString("userBadge") 
-                            ?: getUserBadge(senderId) 
-                            ?: if (role == UserRole.ADMIN) "👑 Kurucu" else "⚡ Aktif Üye"
-                        @Suppress("UNCHECKED_CAST")
-                        val rawReactions = doc.get("reactions") as? Map<String, Long> ?: emptyMap()
-                        val reactions = rawReactions.mapValues { it.value.toInt() }
-                        @Suppress("UNCHECKED_CAST")
-                        val mentions = doc.get("mentions") as? List<String> ?: emptyList()
-                        @Suppress("UNCHECKED_CAST")
-                        val seenBy = doc.get("seenBy") as? List<String> ?: emptyList()
-                        val isEdited = doc.getBoolean("isEdited") ?: false
-                        val editedAt = doc.getLong("editedAt")
-                        val userCreatedAt = doc.getLong("userCreatedAt") 
-                            ?: doc.getLong("senderCreatedAt") 
-                            ?: doc.getLong("accountCreatedAt") 
-                            ?: 0L
-
-                        ChatMessage(
-                            id = doc.id,
-                            roomId = roomId,
-                            senderId = senderId,
-                            senderName = senderName,
-                            message = text,
-                            timestamp = timestamp,
-                            avatarColorHex = color,
-                            userRole = role,
-                            isDeleted = false,
-                            imageUrl = imageUrl,
-                            replyToId = replyToId,
-                            replyToSender = replyToSender,
-                            replyToText = replyToText,
-                            userBadge = userBadge,
-                            reactions = reactions,
-                            mentions = mentions,
-                            seenBy = seenBy,
-                            isEdited = isEdited,
-                            editedAt = editedAt,
-                            userCreatedAt = userCreatedAt
-                        )
+                        parseChatMessage(doc, roomId)
                     }
                     trySend(messages)
                 }
             }
         awaitClose { listener.remove() }
+    }
+
+    override suspend fun loadOlderMessages(
+        roomId: String,
+        beforeTimestamp: Long,
+        limit: Long
+    ): List<ChatMessage> {
+        val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull() ?: return emptyList()
+        return runCatching {
+            val snapshot = firestore.collection("chat_rooms")
+                .document(roomId)
+                .collection("messages")
+                .whereLessThan("timestamp", beforeTimestamp)
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(limit)
+                .get()
+                .await()
+
+            snapshot.documents.mapNotNull { doc ->
+                parseChatMessage(doc, roomId)
+            }.sortedBy { it.timestamp }
+        }.getOrElse { e ->
+            Log.w(TAG, "Failed to load older messages for room $roomId: ${e.message}", e)
+            emptyList()
+        }
     }
 
     override suspend fun sendMessage(
@@ -678,7 +657,7 @@ class CommunityChatRepositoryImpl @Inject constructor(
             .document(chatId)
             .collection("messages")
             .orderBy("timestamp", Query.Direction.ASCENDING)
-            .limitToLast(100)
+            .limitToLast(30)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) { Log.w(TAG, "DM observe error: ${error.message}"); return@addSnapshotListener }
                 val msgs = snapshot?.documents?.mapNotNull { doc ->
@@ -696,6 +675,42 @@ class CommunityChatRepositoryImpl @Inject constructor(
                 trySend(msgs)
             }
         awaitClose { listener.remove() }
+    }
+
+    override suspend fun loadOlderPrivateMessages(
+        otherUserId: String,
+        beforeTimestamp: Long,
+        limit: Long
+    ): List<PrivateChatMessage> {
+        val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull() ?: return emptyList()
+        val myId = getDeviceSenderId()
+        val chatId = dmChatId(myId, otherUserId)
+        return runCatching {
+            val snapshot = firestore.collection("private_chats")
+                .document(chatId)
+                .collection("messages")
+                .whereLessThan("timestamp", beforeTimestamp)
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(limit)
+                .get()
+                .await()
+
+            snapshot.documents.mapNotNull { doc ->
+                PrivateChatMessage(
+                    id = doc.id,
+                    senderId = doc.getString("senderId") ?: "",
+                    senderName = doc.getString("senderName") ?: "Anonim",
+                    receiverId = doc.getString("receiverId") ?: "",
+                    message = doc.getString("message") ?: "",
+                    timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
+                    isRead = doc.getBoolean("isRead") ?: false,
+                    imageUrl = doc.getString("imageUrl")
+                )
+            }.sortedBy { it.timestamp }
+        }.getOrElse { e ->
+            Log.w(TAG, "Failed to load older DM messages for $chatId: ${e.message}", e)
+            emptyList()
+        }
     }
 
     override suspend fun sendPrivateMessage(toUserId: String, toUserName: String, text: String, imageUrl: String?): Result<Unit> {
@@ -771,51 +786,51 @@ class CommunityChatRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun observeAllReports(): Flow<List<ChatReport>> = callbackFlow {
-        val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull()
-        if (firestore == null) { trySend(emptyList()); close(); return@callbackFlow }
+    override suspend fun loadReports(beforeTimestamp: Long?, limit: Long): List<ChatReport> {
+        val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull() ?: return emptyList()
+        return runCatching {
+            var query = firestore.collection("reports")
+                .orderBy("timestamp", Query.Direction.DESCENDING)
 
-        val listener = firestore.collection("reports")
-            .orderBy("timestamp", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e(TAG, "Error observing reports: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
-                    val reports = snapshot.documents.mapNotNull { doc ->
-                        val senderName = doc.getString("senderName")
-                            ?: doc.getString("reportedSenderName")
-                            ?: doc.getString("reportedByName")
-                            ?: "Kullanıcı"
-                        val rawId = doc.getString("senderId")
-                            ?: doc.getString("reportedBy")
-                            ?: doc.getString("reporterId")
-                            ?: doc.id
-                        val senderId = formatShortUserId(rawId)
-                        val msgText = doc.getString("messageText")
-                            ?: doc.getString("message")
-                            ?: doc.getString("text")
-                            ?: "Şikayet Edilen Mesaj İçeriği"
-                        ChatReport(
-                            id = doc.id,
-                            roomId = doc.getString("roomId") ?: "genel",
-                            messageId = doc.getString("messageId") ?: "",
-                            senderName = senderName,
-                            senderId = senderId,
-                            userEmail = doc.getString("userEmail") ?: "",
-                            reporterId = doc.getString("reporterId") ?: doc.getString("reportedBy") ?: "",
-                            reason = doc.getString("reason") ?: "Uygunsuz İçerik",
-                            timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
-                            messageText = msgText
-                        )
-                    }
-                    trySend(reports)
-                }
+            if (beforeTimestamp != null) {
+                query = query.whereLessThan("timestamp", beforeTimestamp)
             }
-        awaitClose { listener.remove() }
+
+            val snapshot = query.limit(limit).get().await()
+            snapshot.documents.mapNotNull { doc ->
+                val senderName = doc.getString("senderName")
+                    ?: doc.getString("reportedSenderName")
+                    ?: doc.getString("reportedByName")
+                    ?: "Kullanıcı"
+                val rawId = doc.getString("senderId")
+                    ?: doc.getString("reportedBy")
+                    ?: doc.getString("reporterId")
+                    ?: doc.id
+                val senderId = formatShortUserId(rawId)
+                val msgText = doc.getString("messageText")
+                    ?: doc.getString("message")
+                    ?: doc.getString("text")
+                    ?: "Şikayet Edilen Mesaj İçeriği"
+                ChatReport(
+                    id = doc.id,
+                    roomId = doc.getString("roomId") ?: "genel",
+                    messageId = doc.getString("messageId") ?: "",
+                    senderName = senderName,
+                    senderId = senderId,
+                    userEmail = doc.getString("userEmail") ?: "",
+                    reporterId = doc.getString("reporterId") ?: doc.getString("reportedBy") ?: "",
+                    reason = doc.getString("reason") ?: "Uygunsuz İçerik",
+                    timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
+                    messageText = msgText
+                )
+            }
+        }.getOrElse { e ->
+            Log.e(TAG, "Error loading reports: ${e.message}", e)
+            emptyList()
+        }
     }
+
+    override fun observeAllReports(): Flow<List<ChatReport>> = kotlinx.coroutines.flow.flowOf(emptyList())
 
     override suspend fun dismissReport(reportId: String): Result<Unit> {
         val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull()
@@ -829,39 +844,39 @@ class CommunityChatRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun observeAllBannedUsers(): Flow<List<BannedUserInfo>> = callbackFlow {
-        val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull()
-        if (firestore == null) { trySend(emptyList()); close(); return@callbackFlow }
+    override suspend fun loadBannedUsers(beforeTimestamp: Long?, limit: Long): List<BannedUserInfo> {
+        val firestore = runCatching { FirebaseFirestore.getInstance() }.getOrNull() ?: return emptyList()
+        return runCatching {
+            var query = firestore.collection("banned_users")
+                .orderBy("bannedAt", Query.Direction.DESCENDING)
 
-        val listener = firestore.collection("banned_users")
-            .orderBy("bannedAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e(TAG, "Error observing banned users: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
-                    val bannedList = snapshot.documents.mapNotNull { doc ->
-                        val rawBannedId = doc.getString("bannedId") ?: doc.id
-                        val senderName = doc.getString("senderName") ?: "Engellenen Kullanıcı"
-                        val userEmail = doc.getString("userEmail") ?: ""
-                        val bannedAt = doc.getLong("bannedAt") ?: System.currentTimeMillis()
-                        val bannedUntil = doc.getLong("bannedUntil") ?: -1L
-                        val durationHours = doc.getLong("durationHours")?.toInt() ?: -1
-                        BannedUserInfo(
-                            senderId = formatShortUserId(rawBannedId),
-                            senderName = senderName,
-                            userEmail = userEmail,
-                            bannedAt = bannedAt,
-                            bannedUntil = bannedUntil,
-                            durationHours = durationHours
-                        )
-                    }
-                    trySend(bannedList)
-                }
+            if (beforeTimestamp != null) {
+                query = query.whereLessThan("bannedAt", beforeTimestamp)
             }
-        awaitClose { listener.remove() }
+
+            val snapshot = query.limit(limit).get().await()
+            snapshot.documents.mapNotNull { doc ->
+                val rawBannedId = doc.getString("bannedId") ?: doc.id
+                val senderName = doc.getString("senderName") ?: "Engellenen Kullanıcı"
+                val userEmail = doc.getString("userEmail") ?: ""
+                val bannedAt = doc.getLong("bannedAt") ?: System.currentTimeMillis()
+                val bannedUntil = doc.getLong("bannedUntil") ?: -1L
+                val durationHours = doc.getLong("durationHours")?.toInt() ?: -1
+                BannedUserInfo(
+                    senderId = formatShortUserId(rawBannedId),
+                    senderName = senderName,
+                    userEmail = userEmail,
+                    bannedAt = bannedAt,
+                    bannedUntil = bannedUntil,
+                    durationHours = durationHours
+                )
+            }
+        }.getOrElse { e ->
+            Log.e(TAG, "Error loading banned users: ${e.message}", e)
+            emptyList()
+        }
     }
+
+    override fun observeAllBannedUsers(): Flow<List<BannedUserInfo>> = kotlinx.coroutines.flow.flowOf(emptyList())
 }
 

@@ -242,30 +242,8 @@ internal fun EpgSourceTextField(
         pendingInputActivation = false
     }
 
-    TvClickableSurface(
-        onClick = {
-            if (!isTelevisionDevice) {
-                focusRequester.requestFocus()
-                keyboardController?.show()
-                requestBringIntoView()
-                requestBringIntoView(180)
-                return@TvClickableSurface
-            }
-            acceptsInput = true
-            pendingInputActivation = true
-            requestBringIntoView()
-        },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.White.copy(alpha = 0.08f),
-            focusedContainerColor = Color.White.copy(alpha = 0.12f)
-        ),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-        modifier = Modifier
-            .fillMaxWidth()
-            .bringIntoViewRequester(bringIntoViewRequester)
-            .onFocusChanged { hasContainerFocus = it.isFocused }
-    ) {
+    @Composable
+    fun InnerContent() {
         Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             if (value.isEmpty() && !isFocused) {
                 Text(placeholder, style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDim)
@@ -323,6 +301,37 @@ internal fun EpgSourceTextField(
                     },
                 readOnly = isTelevisionDevice && !acceptsInput
             )
+        }
+    }
+
+    if (isTelevisionDevice) {
+        TvClickableSurface(
+            onClick = {
+                acceptsInput = true
+                pendingInputActivation = true
+                requestBringIntoView()
+            },
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.White.copy(alpha = 0.08f),
+                focusedContainerColor = Color.White.copy(alpha = 0.12f)
+            ),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .bringIntoViewRequester(bringIntoViewRequester)
+                .onFocusChanged { hasContainerFocus = it.isFocused }
+        ) {
+            InnerContent()
+        }
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .bringIntoViewRequester(bringIntoViewRequester)
+                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+        ) {
+            InnerContent()
         }
     }
 }

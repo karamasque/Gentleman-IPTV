@@ -2736,6 +2736,12 @@ interface EpisodeDao {
     @Query("SELECT * FROM episodes WHERE id = :id")
     suspend fun getById(id: Long): EpisodeEntity?
 
+    @Query("SELECT * FROM episodes WHERE provider_id = :providerId AND series_id = :seriesId AND season_number = :seasonNumber AND episode_number = :episodeNumber LIMIT 1")
+    suspend fun getByCoordinates(providerId: Long, seriesId: Long, seasonNumber: Int, episodeNumber: Int): EpisodeEntity?
+
+    @Query("SELECT * FROM episodes WHERE provider_id = :providerId AND episode_id = :episodeId LIMIT 1")
+    suspend fun getByEpisodeId(providerId: Long, episodeId: Long): EpisodeEntity?
+
     @Query(
         """
         SELECT COUNT(*)
@@ -3345,6 +3351,56 @@ interface PlaybackHistoryDao {
 
     @Query("SELECT * FROM playback_history WHERE provider_id IN (:providerIds) ORDER BY last_watched_at DESC LIMIT :limit")
     fun getRecentlyWatchedByProviders(providerIds: Set<Long>, limit: Int = 100): Flow<List<PlaybackHistoryLiteEntity>>
+
+    @Query(
+        """
+        SELECT * FROM playback_history
+        WHERE provider_id = :providerId
+          AND content_type IN ('MOVIE', 'SERIES_EPISODE', 'SERIES')
+          AND resume_position_ms > 0
+          AND watched_status NOT LIKE 'COMPLETED%'
+          AND (total_duration_ms <= 0 OR resume_position_ms < total_duration_ms * 0.95)
+        ORDER BY last_watched_at DESC
+        LIMIT :limit
+        """
+    )
+    fun getContinueWatchingCandidatesByProvider(providerId: Long, limit: Int = 100): Flow<List<PlaybackHistoryLiteEntity>>
+
+    @Query(
+        """
+        SELECT * FROM playback_history
+        WHERE provider_id IN (:providerIds)
+          AND content_type IN ('MOVIE', 'SERIES_EPISODE', 'SERIES')
+          AND resume_position_ms > 0
+          AND watched_status NOT LIKE 'COMPLETED%'
+          AND (total_duration_ms <= 0 OR resume_position_ms < total_duration_ms * 0.95)
+        ORDER BY last_watched_at DESC
+        LIMIT :limit
+        """
+    )
+    fun getContinueWatchingCandidatesByProviders(providerIds: Set<Long>, limit: Int = 100): Flow<List<PlaybackHistoryLiteEntity>>
+
+    @Query(
+        """
+        SELECT * FROM playback_history
+        WHERE provider_id = :providerId
+          AND content_type = 'LIVE'
+        ORDER BY last_watched_at DESC
+        LIMIT :limit
+        """
+    )
+    fun getRecentLiveHistoryByProvider(providerId: Long, limit: Int = 100): Flow<List<PlaybackHistoryLiteEntity>>
+
+    @Query(
+        """
+        SELECT * FROM playback_history
+        WHERE provider_id IN (:providerIds)
+          AND content_type = 'LIVE'
+        ORDER BY last_watched_at DESC
+        LIMIT :limit
+        """
+    )
+    fun getRecentLiveHistoryByProviders(providerIds: Set<Long>, limit: Int = 100): Flow<List<PlaybackHistoryLiteEntity>>
 
     @Query("SELECT * FROM playback_history WHERE provider_id = :providerId ORDER BY last_watched_at DESC")
     fun getByProvider(providerId: Long): Flow<List<PlaybackHistoryLiteEntity>>

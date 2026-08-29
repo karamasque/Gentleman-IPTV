@@ -238,21 +238,9 @@ fun MoviesScreen(
                 onShowCategoryOptions = viewModel::showCategoryOptions,
                 onSelectCategory = viewModel::selectCategory,
                 onSelectFullLibraryBrowse = viewModel::selectFullLibraryBrowse,
-                onOpenContinueWatching = {
-                    viewModel.setSelectedLibraryFilterType(LibraryFilterType.IN_PROGRESS)
-                    viewModel.setSelectedLibrarySortBy(LibrarySortBy.LIBRARY)
-                    viewModel.selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY)
-                },
-                onOpenTopRated = {
-                    viewModel.setSelectedLibraryFilterType(LibraryFilterType.TOP_RATED)
-                    viewModel.setSelectedLibrarySortBy(LibrarySortBy.RATING)
-                    viewModel.selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY)
-                },
-                onOpenFresh = {
-                    viewModel.setSelectedLibraryFilterType(LibraryFilterType.RECENTLY_UPDATED)
-                    viewModel.setSelectedLibrarySortBy(LibrarySortBy.RELEASE)
-                    viewModel.selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY)
-                },
+                onOpenContinueWatching = viewModel::openContinueWatching,
+                onOpenTopRated = viewModel::openTopRated,
+                onOpenFresh = viewModel::openFresh,
                 onLoadMore = viewModel::loadMoreSelectedCategory,
                 onLoadMorePreviewRows = viewModel::loadMorePreviewRows,
                 onDismissReorder = viewModel::exitCategoryReorderMode,

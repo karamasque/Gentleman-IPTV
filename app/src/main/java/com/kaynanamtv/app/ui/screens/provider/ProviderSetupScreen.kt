@@ -2974,14 +2974,14 @@ internal fun ProviderTextField(
                 modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
             )
         }
-        Box(
-            modifier = Modifier
+        val containerModifier = if (isTelevisionDevice) {
+            Modifier
                 .fillMaxWidth()
                 .focusRequester(containerFocusRequester)
                 .bringIntoViewRequester(bringIntoViewRequester)
                 .onFocusEvent {
                     hasContainerFocus = it.hasFocus
-                    if (!it.hasFocus && isTelevisionDevice) {
+                    if (!it.hasFocus) {
                         acceptsInput = false
                         keyboardController?.hide()
                     }
@@ -2990,6 +2990,14 @@ internal fun ProviderTextField(
                 .clickable(onClick = ::activateInput)
                 .focusable()
                 .padding(0.dp)
+        } else {
+            Modifier
+                .fillMaxWidth()
+                .bringIntoViewRequester(bringIntoViewRequester)
+                .padding(0.dp)
+        }
+        Box(
+            modifier = containerModifier
         ) {
             key(isPasswordVisible) {
                 androidx.compose.foundation.text.BasicTextField(

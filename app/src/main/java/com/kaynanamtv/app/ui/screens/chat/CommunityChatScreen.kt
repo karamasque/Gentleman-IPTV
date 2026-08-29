@@ -99,7 +99,8 @@ fun CommunityChatScreen(
     val isAdmin by viewModel.isAdmin.collectAsStateWithLifecycle()
     val isBanned by viewModel.isBanned.collectAsStateWithLifecycle()
     val filteredMessages by viewModel.filteredMessages.collectAsStateWithLifecycle()
-    val onlineUsers by viewModel.onlineUsers.collectAsStateWithLifecycle()
+    val isLoadingOlder by viewModel.isLoadingOlder.collectAsStateWithLifecycle()
+    val hasMoreOlder by viewModel.hasMoreOlder.collectAsStateWithLifecycle()
     val isSending by viewModel.isSending.collectAsStateWithLifecycle()
     val userError by viewModel.userMessageError.collectAsStateWithLifecycle()
     val selectedRoom by viewModel.selectedRoom.collectAsStateWithLifecycle()
@@ -108,6 +109,8 @@ fun CommunityChatScreen(
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val showDmScreen by viewModel.showDmScreen.collectAsStateWithLifecycle()
     val privateMessages by viewModel.privateMessages.collectAsStateWithLifecycle()
+    val isLoadingOlderPrivate by viewModel.isLoadingOlderPrivate.collectAsStateWithLifecycle()
+    val hasMoreOlderPrivate by viewModel.hasMoreOlderPrivate.collectAsStateWithLifecycle()
     val activeDmUserName by viewModel.activeDmUserName.collectAsStateWithLifecycle()
     val dmPartners by viewModel.dmPartners.collectAsStateWithLifecycle()
     val deviceId = viewModel.currentDeviceId
@@ -117,7 +120,6 @@ fun CommunityChatScreen(
 
     var showNicknameDialog by remember { mutableStateOf(false) }
     var showAdminLoginDialog by remember { mutableStateOf(false) }
-    var showOnlineListDialog by remember { mutableStateOf(false) }
     var showRulesDialog by remember { mutableStateOf(false) }
     var showTimedBanDialog by remember { mutableStateOf<String?>(null) }
     var showReportDialog by remember { mutableStateOf<Pair<String, String>?>(null) } // messageId to senderName
@@ -150,9 +152,40 @@ fun CommunityChatScreen(
     }
 
     val listState = rememberLazyListState()
-    LaunchedEffect(filteredMessages.size) {
+    var previousOldestMessageId by remember { mutableStateOf<String?>(null) }
+    var previousLatestMessageId by remember { mutableStateOf<String?>(null) }
+    var isInitialScrollDone by remember { mutableStateOf(false) }
+
+    // Smart scroll management: auto-scroll to bottom only on initial load or new incoming/sent messages
+    LaunchedEffect(filteredMessages) {
         if (filteredMessages.isNotEmpty()) {
-            listState.animateScrollToItem(filteredMessages.size - 1)
+            val currentOldestId = filteredMessages.firstOrNull()?.id
+            val currentLatestId = filteredMessages.lastOrNull()?.id
+
+            if (!isInitialScrollDone) {
+                listState.scrollToItem(filteredMessages.size - 1)
+                isInitialScrollDone = true
+            } else if (currentLatestId != previousLatestMessageId && currentOldestId == previousOldestMessageId) {
+                // New incoming or sent message at the bottom
+                listState.animateScrollToItem(filteredMessages.size - 1)
+            }
+
+            previousOldestMessageId = currentOldestId
+            previousLatestMessageId = currentLatestId
+        }
+    }
+
+    // Pagination trigger when user scrolls near the top
+    val shouldTriggerPagination by remember {
+        derivedStateOf {
+            val firstVisibleIndex = listState.firstVisibleItemIndex
+            firstVisibleIndex <= 3 && !isLoadingOlder && hasMoreOlder && searchQuery.isBlank() && filteredMessages.size >= 50
+        }
+    }
+
+    LaunchedEffect(shouldTriggerPagination) {
+        if (shouldTriggerPagination) {
+            viewModel.loadOlderMessages()
         }
     }
 
@@ -218,35 +251,6 @@ fun CommunityChatScreen(
                                 maxLines = 1
                             )
                         }
-                    }
-                }
-
-                // Online user count button
-                var isOnlineFocused by remember { mutableStateOf(false) }
-                Box(
-                    modifier = Modifier
-                        .onFocusChanged { isOnlineFocused = it.isFocused }
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (isOnlineFocused) Color(0xFF334155) else Color(0xFF1E293B))
-                        .clickable { showOnlineListDialog = true }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF10B981))
-                        )
-                        Text(
-                            text = "${onlineUsers.size} Çevrimiçi",
-                            fontSize = 11.sp,
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold
-                        )
                     }
                 }
             }
@@ -531,7 +535,26 @@ fun CommunityChatScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
-                        items(filteredMessages) { message ->
+                        if (isLoadingOlder) {
+                            item(key = "loading_indicator_older_chat") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = AppColors.Brand
+                                    )
+                                }
+                            }
+                        }
+                        items(
+                            items = filteredMessages,
+                            key = { it.id }
+                        ) { message ->
                             val isMe = message.senderId == deviceId
                             // Mark seen for announcement messages
                             if (selectedRoom.id == ChatRoom.ANNOUNCEMENTS_ROOM.id && !message.seenBy.contains(deviceId)) {
@@ -1092,56 +1115,6 @@ fun CommunityChatScreen(
         )
     }
 
-    // Online Users Dialog
-    if (showOnlineListDialog) {
-        AlertDialog(
-            onDismissRequest = { showOnlineListDialog = false },
-            title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.People, contentDescription = null, tint = AppColors.Brand)
-                    Text("Aktif Kullanıcılar (${onlineUsers.size})", color = Color.White)
-                }
-            },
-            text = {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 260.dp)
-                ) {
-                    items(onlineUsers) { user ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF334155))
-                                .padding(10.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF10B981))
-                            )
-                            Text(text = user, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showOnlineListDialog = false }) {
-                    Text("Kapat", color = AppColors.Brand)
-                }
-            },
-            containerColor = Color(0xFF1E293B)
-        )
-    }
-
     // Community Rules Dialog
     if (showRulesDialog) {
         AlertDialog(
@@ -1556,16 +1529,64 @@ fun CommunityChatScreen(
 
                     // DM Messages
                     val dmListState = rememberLazyListState()
-                    LaunchedEffect(privateMessages.size) {
-                        if (privateMessages.isNotEmpty()) dmListState.animateScrollToItem(privateMessages.size - 1)
+                    var previousOldestDmId by remember { mutableStateOf<String?>(null) }
+                    var previousLatestDmId by remember { mutableStateOf<String?>(null) }
+                    var isDmInitialScrollDone by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(privateMessages) {
+                        if (privateMessages.isNotEmpty()) {
+                            val currentOldestId = privateMessages.firstOrNull()?.id
+                            val currentLatestId = privateMessages.lastOrNull()?.id
+
+                            if (!isDmInitialScrollDone) {
+                                dmListState.scrollToItem(privateMessages.size - 1)
+                                isDmInitialScrollDone = true
+                            } else if (currentLatestId != previousLatestDmId && currentOldestId == previousOldestDmId) {
+                                dmListState.animateScrollToItem(privateMessages.size - 1)
+                            }
+                            previousOldestDmId = currentOldestId
+                            previousLatestDmId = currentLatestId
+                        }
                     }
+
+                    val shouldTriggerDmPagination by remember {
+                        derivedStateOf {
+                            val firstVisibleIndex = dmListState.firstVisibleItemIndex
+                            firstVisibleIndex <= 3 && !isLoadingOlderPrivate && hasMoreOlderPrivate && privateMessages.size >= 30
+                        }
+                    }
+                    LaunchedEffect(shouldTriggerDmPagination) {
+                        if (shouldTriggerDmPagination) {
+                            viewModel.loadOlderPrivateMessages()
+                        }
+                    }
+
                     LazyColumn(
                         state = dmListState,
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
-                        items(privateMessages) { msg ->
+                        if (isLoadingOlderPrivate) {
+                            item(key = "loading_indicator_older_dm") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color(0xFF60A5FA)
+                                    )
+                                }
+                            }
+                        }
+                        items(
+                            items = privateMessages,
+                            key = { it.id }
+                        ) { msg ->
                             val isMe = msg.senderId == deviceId
                             Row(
                                 modifier = Modifier.fillMaxWidth(),

@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -81,6 +82,7 @@ import com.kaynanamtv.app.ui.interaction.TvClickableSurface
 import com.kaynanamtv.app.ui.interaction.TvButton
 import com.kaynanamtv.app.ui.interaction.TvIconButton
 import com.kaynanamtv.domain.model.Result
+import com.kaynanamtv.domain.util.isPlaybackComplete
 import kotlinx.coroutines.launch
 
 private const val EPISODE_DETAIL_PAGE_SIZE = 100
@@ -138,6 +140,7 @@ fun SeriesDetailScreen(
         series = series,
         selectedSeason = uiState.selectedSeason,
         resumeEpisode = uiState.resumeEpisode,
+        isAllEpisodesCompleted = uiState.isAllEpisodesCompleted,
         unwatchedEpisodeCount = uiState.unwatchedEpisodeCount,
         isCasting = uiState.isCasting,
         externalRatings = uiState.externalRatings,
@@ -168,6 +171,7 @@ private fun SeriesDetailContent(
     series: Series,
     selectedSeason: Season?,
     resumeEpisode: Episode?,
+    isAllEpisodesCompleted: Boolean,
     unwatchedEpisodeCount: Int,
     isCasting: Boolean,
     externalRatings: ExternalRatings,
@@ -367,13 +371,14 @@ private fun SeriesDetailContent(
                                 SeriesDetailActions(
                                     series = series,
                                     resumeEpisode = ep,
-                                     hasProgress = hasProgress,
-                                     isCasting = isCasting,
-                                     onResumeClick = onResumeClick,
-                                     onCopyUrl = { copyEpisodeUrl(ep) },
-                                     onCast = onCastResumeEpisode,
-                                     onToggleFavorite = onToggleFavorite
-                                 )
+                                    hasProgress = hasProgress,
+                                    isAllCompleted = isAllEpisodesCompleted,
+                                    isCasting = isCasting,
+                                    onResumeClick = onResumeClick,
+                                    onCopyUrl = { copyEpisodeUrl(ep) },
+                                    onCast = onCastResumeEpisode,
+                                    onToggleFavorite = onToggleFavorite
+                                )
                             }
                             if (resumeEpisode == null) {
                                 SeriesDetailFavoriteAction(series = series, onToggleFavorite = onToggleFavorite)
@@ -455,13 +460,14 @@ private fun SeriesDetailContent(
                                 SeriesDetailActions(
                                     series = series,
                                     resumeEpisode = ep,
-                                     hasProgress = hasProgress,
-                                     isCasting = isCasting,
-                                     onResumeClick = onResumeClick,
-                                     onCopyUrl = { copyEpisodeUrl(ep) },
-                                     onCast = onCastResumeEpisode,
-                                     onToggleFavorite = onToggleFavorite
-                                 )
+                                    hasProgress = hasProgress,
+                                    isAllCompleted = isAllEpisodesCompleted,
+                                    isCasting = isCasting,
+                                    onResumeClick = onResumeClick,
+                                    onCopyUrl = { copyEpisodeUrl(ep) },
+                                    onCast = onCastResumeEpisode,
+                                    onToggleFavorite = onToggleFavorite
+                                )
                             }
                             if (resumeEpisode == null) {
                                 SeriesDetailFavoriteAction(series = series, onToggleFavorite = onToggleFavorite)
@@ -586,6 +592,7 @@ private fun SeriesDetailActions(
     series: Series,
     resumeEpisode: Episode,
     hasProgress: Boolean,
+    isAllCompleted: Boolean,
     isCasting: Boolean,
     onResumeClick: (Episode) -> Unit,
     onCopyUrl: () -> Unit,
@@ -596,25 +603,36 @@ private fun SeriesDetailActions(
         TvButton(
             onClick = { onResumeClick(resumeEpisode) },
             colors = ButtonDefaults.colors(
-                containerColor = AppColors.Brand,
+                containerColor = if (AppColors.Brand.luminance() > 0.5f) Color(0xFF6366F1) else AppColors.Brand,
                 contentColor = Color.White,
-                focusedContentColor = Color(0xFF0A0E1A)
+                focusedContainerColor = if (AppColors.Brand.luminance() > 0.5f) Color(0xFFA78BFA) else AppColors.Focus,
+                focusedContentColor = if (AppColors.Brand.luminance() > 0.5f) Color.White else Color(0xFF0A0E1A)
             )
         ) {
             Text(
-                text = if (hasProgress) {
-                    stringResource(
-                        R.string.series_detail_resume,
-                        resumeEpisode.seasonNumber,
-                        resumeEpisode.episodeNumber,
-                        formatPositionMs(resumeEpisode.watchProgress)
-                    )
-                } else {
-                    stringResource(
-                        R.string.series_detail_play_episode,
-                        resumeEpisode.seasonNumber,
-                        resumeEpisode.episodeNumber
-                    )
+                text = when {
+                    hasProgress -> {
+                        stringResource(
+                            R.string.series_detail_resume,
+                            resumeEpisode.seasonNumber,
+                            resumeEpisode.episodeNumber,
+                            formatPositionMs(resumeEpisode.watchProgress)
+                        )
+                    }
+                    isAllCompleted -> {
+                        stringResource(
+                            R.string.series_detail_restart,
+                            resumeEpisode.seasonNumber,
+                            resumeEpisode.episodeNumber
+                        )
+                    }
+                    else -> {
+                        stringResource(
+                            R.string.series_detail_play_episode,
+                            resumeEpisode.seasonNumber,
+                            resumeEpisode.episodeNumber
+                        )
+                    }
                 }
             )
         }
@@ -674,6 +692,20 @@ fun SeasonChip(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val totalEpisodes = season.episodes.size
+    val watchedEpisodes = season.episodes.count {
+        isPlaybackComplete(
+            it.watchProgress,
+            it.durationSeconds.toLong() * 1000L
+        )
+    }
+    val seasonDisplayName = formatSeasonDisplayName(season.name, season.seasonNumber)
+    val label = when {
+        totalEpisodes == 0 -> seasonDisplayName
+        watchedEpisodes == totalEpisodes -> "$seasonDisplayName · $watchedEpisodes/$totalEpisodes ✓"
+        else -> "$seasonDisplayName · $watchedEpisodes/$totalEpisodes"
+    }
+
     TvClickableSurface(
         onClick = onClick,
         shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(999.dp)),
@@ -695,7 +727,7 @@ fun SeasonChip(
         )
     ) {
         Text(
-            text = formatSeasonDisplayName(season.name, season.seasonNumber),
+            text = label,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
             style = MaterialTheme.typography.labelLarge
         )

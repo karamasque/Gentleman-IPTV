@@ -852,7 +852,7 @@ class HomeViewModel @Inject constructor(
                 } else if (category.isVirtual) {
                     val providerId = _uiState.value.provider?.id ?: return@launch
                     val orderedFlow = if (category.id == VirtualCategoryIds.RECENT) {
-                        playbackHistoryRepository.getRecentlyWatchedByProvider(providerId, limit = 24)
+                        playbackHistoryRepository.getRecentLiveHistoryByProvider(providerId, limit = 24)
                             .map { it.toRecentLiveContentIds() }
                             .flatMapLatest { ids -> loadChannelsByOrderedIds(ids) }
                     } else if (category.id == VirtualCategoryIds.FAVORITES) {
@@ -1478,7 +1478,7 @@ class HomeViewModel @Inject constructor(
         recentChannelsJob?.cancel()
         recentChannelsJob = viewModelScope.launch {
             combine(
-                playbackHistoryRepository.getRecentlyWatchedByProvider(providerId, limit = 12)
+                playbackHistoryRepository.getRecentLiveHistoryByProvider(providerId, limit = 12)
                     .map { it.toRecentLiveContentIds() }
                     .flatMapLatest { ids -> loadChannelsByOrderedIds(ids) },
                 preferencesRepository.parentalControlLevel
@@ -2033,21 +2033,16 @@ class HomeViewModel @Inject constructor(
 
     private fun observeRecentLiveIds(providerIds: List<Long>, limit: Int): Flow<List<Long>> = when (providerIds.size) {
         0 -> flowOf(emptyList())
-        1 -> playbackHistoryRepository.getRecentlyWatchedByProvider(providerIds.first(), limit)
+        1 -> playbackHistoryRepository.getRecentLiveHistoryByProvider(providerIds.first(), limit)
             .map { history -> history.toRecentLiveContentIds().take(limit) }
-        else -> combine(providerIds.map { providerId ->
-            playbackHistoryRepository.getRecentlyWatchedByProvider(providerId, limit)
-        }) { histories ->
-            histories.toList()
-                .flatMap { it }
-                .asSequence()
-                .filter { it.contentType == ContentType.LIVE }
-                .sortedByDescending { it.lastWatchedAt }
-                .distinctBy { it.providerId to it.contentId }
-                .map { it.contentId }
-                .take(limit)
-                .toList()
-        }
+        else -> playbackHistoryRepository.getRecentLiveHistoryByProviders(providerIds.toSet(), limit)
+            .map { histories ->
+                histories
+                    .sortedByDescending { it.lastWatchedAt }
+                    .distinctBy { it.providerId to it.contentId }
+                    .map { it.contentId }
+                    .take(limit)
+            }
     }
 
     private fun resolveLiveWriteProviderId(preferredProviderId: Long? = null): Long? =

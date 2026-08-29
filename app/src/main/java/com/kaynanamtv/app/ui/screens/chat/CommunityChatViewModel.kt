@@ -45,9 +45,6 @@ class CommunityChatViewModel @Inject constructor(
     val isBanned: StateFlow<Boolean> = chatRepository.observeBannedStatus()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    val onlineUsers: StateFlow<List<String>> = chatRepository.observeOnlineUsers()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf(chatRepository.getNickname()))
-
     val rooms: List<ChatRoom> = ChatRoom.ROOMS
 
     private val _selectedRoom = MutableStateFlow<ChatRoom>(ChatRoom.GENERAL_ROOM)
@@ -59,6 +56,13 @@ class CommunityChatViewModel @Inject constructor(
     private val _editingMessage = MutableStateFlow<ChatMessage?>(null)
     val editingMessage: StateFlow<ChatMessage?> = _editingMessage.asStateFlow()
 
+    private val _olderMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    private val _isLoadingOlder = MutableStateFlow(false)
+    val isLoadingOlder: StateFlow<Boolean> = _isLoadingOlder.asStateFlow()
+
+    private val _hasMoreOlder = MutableStateFlow(true)
+    val hasMoreOlder: StateFlow<Boolean> = _hasMoreOlder.asStateFlow()
+
     // Search
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -66,9 +70,19 @@ class CommunityChatViewModel @Inject constructor(
     private val _allMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val messages: StateFlow<List<ChatMessage>> = _selectedRoom
-        .flatMapLatest { room -> chatRepository.observeMessages(room.id) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val messages: StateFlow<List<ChatMessage>> = combine(
+        _selectedRoom.flatMapLatest { room -> chatRepository.observeMessages(room.id) },
+        _olderMessages
+    ) { latest, older ->
+        val map = LinkedHashMap<String, ChatMessage>()
+        for (msg in older) {
+            map[msg.id] = msg
+        }
+        for (msg in latest) {
+            map[msg.id] = msg
+        }
+        map.values.sortedBy { it.timestamp }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val filteredMessages: StateFlow<List<ChatMessage>> = combine(messages, _searchQuery) { msgs, query ->
         if (query.isBlank()) msgs
@@ -93,18 +107,31 @@ class CommunityChatViewModel @Inject constructor(
     private val _activeDmUserName = MutableStateFlow<String?>(null)
     val activeDmUserName: StateFlow<String?> = _activeDmUserName.asStateFlow()
 
+    private val _olderPrivateMessages = MutableStateFlow<List<PrivateChatMessage>>(emptyList())
+    private val _isLoadingOlderPrivate = MutableStateFlow(false)
+    val isLoadingOlderPrivate: StateFlow<Boolean> = _isLoadingOlderPrivate.asStateFlow()
+
+    private val _hasMoreOlderPrivate = MutableStateFlow(true)
+    val hasMoreOlderPrivate: StateFlow<Boolean> = _hasMoreOlderPrivate.asStateFlow()
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val privateMessages: StateFlow<List<PrivateChatMessage>> = _activeDmUserId
-        .flatMapLatest { otherId ->
+    val privateMessages: StateFlow<List<PrivateChatMessage>> = combine(
+        _activeDmUserId.flatMapLatest { otherId ->
             if (otherId != null) chatRepository.observePrivateMessages(otherId)
             else kotlinx.coroutines.flow.flowOf(emptyList())
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        },
+        _olderPrivateMessages
+    ) { latest, older ->
+        val map = LinkedHashMap<String, PrivateChatMessage>()
+        for (msg in older) map[msg.id] = msg
+        for (msg in latest) map[msg.id] = msg
+        map.values.sortedBy { it.timestamp }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _showDmScreen = MutableStateFlow(false)
     val showDmScreen: StateFlow<Boolean> = _showDmScreen.asStateFlow()
 
-    val dmPartners: StateFlow<List<Pair<String, String>>> = chatRepository.getKnownChatPartners()
+    val dmPartners: StateFlow<List<Pair<String, String>>> = chatRepository.getKnownChatPartners(limit = 20L)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
@@ -120,12 +147,98 @@ class CommunityChatViewModel @Inject constructor(
         }
     }
 
-    fun selectRoom(room: ChatRoom) { _selectedRoom.value = room }
+    fun selectRoom(room: ChatRoom) {
+        if (_selectedRoom.value.id != room.id) {
+            _olderMessages.value = emptyList()
+            _isLoadingOlder.value = false
+            _hasMoreOlder.value = true
+            _selectedRoom.value = room
+        }
+    }
+
+    fun loadOlderMessages() {
+        val currentRoom = _selectedRoom.value
+        if (currentRoom.id != ChatRoom.GENERAL_ROOM.id) return
+        if (_isLoadingOlder.value || !_hasMoreOlder.value) return
+
+        val currentList = messages.value
+        if (currentList.isEmpty() || currentList.size < 50) {
+            _hasMoreOlder.value = false
+            return
+        }
+
+        val oldestTimestamp = currentList.firstOrNull()?.timestamp ?: return
+
+        viewModelScope.launch {
+            _isLoadingOlder.value = true
+            val older = chatRepository.loadOlderMessages(
+                roomId = currentRoom.id,
+                beforeTimestamp = oldestTimestamp,
+                limit = 50L
+            )
+            if (older.isEmpty()) {
+                _hasMoreOlder.value = false
+            } else {
+                val existingIds = currentList.map { it.id }.toSet()
+                val newOlder = older.filter { it.id !in existingIds }
+                if (newOlder.isEmpty()) {
+                    _hasMoreOlder.value = false
+                } else {
+                    _olderMessages.value = newOlder + _olderMessages.value
+                    if (older.size < 50) {
+                        _hasMoreOlder.value = false
+                    }
+                }
+            }
+            _isLoadingOlder.value = false
+        }
+    }
+
+    fun loadOlderPrivateMessages() {
+        val otherId = _activeDmUserId.value ?: return
+        if (_isLoadingOlderPrivate.value || !_hasMoreOlderPrivate.value) return
+
+        val currentList = privateMessages.value
+        if (currentList.isEmpty() || currentList.size < 30) {
+            _hasMoreOlderPrivate.value = false
+            return
+        }
+
+        val oldestTimestamp = currentList.firstOrNull()?.timestamp ?: return
+
+        viewModelScope.launch {
+            _isLoadingOlderPrivate.value = true
+            val older = chatRepository.loadOlderPrivateMessages(
+                otherUserId = otherId,
+                beforeTimestamp = oldestTimestamp,
+                limit = 30L
+            )
+            if (older.isEmpty()) {
+                _hasMoreOlderPrivate.value = false
+            } else {
+                val existingIds = currentList.map { it.id }.toSet()
+                val newOlder = older.filter { it.id !in existingIds }
+                if (newOlder.isEmpty()) {
+                    _hasMoreOlderPrivate.value = false
+                } else {
+                    _olderPrivateMessages.value = newOlder + _olderPrivateMessages.value
+                    if (older.size < 30) {
+                        _hasMoreOlderPrivate.value = false
+                    }
+                }
+            }
+            _isLoadingOlderPrivate.value = false
+        }
+    }
+
     fun setReplyToMessage(message: ChatMessage?) { _replyingToMessage.value = message }
     fun setEditingMessage(message: ChatMessage?) { _editingMessage.value = message }
     fun setSearchQuery(query: String) { _searchQuery.value = query }
 
     fun openDm(userId: String, userName: String) {
+        _olderPrivateMessages.value = emptyList()
+        _isLoadingOlderPrivate.value = false
+        _hasMoreOlderPrivate.value = true
         _activeDmUserId.value = userId
         _activeDmUserName.value = userName
         _showDmScreen.value = true
@@ -136,6 +249,9 @@ class CommunityChatViewModel @Inject constructor(
         _showDmScreen.value = false
         _activeDmUserId.value = null
         _activeDmUserName.value = null
+        _olderPrivateMessages.value = emptyList()
+        _isLoadingOlderPrivate.value = false
+        _hasMoreOlderPrivate.value = true
     }
 
     fun sendMessage(text: String, imageUrl: String? = null) {

@@ -98,7 +98,7 @@ class HomeViewModelTest {
         whenever(preferencesRepository.getHiddenChannelIds(any())).thenReturn(flowOf(emptySet()))
         whenever(preferencesRepository.getCategorySortMode(any(), any())).thenReturn(flowOf(CategorySortMode.DEFAULT))
         whenever(preferencesRepository.getPinnedCategoryIds(any(), any())).thenReturn(flowOf(emptySet()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(any(), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(any(), any())).thenReturn(flowOf(emptyList()))
         whenever(getCustomCategories.invoke(any<Long>(), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
         whenever(getCustomCategories.invoke(any<List<Long>>(), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavoritesByGroup(any())).thenReturn(flowOf(emptyList()))
@@ -224,7 +224,7 @@ class HomeViewModelTest {
                 )
             )
         )
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(
             flowOf(
                 listOf(
                     PlaybackHistory(
@@ -337,7 +337,7 @@ class HomeViewModelTest {
                 )
             )
         )
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
         viewModel = createViewModel()
@@ -375,7 +375,7 @@ class HomeViewModelTest {
                 )
             )
         )
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(preferencesRepository.getLastLiveCategoryId(provider.id)).thenReturn(flowOf(sportsCategory.id))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
@@ -400,7 +400,7 @@ class HomeViewModelTest {
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(listOf(category)))
         whenever(channelRepository.getChannelsByCategoryPage(eq(provider.id), eq(category.id), any())).thenReturn(flowOf(emptyList()))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
         viewModel = createViewModel()
@@ -429,7 +429,7 @@ class HomeViewModelTest {
         whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(emptyList()))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
         viewModel = createViewModel()
@@ -459,7 +459,7 @@ class HomeViewModelTest {
             flowOf(listOf(Channel(id = 1L, name = "BBC News", providerId = provider.id, streamUrl = "https://stream")))
         )
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
         viewModel = createViewModel()
@@ -494,7 +494,7 @@ class HomeViewModelTest {
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(listOf(category)))
         whenever(channelRepository.getChannelsByCategoryPage(eq(provider.id), eq(category.id), any())).thenReturn(flowOf(listOf(channel)))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
         viewModel = createViewModel()
@@ -512,7 +512,7 @@ class HomeViewModelTest {
         whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(emptyList()))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
         viewModel = createViewModel()
@@ -536,7 +536,7 @@ class HomeViewModelTest {
         whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(emptyList()))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
         viewModel = createViewModel()
@@ -560,7 +560,7 @@ class HomeViewModelTest {
         whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(emptyList()))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
         viewModel = createViewModel()
@@ -583,7 +583,7 @@ class HomeViewModelTest {
         whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(emptyList()))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
         viewModel = createViewModel()
@@ -605,7 +605,7 @@ class HomeViewModelTest {
         whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(emptyList()))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
 
         viewModel = createViewModel()
@@ -638,7 +638,7 @@ class HomeViewModelTest {
         whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(listOf(visible, hidden, alsoHidden)))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
         whenever(preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE))
             .thenReturn(flowOf(setOf(2L, 3L)))
@@ -659,7 +659,7 @@ class HomeViewModelTest {
         whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(emptyList()))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
-        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentLiveHistoryByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
         whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
         whenever(preferencesRepository.getHiddenChannelIds(provider.id))
             .thenReturn(flowOf(setOf(2L, 3L)))

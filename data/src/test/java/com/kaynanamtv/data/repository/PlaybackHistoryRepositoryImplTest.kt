@@ -22,6 +22,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import com.kaynanamtv.data.local.dao.SeriesDao
 import org.mockito.kotlin.check
 
 class PlaybackHistoryRepositoryImplTest {
@@ -30,6 +31,7 @@ class PlaybackHistoryRepositoryImplTest {
     private val preferencesRepository: PreferencesRepository = mock()
     private val movieDao: MovieDao = mock()
     private val episodeDao: EpisodeDao = mock()
+    private val seriesDao: SeriesDao = mock()
     private val transactionRunner = object : DatabaseTransactionRunner {
         override suspend fun <T> inTransaction(block: suspend () -> T): T = block()
     }
@@ -39,6 +41,7 @@ class PlaybackHistoryRepositoryImplTest {
         preferencesRepository = preferencesRepository,
         movieDao = movieDao,
         episodeDao = episodeDao,
+        seriesDao = seriesDao,
         transactionRunner = transactionRunner
     )
 

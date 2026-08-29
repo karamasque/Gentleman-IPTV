@@ -45,8 +45,13 @@ fun AdminPanelDialog(
     onOpenDm: (userId: String, userName: String) -> Unit
 ) {
     val reports by viewModel.reports.collectAsStateWithLifecycle()
+    val isLoadingReports by viewModel.isLoadingReports.collectAsStateWithLifecycle()
+    val hasMoreReports by viewModel.hasMoreReports.collectAsStateWithLifecycle()
+
     val bannedUsers by viewModel.bannedUsers.collectAsStateWithLifecycle()
-    val onlineUsersInfo by viewModel.onlineUsersInfo.collectAsStateWithLifecycle()
+    val isLoadingBannedUsers by viewModel.isLoadingBannedUsers.collectAsStateWithLifecycle()
+    val hasMoreBannedUsers by viewModel.hasMoreBannedUsers.collectAsStateWithLifecycle()
+
     val adminMessage by viewModel.adminMessage.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableStateOf(0) }
@@ -148,7 +153,6 @@ fun AdminPanelDialog(
                     val tabs = listOf(
                         "🚨 Şikayetler (${reports.size})",
                         "⛔ Engellenenler (${bannedUsers.size})",
-                        "👥 Kullanıcılar (${onlineUsersInfo.size})",
                         "📢 Duyuru Yap"
                     )
                     tabs.forEachIndexed { index, title ->
@@ -220,6 +224,9 @@ fun AdminPanelDialog(
                     when (selectedTab) {
                         0 -> ReportsTab(
                             reports = reports,
+                            isLoading = isLoadingReports,
+                            hasMore = hasMoreReports,
+                            onLoadOlder = { viewModel.loadOlderReports() },
                             onDismiss = { viewModel.dismissReport(it) },
                             onDeleteMsg = { r, m, rep -> viewModel.deleteReportedMessage(r, m, rep) },
                             onBanUser = { showTimedBanForUser = it },
@@ -231,23 +238,16 @@ fun AdminPanelDialog(
                         )
                         1 -> BannedUsersTab(
                             bannedUsers = bannedUsers,
+                            isLoading = isLoadingBannedUsers,
+                            hasMore = hasMoreBannedUsers,
+                            onLoadOlder = { viewModel.loadOlderBannedUsers() },
                             onUnban = { viewModel.unbanUser(it) },
                             onCopyId = { id ->
                                 clipboardManager.setText(AnnotatedString(id))
                                 copyToast = "Kullanıcı Kimliği Kopyalandı: $id"
                             }
                         )
-                        2 -> UsersTab(
-                            users = onlineUsersInfo,
-                            onAssignBadge = { uId, badge -> viewModel.assignBadge(uId, badge) },
-                            onBanUser = { showTimedBanForUser = it },
-                            onOpenDm = { uId, uName -> onDismiss(); onOpenDm(uId, uName) },
-                            onCopyId = { id ->
-                                clipboardManager.setText(AnnotatedString(id))
-                                copyToast = "Kullanıcı Kimliği Kopyalandı: $id"
-                            }
-                        )
-                        3 -> AnnouncementTab(
+                        2 -> AnnouncementTab(
                             input = announcementInput,
                             onInputChange = { announcementInput = it },
                             onPost = { viewModel.postAnnouncement(it); announcementInput = "" }
@@ -296,22 +296,41 @@ fun AdminPanelDialog(
 @Composable
 private fun ReportsTab(
     reports: List<ChatReport>,
+    isLoading: Boolean,
+    hasMore: Boolean,
+    onLoadOlder: () -> Unit,
     onDismiss: (String) -> Unit,
     onDeleteMsg: (String, String, String) -> Unit,
     onBanUser: (String) -> Unit,
     onOpenDm: (String, String) -> Unit,
     onCopyId: (String) -> Unit
 ) {
-    if (reports.isEmpty()) {
+    if (reports.isEmpty() && !isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Henüz bildirilmiş şikayet bulunmuyor. Her şey yolunda! ✨", color = Color.Gray, fontSize = 14.sp)
         }
     } else {
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val shouldLoadMore by remember {
+            derivedStateOf {
+                val layoutInfo = listState.layoutInfo
+                val totalItems = layoutInfo.totalItemsCount
+                val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                lastVisible >= totalItems - 3 && !isLoading && hasMore && reports.size >= 30
+            }
+        }
+        LaunchedEffect(shouldLoadMore) {
+            if (shouldLoadMore) {
+                onLoadOlder()
+            }
+        }
+
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(reports) { report ->
+            items(reports, key = { it.id }) { report ->
                 val time = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(report.timestamp))
                 val displayName = report.senderName.ifBlank { "Aktif Üye" }
                 val displayId = if (report.senderId.isNotBlank() && report.senderId != "SV-ANONYM") report.senderId else "SV-" + report.id.take(8).uppercase()
@@ -439,6 +458,16 @@ private fun ReportsTab(
                     }
                 }
             }
+            if (isLoading) {
+                item(key = "loading_indicator_older_reports") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFFFFD700))
+                    }
+                }
+            }
         }
     }
 }
@@ -446,19 +475,38 @@ private fun ReportsTab(
 @Composable
 private fun BannedUsersTab(
     bannedUsers: List<BannedUserInfo>,
+    isLoading: Boolean,
+    hasMore: Boolean,
+    onLoadOlder: () -> Unit,
     onUnban: (String) -> Unit,
     onCopyId: (String) -> Unit
 ) {
-    if (bannedUsers.isEmpty()) {
+    if (bannedUsers.isEmpty() && !isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Engellenmiş kullanıcı bulunmuyor. 👍", color = Color.Gray, fontSize = 14.sp)
         }
     } else {
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val shouldLoadMore by remember {
+            derivedStateOf {
+                val layoutInfo = listState.layoutInfo
+                val totalItems = layoutInfo.totalItemsCount
+                val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                lastVisible >= totalItems - 3 && !isLoading && hasMore && bannedUsers.size >= 30
+            }
+        }
+        LaunchedEffect(shouldLoadMore) {
+            if (shouldLoadMore) {
+                onLoadOlder()
+            }
+        }
+
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(bannedUsers) { user ->
+            items(bannedUsers, key = { it.senderId }) { user ->
                 val bannedAtStr = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(user.bannedAt))
                 val isPermanent = user.durationHours == -1 || user.bannedUntil <= 0
                 val durationStr = if (isPermanent) "Süresiz" else "${user.durationHours} Saat"
@@ -508,6 +556,16 @@ private fun BannedUsersTab(
                         ) {
                             Text("🔓 Engeli Kaldır", color = Color(0xFFA7F3D0), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
+                    }
+                }
+            }
+            if (isLoading) {
+                item(key = "loading_indicator_older_banned") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFFFFD700))
                     }
                 }
             }

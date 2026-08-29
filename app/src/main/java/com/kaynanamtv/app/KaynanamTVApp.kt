@@ -123,6 +123,18 @@ class KaynanamTVApp : Application(), SingletonImageLoader.Factory {
             // Asynchronously reconcile favorites and watch progress without blocking startup
             cloudUserStateSyncManager.reconcileFromCloud()
 
+            // Trigger reconcile whenever user authentication becomes active or restored
+            runCatching {
+                com.google.firebase.auth.FirebaseAuth.getInstance().addAuthStateListener { auth ->
+                    val user = auth.currentUser
+                    if (user != null && !user.isAnonymous) {
+                        applicationScope.launch {
+                            cloudUserStateSyncManager.reconcileFromCloud()
+                        }
+                    }
+                }
+            }
+
             // Lifecycle-safe periodic background sync scheduling (strictly gated by AUTOMATIC_REFRESH feature)
             kotlinx.coroutines.flow.combine(
                 preferencesRepository.backgroundSyncEnabled,

@@ -37,12 +37,15 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
+@RunWith(RobolectricTestRunner::class)
 class MovieDetailViewModelCastingTest {
 
     @get:Rule
@@ -247,6 +250,11 @@ class MovieDetailViewModelCastingTest {
     ) : CastPlaybackCoordinator {
         private val mutablePlaybackEvents = MutableSharedFlow<CastPlaybackEvent>(extraBufferCapacity = 8)
         override val playbackEvents: SharedFlow<CastPlaybackEvent> = mutablePlaybackEvents.asSharedFlow()
+        override val remoteAudioTracks: kotlinx.coroutines.flow.StateFlow<List<com.kaynanamtv.app.cast.CastTrackInfo>> = kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+        override val remoteCurrentPosition: kotlinx.coroutines.flow.StateFlow<Long> = kotlinx.coroutines.flow.MutableStateFlow(0L)
+        override val remoteDuration: kotlinx.coroutines.flow.StateFlow<Long> = kotlinx.coroutines.flow.MutableStateFlow(0L)
+        override val isRemotePlaying: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false)
+        override val isRemoteLiveSeekable: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false)
         var lastRequest: CastMediaRequest? = null
 
         override suspend fun startCasting(request: CastMediaRequest): CastStartResult {
@@ -254,6 +262,13 @@ class MovieDetailViewModelCastingTest {
             startCount += 1
             return result
         }
+
+        override fun stopCasting() {}
+        override fun play() {}
+        override fun pause() {}
+        override fun seekTo(positionMs: Long) {}
+        override fun seekRelative(offsetMs: Long) {}
+        override fun setActiveAudioTrack(trackId: Long) {}
 
         var startCount: Int = 0
 

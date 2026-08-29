@@ -1,5 +1,6 @@
 package com.kaynanamtv.app.ui.screens.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -134,26 +135,8 @@ private fun NumericSettingsTextField(
         pendingInputActivation = false
     }
 
-    TvClickableSurface(
-        onClick = {
-            if (!isTelevisionDevice) {
-                focusRequester.requestFocus()
-                keyboardController?.show()
-                return@TvClickableSurface
-            }
-            acceptsInput = true
-            pendingInputActivation = true
-        },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.White.copy(alpha = 0.08f),
-            focusedContainerColor = Color.White.copy(alpha = 0.12f)
-        ),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { hasContainerFocus = it.isFocused }
-    ) {
+    @Composable
+    fun InnerContent() {
         Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             if (value.isEmpty() && !isFocused) {
                 Text(placeholder, style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDim)
@@ -205,6 +188,34 @@ private fun NumericSettingsTextField(
                     innerTextField()
                 }
             )
+        }
+    }
+
+    if (isTelevisionDevice) {
+        TvClickableSurface(
+            onClick = {
+                acceptsInput = true
+                pendingInputActivation = true
+            },
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.White.copy(alpha = 0.08f),
+                focusedContainerColor = Color.White.copy(alpha = 0.12f)
+            ),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { hasContainerFocus = it.isFocused }
+        ) {
+            InnerContent()
+        }
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+        ) {
+            InnerContent()
         }
     }
 }

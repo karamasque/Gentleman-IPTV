@@ -51,6 +51,10 @@ class MarkAsWatchedTest {
         override fun getRecentlyWatched(limit: Int): Flow<List<PlaybackHistory>> = flowOf(emptyList())
         override fun getRecentlyWatchedByProvider(providerId: Long, limit: Int): Flow<List<PlaybackHistory>> = flowOf(emptyList())
         override fun getRecentlyWatchedByProviders(providerIds: Set<Long>, limit: Int): Flow<List<PlaybackHistory>> = flowOf(emptyList())
+        override fun getContinueWatchingCandidatesByProvider(providerId: Long, limit: Int): Flow<List<PlaybackHistory>> = flowOf(emptyList())
+        override fun getContinueWatchingCandidatesByProviders(providerIds: Set<Long>, limit: Int): Flow<List<PlaybackHistory>> = flowOf(emptyList())
+        override fun getRecentLiveHistoryByProvider(providerId: Long, limit: Int): Flow<List<PlaybackHistory>> = flowOf(emptyList())
+        override fun getRecentLiveHistoryByProviders(providerIds: Set<Long>, limit: Int): Flow<List<PlaybackHistory>> = flowOf(emptyList())
         override fun getUnwatchedCount(providerId: Long, seriesId: Long): Flow<Int> = flowOf(0)
         override suspend fun getPlaybackHistory(
             contentId: Long,

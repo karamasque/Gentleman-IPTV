@@ -78,7 +78,8 @@ class DashboardViewModel @Inject constructor(
     private val getCustomCategories: GetCustomCategories,
     private val syncManager: SyncManager,
     private val appUpdateInstaller: AppUpdateInstaller,
-    private val recordingManager: RecordingManager
+    private val recordingManager: RecordingManager,
+    private val cloudUserStateSyncManager: com.kaynanamtv.data.sync.CloudUserStateSyncManager
 ) : ViewModel() {
     private companion object {
         const val FAVORITE_CHANNEL_LIMIT = 12
@@ -87,6 +88,12 @@ class DashboardViewModel @Inject constructor(
         const val MOVIE_SHELF_LIMIT = 12
         const val SERIES_SHELF_LIMIT = 12
         const val HOME_SHORTCUT_LIMIT = 4
+    }
+
+    init {
+        viewModelScope.launch {
+            cloudUserStateSyncManager.reconcileFromCloud()
+        }
     }
 
     private val _uiState = MutableStateFlow(DashboardUiState())
@@ -427,8 +434,18 @@ class DashboardViewModel @Inject constructor(
                         flowOf(ContinueWatchingShelf(items = result.items))
                     } else {
                         seriesRepository.getSeriesByIds(seriesIds).map { series ->
+                            val seriesById = series.associateBy { it.id }
+                            val enrichedItems = result.items.map { history ->
+                                if (history.posterUrl.isNullOrBlank() && (history.contentType == ContentType.SERIES || history.contentType == ContentType.SERIES_EPISODE)) {
+                                    val parent = seriesById[history.seriesId ?: history.contentId]
+                                    val artwork = parent?.posterUrl?.takeIf { it.isNotBlank() } ?: parent?.backdropUrl?.takeIf { it.isNotBlank() }
+                                    if (artwork != null) history.copy(posterUrl = artwork) else history
+                                } else {
+                                    history
+                                }
+                            }
                             ContinueWatchingShelf(
-                                items = result.items,
+                                items = enrichedItems,
                                 series = series.orderedByRequestedSeriesIds(seriesIds)
                             )
                         }
@@ -540,28 +557,22 @@ class DashboardViewModel @Inject constructor(
 
     private fun observeRecentLiveIds(providerIds: List<Long>, limit: Int): Flow<List<Long>> = when (providerIds.size) {
         0 -> flowOf(emptyList())
-        1 -> playbackHistoryRepository.getRecentlyWatchedByProvider(providerIds.first(), limit)
+        1 -> playbackHistoryRepository.getRecentLiveHistoryByProvider(providerIds.first(), limit)
             .map { history ->
                 history
-                    .filter { it.contentType == ContentType.LIVE }
                     .sortedByDescending { it.lastWatchedAt }
                     .distinctBy { it.contentId }
                     .map { it.contentId }
                     .take(limit)
             }
-        else -> combine(providerIds.map { providerId ->
-            playbackHistoryRepository.getRecentlyWatchedByProvider(providerId, limit)
-        }) { histories ->
-            histories.toList()
-                .flatMap { it }
-                .asSequence()
-                .filter { it.contentType == ContentType.LIVE }
-                .sortedByDescending { it.lastWatchedAt }
-                .distinctBy { it.providerId to it.contentId }
-                .map { it.contentId }
-                .take(limit)
-                .toList()
-        }
+        else -> playbackHistoryRepository.getRecentLiveHistoryByProviders(providerIds.toSet(), limit)
+            .map { histories ->
+                histories
+                    .sortedByDescending { it.lastWatchedAt }
+                    .distinctBy { it.providerId to it.contentId }
+                    .map { it.contentId }
+                    .take(limit)
+            }
     }
 
     private fun loadChannelsByOrderedIds(ids: List<Long>): Flow<List<Channel>> {

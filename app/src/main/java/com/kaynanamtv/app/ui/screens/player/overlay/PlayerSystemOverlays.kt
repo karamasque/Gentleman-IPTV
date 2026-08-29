@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -1639,8 +1640,8 @@ fun NextEpisodeCountdownOverlay(
                     onClick = onPlayNow,
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                     colors = ClickableSurfaceDefaults.colors(
-                        containerColor = Primary,
-                        focusedContainerColor = PrimaryLight
+                        containerColor = if (Primary.luminance() > 0.5f) Color(0xFF6366F1) else Primary,
+                        focusedContainerColor = if (Primary.luminance() > 0.5f) Color(0xFFA78BFA) else PrimaryLight
                     ),
                     modifier = Modifier
                         .weight(1f)

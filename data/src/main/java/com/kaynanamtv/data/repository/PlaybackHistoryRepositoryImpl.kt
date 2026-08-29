@@ -4,6 +4,7 @@ import com.kaynanamtv.data.local.DatabaseTransactionRunner
 import com.kaynanamtv.data.local.dao.EpisodeDao
 import com.kaynanamtv.data.local.dao.MovieDao
 import com.kaynanamtv.data.local.dao.PlaybackHistoryDao
+import com.kaynanamtv.data.local.dao.SeriesDao
 import com.kaynanamtv.data.mapper.toDomain
 import com.kaynanamtv.data.mapper.toEntity
 import com.kaynanamtv.domain.model.ContentType
@@ -37,6 +38,7 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
     private val preferencesRepository: PreferencesRepository,
     private val movieDao: MovieDao,
     private val episodeDao: EpisodeDao,
+    private val seriesDao: SeriesDao,
     private val transactionRunner: DatabaseTransactionRunner
 ) : PlaybackHistoryRepository {
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -77,6 +79,50 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
             persisted = dao.getRecentlyWatchedByProviders(providerIds, limit).map { list -> list.map { it.toDomain() } },
             limit = limit
         ) { history -> history.providerId in providerIds }
+    }
+
+    override fun getContinueWatchingCandidatesByProvider(providerId: Long, limit: Int): Flow<List<PlaybackHistory>> {
+        return mergedRecentHistory(
+            persisted = dao.getContinueWatchingCandidatesByProvider(providerId, limit).map { list -> list.map { it.toDomain() } },
+            limit = limit
+        ) { history ->
+            history.providerId == providerId &&
+                history.contentType != ContentType.LIVE &&
+                history.resumePositionMs > 0L &&
+                !com.kaynanamtv.domain.util.isPlaybackComplete(history.resumePositionMs, history.totalDurationMs)
+        }
+    }
+
+    override fun getContinueWatchingCandidatesByProviders(providerIds: Set<Long>, limit: Int): Flow<List<PlaybackHistory>> {
+        if (providerIds.isEmpty()) {
+            return kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        return mergedRecentHistory(
+            persisted = dao.getContinueWatchingCandidatesByProviders(providerIds, limit).map { list -> list.map { it.toDomain() } },
+            limit = limit
+        ) { history ->
+            history.providerId in providerIds &&
+                history.contentType != ContentType.LIVE &&
+                history.resumePositionMs > 0L &&
+                !com.kaynanamtv.domain.util.isPlaybackComplete(history.resumePositionMs, history.totalDurationMs)
+        }
+    }
+
+    override fun getRecentLiveHistoryByProvider(providerId: Long, limit: Int): Flow<List<PlaybackHistory>> {
+        return mergedRecentHistory(
+            persisted = dao.getRecentLiveHistoryByProvider(providerId, limit).map { list -> list.map { it.toDomain() } },
+            limit = limit
+        ) { history -> history.providerId == providerId && history.contentType == ContentType.LIVE }
+    }
+
+    override fun getRecentLiveHistoryByProviders(providerIds: Set<Long>, limit: Int): Flow<List<PlaybackHistory>> {
+        if (providerIds.isEmpty()) {
+            return kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        return mergedRecentHistory(
+            persisted = dao.getRecentLiveHistoryByProviders(providerIds, limit).map { list -> list.map { it.toDomain() } },
+            limit = limit
+        ) { history -> history.providerId in providerIds && history.contentType == ContentType.LIVE }
     }
 
     override fun getUnwatchedCount(providerId: Long, seriesId: Long): Flow<Int> {
@@ -297,7 +343,12 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
     ): Flow<List<PlaybackHistory>> = combine(persisted, pendingResumeUpdatesState) { persistedItems, pendingItems ->
         val mergedByKey = LinkedHashMap<PlaybackKey, PlaybackHistory>()
         persistedItems.forEach { history ->
-            mergedByKey[history.playbackKey()] = history
+            val enriched = if (history.posterUrl.isNullOrBlank() || history.title.isBlank()) {
+                enrichPlaybackHistoryMetadata(history)
+            } else {
+                history
+            }
+            mergedByKey[enriched.playbackKey()] = enriched
         }
         pendingItems.values
             .asSequence()
@@ -308,6 +359,47 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
         mergedByKey.values
             .sortedByDescending(PlaybackHistory::lastWatchedAt)
             .take(limit)
+    }
+
+    private suspend fun enrichPlaybackHistoryMetadata(history: PlaybackHistory): PlaybackHistory {
+        return runCatching {
+            when (history.contentType) {
+                ContentType.MOVIE -> {
+                    val movie = movieDao.getById(history.contentId)
+                    val resolvedPoster = history.posterUrl?.takeIf { it.isNotBlank() }
+                        ?: movie?.posterUrl?.takeIf { it.isNotBlank() }
+                        ?: movie?.backdropUrl?.takeIf { it.isNotBlank() }
+                    history.copy(
+                        title = history.title.ifBlank { movie?.name ?: "" },
+                        posterUrl = resolvedPoster
+                    )
+                }
+                ContentType.SERIES_EPISODE -> {
+                    val episode = episodeDao.getById(history.contentId)
+                    val sId = history.seriesId?.takeIf { it > 0L } ?: episode?.seriesId?.takeIf { it > 0L }
+                    val series = if (sId != null && sId > 0L) seriesDao.getById(sId) else null
+                    val resolvedPoster = history.posterUrl?.takeIf { it.isNotBlank() }
+                        ?: episode?.coverUrl?.takeIf { it.isNotBlank() }
+                        ?: series?.posterUrl?.takeIf { it.isNotBlank() }
+                        ?: series?.backdropUrl?.takeIf { it.isNotBlank() }
+                    history.copy(
+                        title = history.title.ifBlank { episode?.title ?: series?.name ?: "" },
+                        posterUrl = resolvedPoster
+                    )
+                }
+                ContentType.SERIES -> {
+                    val series = seriesDao.getById(history.contentId)
+                    val resolvedPoster = history.posterUrl?.takeIf { it.isNotBlank() }
+                        ?: series?.posterUrl?.takeIf { it.isNotBlank() }
+                        ?: series?.backdropUrl?.takeIf { it.isNotBlank() }
+                    history.copy(
+                        title = history.title.ifBlank { series?.name ?: "" },
+                        posterUrl = resolvedPoster
+                    )
+                }
+                ContentType.LIVE -> history
+            }
+        }.getOrDefault(history)
     }
 
     private suspend fun syncDenormalizedProgress(contentId: Long, contentType: ContentType, providerId: Long) {

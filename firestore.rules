@@ -53,6 +53,16 @@ service cloud.firestore {
       match /providers/{providerId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
+
+      // ── User Playback Watch Progress (Cross-Device Sync) ───────────
+      match /watch_history/{historyId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      // ── User Favorites (Cross-Device Sync) ─────────────────────────
+      match /favorites/{favoriteId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
 
     // ── Payment Requests ──────────────────────────────────────────────

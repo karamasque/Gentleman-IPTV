@@ -166,14 +166,19 @@ fun PlayerViewModel.onLiveOverlayInteraction() {
 
 fun PlayerViewModel.hideControlsAfterDelay() {
     controlsHideJob?.cancel()
+    if (_isScrubbing.value) {
+        return
+    }
     controlsHideJob = viewModelScope.launch {
         delay(playerControlsTimeoutMs)
-        showControlsFlow.value = false
+        if (!_isScrubbing.value) {
+            showControlsFlow.value = false
+        }
     }
 }
 
 fun PlayerViewModel.refreshControlsAutoHide() {
-    if (showControlsFlow.value) {
+    if (showControlsFlow.value && !_isScrubbing.value) {
         hideControlsAfterDelay()
     }
 }
@@ -182,6 +187,12 @@ fun PlayerViewModel.cancelControlsAutoHide() {
     controlsHideJob?.cancel()
     controlsHideJob = null
 }
+
+internal fun shouldCancelControlsAutoHide(
+    showControls: Boolean,
+    isScrubbing: Boolean,
+    hasActiveDialog: Boolean
+): Boolean = !showControls || isScrubbing || hasActiveDialog
 
 internal fun PlayerViewModel.hideZapOverlayAfterDelay() {
     zapOverlayJob?.cancel()

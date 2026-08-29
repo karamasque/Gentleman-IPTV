@@ -305,9 +305,14 @@ fun PlayerViewModel.seekTo(positionMs: Long) {
 }
 
 fun PlayerViewModel.setScrubbingMode(enabled: Boolean) {
+    _isScrubbing.value = enabled
     playerEngine.setScrubbingMode(enabled)
-    if (!enabled) {
+    if (enabled) {
+        showControlsFlow.value = true
+        cancelControlsAutoHide()
+    } else {
         clearSeekPreview()
+        refreshControlsAutoHide()
     }
 }
 
@@ -318,43 +323,15 @@ fun PlayerViewModel.updateSeekPreview(positionMs: Long?) {
     }
 
     val previewPositionMs = positionMs.coerceAtLeast(0L)
-    val previewUrl = currentResolvedPlaybackUrl.ifBlank { currentStreamUrl }
-    val canExtractFrame = previewUrl.isNotBlank() && seekThumbnailProvider.supportsFrameExtraction(previewUrl)
-
     _seekPreview.update { current ->
         current.copy(
             visible = true,
             positionMs = previewPositionMs,
-            artworkUrl = currentArtworkUrl,
+            artworkUrl = null,
             title = currentTitle,
-            isLoading = canExtractFrame,
-            frameBitmap = if (canExtractFrame) current.frameBitmap else null
+            isLoading = false,
+            frameBitmap = null
         )
-    }
-
-    seekPreviewJob?.cancel()
-    if (!canExtractFrame) {
-        return
-    }
-
-    val requestVersion = ++seekPreviewRequestVersion
-    seekPreviewJob = viewModelScope.launch {
-        delay(120)
-        val bitmap = seekThumbnailProvider.loadFrame(previewUrl, previewPositionMs)
-        if (requestVersion != seekPreviewRequestVersion) return@launch
-
-        _seekPreview.update { current ->
-            if (!current.visible || current.positionMs != previewPositionMs) {
-                current
-            } else {
-                current.copy(
-                    frameBitmap = bitmap,
-                    artworkUrl = currentArtworkUrl,
-                    title = currentTitle,
-                    isLoading = false
-                )
-            }
-        }
     }
 }
 
