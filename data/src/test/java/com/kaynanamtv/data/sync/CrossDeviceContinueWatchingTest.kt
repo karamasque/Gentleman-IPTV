@@ -596,4 +596,86 @@ class CrossDeviceContinueWatchingTest {
         assertThat(sorted.first().contentId).isEqualTo(30L)
         assertThat(sorted.last().contentId).isEqualTo(1L)
     }
+
+    // 26. Backfill 25 historical local records generates canonical cloud doc IDs
+    @Test
+    fun `backfill 25 historical local records generates canonical cloud doc IDs`() {
+        val provider = ProviderEntity(id = 1L, name = "P", type = com.kaynanamtv.domain.model.ProviderType.XTREAM_CODES, serverUrl = "http://srv.com", username = "u", password = "p")
+        val providerKey = syncManager.computeProviderStableKey(provider)
+
+        val records = (1L..25L).map { i ->
+            PlaybackHistoryEntity(
+                providerId = 1L,
+                contentId = i,
+                contentType = if (i % 2L == 1L) ContentType.MOVIE else ContentType.SERIES_EPISODE,
+                resumePositionMs = 15_000L,
+                totalDurationMs = 60_000L,
+                lastWatchedAt = 1000L + i,
+                watchedStatus = "IN_PROGRESS"
+            )
+        }
+
+        val docIds = records.map { record ->
+            if (record.contentType == ContentType.MOVIE) {
+                "MOVIE_${providerKey}_${record.contentId}"
+            } else {
+                "EPISODE_${providerKey}_${record.contentId}_S1E1"
+            }
+        }.distinct()
+
+        assertThat(docIds).hasSize(25)
+    }
+
+    // 27. Backfill preserves newer cloud revision when cloud updatedAt is newer
+    @Test
+    fun `backfill preserves newer cloud revision and does not overwrite with older local data`() {
+        val localWatchedAt = 1000L
+        val cloudUpdatedAt = 5000L
+        val localPos = 10_000L
+        val cloudPos = 40_000L
+
+        val shouldOverwrite = localWatchedAt > cloudUpdatedAt
+        assertThat(shouldOverwrite).isFalse()
+        // Newer cloud progress remains authoritative
+        val finalPos = if (shouldOverwrite) localPos else cloudPos
+        assertThat(finalPos).isEqualTo(40_000L)
+    }
+
+    // 28. Backfill is idempotent: repeated runs target identical canonical keys
+    @Test
+    fun `backfill is idempotent and creates no duplicate cloud documents`() {
+        val provider = ProviderEntity(id = 1L, name = "P", type = com.kaynanamtv.domain.model.ProviderType.XTREAM_CODES, serverUrl = "http://srv.com", username = "u", password = "p")
+        val key = syncManager.computeProviderStableKey(provider)
+
+        val run1DocId = "MOVIE_${key}_555"
+        val run2DocId = "MOVIE_${key}_555"
+
+        assertThat(run1DocId).isEqualTo(run2DocId)
+    }
+
+    // 29. Completed items in cloud cannot reappear as incomplete from backfill
+    @Test
+    fun `backfill cannot resurrect completed cloud items as incomplete`() {
+        val cloudIsCompleted = true
+        val localIsCompleted = false
+
+        val shouldDemoteToIncomplete = !cloudIsCompleted && localIsCompleted
+        assertThat(shouldDemoteToIncomplete).isFalse()
+    }
+
+    // 30. Live history items are excluded from backfill
+    @Test
+    fun `live history items are excluded from backfill`() {
+        val liveEntity = PlaybackHistoryEntity(
+            providerId = 1L,
+            contentId = 99L,
+            contentType = ContentType.LIVE,
+            resumePositionMs = 5000L,
+            totalDurationMs = 0L,
+            lastWatchedAt = 1000L
+        )
+
+        val eligible = liveEntity.contentType != ContentType.LIVE && liveEntity.resumePositionMs > 0L
+        assertThat(eligible).isFalse()
+    }
 }

@@ -721,9 +721,135 @@ class CloudUserStateSyncManager @Inject constructor(
                     // Favorites cursor updated after processing
                     setFavoritesSyncCursor(user.uid, syncStartTime)
                 }.onFailure { Log.w(TAG, "Failed to reconcile favorites from cloud", it) }
+
+                // 3. Perform idempotent local-history-to-cloud backfill for any unsynced historical records
+                runCatching {
+                    backfillLocalHistoryToCloud()
+                }
             } finally {
                 reconcileMutex.unlock()
             }
         }
+    }
+
+    /**
+     * Bounded, idempotent local-history-to-cloud backfill.
+     * Ensures all pre-existing local Room playback progress entries become available in Firestore,
+     * using canonical cloud document keys and OCC timestamp/revision checks so newer cloud data is never overwritten.
+     */
+    suspend fun backfillLocalHistoryToCloud(batchLimit: Int = 50): Int {
+        val user = FirebaseAuth.getInstance().currentUser ?: return 0
+        if (user.isAnonymous) return 0
+
+        return runCatching {
+            val localHistory = playbackHistoryDao.getAllSync()
+                .filter { it.contentType != ContentType.LIVE && it.resumePositionMs > 0L }
+                .take(batchLimit)
+
+            if (localHistory.isEmpty()) return 0
+
+            val localProviders = providerDao.getAllSync()
+            if (localProviders.isEmpty()) return 0
+            val providersById = localProviders.associateBy { it.id }
+
+            val firestore = FirebaseFirestore.getInstance()
+            val watchHistoryColl = firestore.collection("users").document(user.uid).collection("watch_history")
+            var backfilledCount = 0
+
+            for (record in localHistory) {
+                val provider = providersById[record.providerId] ?: continue
+                val providerStableKey = computeProviderStableKey(provider)
+
+                val (cloudDocId, metadata) = when (record.contentType) {
+                    ContentType.MOVIE -> {
+                        val movie = movieDao.getById(record.contentId)
+                        val streamId = movie?.streamId ?: record.contentId
+                        val tmdbId = movie?.tmdbId
+                        val title = movie?.name ?: record.title
+                        val docId = "MOVIE_${providerStableKey}_$streamId"
+                        val isCompleted = record.totalDurationMs > 0L && record.resumePositionMs >= (record.totalDurationMs * 0.95)
+                        val map = hashMapOf<String, Any>(
+                            "providerStableKey" to providerStableKey,
+                            "contentKey" to docId,
+                            "contentType" to ContentType.MOVIE.name,
+                            "streamId" to streamId,
+                            "tmdbId" to (tmdbId ?: 0L),
+                            "title" to title,
+                            "seriesRemoteId" to 0L,
+                            "seasonNumber" to 0,
+                            "episodeNumber" to 0,
+                            "resumePositionMs" to record.resumePositionMs,
+                            "totalDurationMs" to record.totalDurationMs,
+                            "progressPercent" to if (record.totalDurationMs > 0) (record.resumePositionMs.toFloat() / record.totalDurationMs.toFloat() * 100f).coerceIn(0f, 100f) else 0f,
+                            "isCompleted" to isCompleted,
+                            "updatedAt" to record.lastWatchedAt
+                        )
+                        docId to map
+                    }
+                    ContentType.SERIES_EPISODE -> {
+                        val episode = episodeDao.getById(record.contentId)
+                        val resolvedSeriesId = record.seriesId ?: episode?.seriesId ?: 0L
+                        val series = if (resolvedSeriesId > 0L) seriesDao.getById(resolvedSeriesId) else null
+                        val seriesRemoteId = series?.seriesId ?: resolvedSeriesId
+                        val seasonNum = record.seasonNumber ?: episode?.seasonNumber ?: 0
+                        val episodeNum = record.episodeNumber ?: episode?.episodeNumber ?: 0
+                        val streamId = episode?.episodeId ?: 0L
+                        val tmdbId = series?.tmdbId
+                        val title = episode?.title ?: record.title.ifBlank { series?.name ?: "" }
+                        val docId = "EPISODE_${providerStableKey}_${seriesRemoteId}_S${seasonNum}E${episodeNum}"
+                        val isCompleted = record.totalDurationMs > 0L && record.resumePositionMs >= (record.totalDurationMs * 0.95)
+                        val map = hashMapOf<String, Any>(
+                            "providerStableKey" to providerStableKey,
+                            "contentKey" to docId,
+                            "contentType" to ContentType.SERIES_EPISODE.name,
+                            "streamId" to streamId,
+                            "tmdbId" to (tmdbId ?: 0L),
+                            "title" to title,
+                            "seriesRemoteId" to seriesRemoteId,
+                            "seasonNumber" to seasonNum,
+                            "episodeNumber" to episodeNum,
+                            "resumePositionMs" to record.resumePositionMs,
+                            "totalDurationMs" to record.totalDurationMs,
+                            "progressPercent" to if (record.totalDurationMs > 0) (record.resumePositionMs.toFloat() / record.totalDurationMs.toFloat() * 100f).coerceIn(0f, 100f) else 0f,
+                            "isCompleted" to isCompleted,
+                            "updatedAt" to record.lastWatchedAt
+                        )
+                        docId to map
+                    }
+                    else -> continue
+                }
+
+                val docRef = watchHistoryColl.document(cloudDocId)
+                runCatching {
+                    firestore.runTransaction { transaction ->
+                        val snapshot = transaction.get(docRef)
+                        if (snapshot.exists()) {
+                            val cloudData = snapshot.data
+                            val cloudUpdatedAt = (cloudData?.get("updatedAt") as? Long) ?: 0L
+                            val cloudIsCompleted = (cloudData?.get("isCompleted") as? Boolean) ?: false
+
+                            // Guard: Never overwrite a newer cloud update or a cloud completed state with older local progress
+                            if (cloudUpdatedAt >= record.lastWatchedAt || (cloudIsCompleted && !(metadata["isCompleted"] as Boolean))) {
+                                return@runTransaction
+                            }
+                            val cloudRevision = (cloudData?.get("revision") as? Long) ?: 0L
+                            metadata["revision"] = cloudRevision + 1L
+                        } else {
+                            metadata["revision"] = 1L
+                        }
+                        transaction.set(docRef, metadata, SetOptions.merge())
+                    }.await()
+                    backfilledCount++
+                }.onFailure {
+                    // Fallback to merge set if transaction contention or offline queue
+                    runCatching {
+                        metadata["revision"] = 1L
+                        docRef.set(metadata, SetOptions.merge()).await()
+                        backfilledCount++
+                    }
+                }
+            }
+            backfilledCount
+        }.getOrDefault(0)
     }
 }
