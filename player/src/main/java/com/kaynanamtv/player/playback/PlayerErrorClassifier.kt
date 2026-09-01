@@ -29,7 +29,7 @@ enum class PlaybackErrorCategory {
 }
 
 object PlayerErrorClassifier {
-    fun classify(error: Throwable): PlaybackErrorCategory {
+    fun classify(error: Throwable, hasRenderedFramesBefore: Boolean = false): PlaybackErrorCategory {
         val chain = generateSequence(error) { it.cause }.toList()
         val playbackException = chain.filterIsInstance<PlaybackException>().firstOrNull()
         val httpError = chain.filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()
@@ -41,6 +41,8 @@ object PlayerErrorClassifier {
             }
             ?: chain.firstNotNullOfOrNull { parseHttpStatus(it.message) }
 
+        val isHttpRangeError = httpCode == 416 || chain.any { it.message?.contains("416", ignoreCase = true) == true }
+
         return when {
             chain.any { it is BehindLiveWindowException } ||
                 playbackException?.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ->
@@ -48,7 +50,7 @@ object PlayerErrorClassifier {
             httpCode == 401 || httpCode == 403 || httpCode == 456 -> PlaybackErrorCategory.HTTP_AUTH
             httpCode == 509 -> PlaybackErrorCategory.PROVIDER_LIMIT
             httpCode == 204 -> PlaybackErrorCategory.EMPTY_RESPONSE
-            httpCode in setOf(408, 429, 500, 502, 503, 504) -> PlaybackErrorCategory.HTTP_SERVER
+            httpCode in setOf(408, 429, 500, 502, 503, 504) || isHttpRangeError -> PlaybackErrorCategory.HTTP_SERVER
             chain.any { it is SSLHandshakeException || it is SSLException } ||
                 chain.any { it.message?.contains("certificate", ignoreCase = true) == true } ->
                 PlaybackErrorCategory.SSL
@@ -63,9 +65,11 @@ object PlayerErrorClassifier {
                 playbackException?.errorCode in decoderErrors ->
                 PlaybackErrorCategory.DECODER
             playbackException?.errorCode in drmErrors -> PlaybackErrorCategory.DRM
-            playbackException?.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
-                playbackException?.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ||
-                chain.any { it.message?.contains("unsupported", ignoreCase = true) == true } ->
+            !hasRenderedFramesBefore && (
+                playbackException?.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
+                    playbackException?.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ||
+                    chain.any { it.message?.contains("unsupported", ignoreCase = true) == true }
+            ) ->
                 PlaybackErrorCategory.FORMAT_UNSUPPORTED
             chain.any { it is ParserException } ||
                 playbackException?.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||

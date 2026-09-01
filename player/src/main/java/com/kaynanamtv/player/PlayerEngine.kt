@@ -248,15 +248,19 @@ sealed class PlayerError(val message: String) {
     class UnknownError(message: String) : PlayerError(message)
 
     companion object {
-        fun fromException(e: Throwable): PlayerError {
-            val category = PlayerErrorClassifier.classify(e)
+        fun fromException(
+            e: Throwable,
+            hasRenderedFramesBefore: Boolean = false,
+            isRecentSeek: Boolean = false
+        ): PlayerError {
+            val category = PlayerErrorClassifier.classify(e, hasRenderedFramesBefore = hasRenderedFramesBefore)
             val chain = generateSequence(e) { it.cause }.toList()
             val msg = when (category) {
                 PlaybackErrorCategory.DECODER,
-                PlaybackErrorCategory.FORMAT_UNSUPPORTED -> buildCodecErrorMessage(e)
-                PlaybackErrorCategory.NETWORK -> buildNetworkErrorMessage(chain)
+                PlaybackErrorCategory.FORMAT_UNSUPPORTED -> buildCodecErrorMessage(e, hasRenderedFramesBefore, isRecentSeek)
+                PlaybackErrorCategory.NETWORK -> if (isRecentSeek) "Konum atlama sırasında ağ bağlantısı kesildi." else buildNetworkErrorMessage(chain)
                 PlaybackErrorCategory.HTTP_AUTH -> buildHttpErrorMessage(chain, "Access denied")
-                PlaybackErrorCategory.HTTP_SERVER -> buildHttpErrorMessage(chain, "Server error")
+                PlaybackErrorCategory.HTTP_SERVER -> if (isRecentSeek) "Yayın sunucusu istenen oynatma aralığını yanıtlamadı (HTTP hatası)." else buildHttpErrorMessage(chain, "Server error")
                 PlaybackErrorCategory.PROVIDER_LIMIT ->
                     "Provider rejected playback, likely max connections or bandwidth limit (HTTP 509)."
                 PlaybackErrorCategory.EMPTY_RESPONSE ->
@@ -265,13 +269,13 @@ sealed class PlayerError(val message: String) {
                 PlaybackErrorCategory.CLEAR_TEXT_BLOCKED ->
                     "This stream requires a secure (HTTPS) connection."
                 PlaybackErrorCategory.SOURCE_MALFORMED ->
-                    "Unable to parse this stream format."
+                    if (isRecentSeek) "İstenen video konumu ayrıştırılamadı." else "Unable to parse this stream format."
                 PlaybackErrorCategory.LIVE_WINDOW ->
                     "Live stream position expired."
                 PlaybackErrorCategory.DRM -> buildDrmErrorMessage(chain)
                 PlaybackErrorCategory.UNKNOWN ->
                     chain.firstNotNullOfOrNull { it.takeIf { it !is PlaybackException }?.message }
-                        ?: "Unknown playback error"
+                        ?: if (isRecentSeek) "Oynatma konumu değiştirilirken bir hata oluştu." else "Unknown playback error"
             }
             return when (category) {
                 PlaybackErrorCategory.NETWORK,
@@ -293,7 +297,11 @@ sealed class PlayerError(val message: String) {
             }
         }
 
-        private fun buildCodecErrorMessage(e: Throwable): String {
+        private fun buildCodecErrorMessage(
+            e: Throwable,
+            hasRenderedFramesBefore: Boolean = false,
+            isRecentSeek: Boolean = false
+        ): String {
             val chain = generateSequence(e) { it.cause }.toList()
             val decoderEx = chain
                 .filterIsInstance<androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.DecoderInitializationException>()
@@ -316,6 +324,9 @@ sealed class PlayerError(val message: String) {
                 } else {
                     "No decoder available for codec $codecLabel on this device."
                 }
+            }
+            if (isRecentSeek || hasRenderedFramesBefore) {
+                return "Konum geçişi sırasında kod çözücü yanıt vermedi."
             }
             return e.message ?: "Unsupported media format."
         }

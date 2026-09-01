@@ -248,6 +248,10 @@ class Media3PlayerEngine @Inject constructor(
     private var playbackStartedRecoveryArmed = false
     private var hasRenderedFirstVideoFrame = false
     private var prepareStartMs = 0L
+    private var lastSeekPositionMs: Long? = null
+    private var lastSeekTimestampMs: Long = 0L
+    private var seekRecoveryAttempt: Int = 0
+    private var noFirstFrameRecoveryAttempt: Int = 0
     private var retryAttempt = 0
     private var lastRetryCategory: PlaybackErrorCategory? = null
     private var retryJob: Job? = null
@@ -426,6 +430,32 @@ class Media3PlayerEngine @Inject constructor(
                         audioVideoSyncSinkActive = audioVideoSyncSinkActive
                     )
                 }
+                val isPlayingNow = _isPlaying.value
+                val currentPos = _currentPosition.value
+                val elapsedPrepare = System.currentTimeMillis() - prepareStartMs
+                val hasVideo = _videoFormat.value.width > 0 || _videoFormat.value.codecV != null || trackController.availableVideoTracks.value.isNotEmpty()
+
+                if (hasVideo && !hasRenderedFirstVideoFrame && isPlayingNow && (currentPos > 2500L || elapsedPrepare > 4000L)) {
+                    if (noFirstFrameRecoveryAttempt < 1) {
+                        noFirstFrameRecoveryAttempt = 1
+                        Log.w(
+                            TAG,
+                            "[NO_FIRST_FRAME_WATCHDOG] detected audio playing with no video frames on ${Build.MANUFACTURER} ${Build.MODEL} ($selectedVideoDecoderName). Attempting single recovery."
+                        )
+                        val fallbackMode = videoDecoderPreferencePolicy.onDecoderInitFailure(requestedVideoDecoderMode, lastMediaId ?: "")
+                        if (fallbackMode != null) {
+                            recoveryVideoDecoderPolicyOverride = resolveActiveDecoderPolicy(policyModeFor(requestedVideoDecoderMode, fallbackMode))
+                        }
+                        val wasPlaying = exoPlayer?.playWhenReady ?: true
+                        val pos = exoPlayer?.currentPosition
+                        lastStreamInfo?.let { info ->
+                            recreatePlayer()
+                            prepareInternal(info, preserveRetryState = true, seekPositionMs = pos, autoPlay = wasPlaying)
+                        }
+                        continue
+                    }
+                }
+
                 if (promoteLiveHlsBufferIfNeeded()) {
                     continue
                 }
@@ -541,12 +571,16 @@ class Media3PlayerEngine @Inject constructor(
     }
 
     override fun seekTo(positionMs: Long) {
+        lastSeekPositionMs = positionMs
+        lastSeekTimestampMs = System.currentTimeMillis()
         exoPlayer?.seekTo(positionMs)
     }
 
     override fun seekForward(ms: Long) {
         exoPlayer?.let { player ->
             val newPosition = (player.currentPosition + ms).coerceAtLeast(0L)
+            lastSeekPositionMs = newPosition
+            lastSeekTimestampMs = System.currentTimeMillis()
             player.seekTo(newPosition)
         }
     }
@@ -554,6 +588,8 @@ class Media3PlayerEngine @Inject constructor(
     override fun seekBackward(ms: Long) {
         exoPlayer?.let { player ->
             val newPosition = (player.currentPosition - ms).coerceAtLeast(0L)
+            lastSeekPositionMs = newPosition
+            lastSeekTimestampMs = System.currentTimeMillis()
             player.seekTo(newPosition)
         }
     }
@@ -1006,6 +1042,8 @@ class Media3PlayerEngine @Inject constructor(
             playbackStartedRecoveryArmed = false
             videoStallRecoveryAttempt = 0
             videoStallSafeRecoveryPerformed = false
+            seekRecoveryAttempt = 0
+            noFirstFrameRecoveryAttempt = 0
         }
         selectedVideoDecoderName = "Unknown"
         selectedAudioDecoderName = "Unknown"
@@ -1484,6 +1522,7 @@ class Media3PlayerEngine @Inject constructor(
                 renderTimeMs: Long
             ) {
                 hasRenderedFirstVideoFrame = true
+                noFirstFrameRecoveryAttempt = 0
                 val ttff = if (prepareStartMs > 0L) {
                     val computed = System.currentTimeMillis() - prepareStartMs
                     _playerStats.value = _playerStats.value.copy(ttffMs = computed)
@@ -2424,7 +2463,9 @@ class Media3PlayerEngine @Inject constructor(
         val mediaId = lastMediaId
         val retryPolicy = currentRetryPolicy
         val retryContext = currentRetryContext
-        val category = PlayerErrorClassifier.classify(error)
+        val isRecentSeek = (System.currentTimeMillis() - lastSeekTimestampMs < 5000L)
+        val framesRenderedBefore = hasRenderedFirstVideoFrame || playbackStarted
+        val category = PlayerErrorClassifier.classify(error, hasRenderedFramesBefore = framesRenderedBefore)
         val effectivePlaybackStarted = isEffectivelyPlaybackStarted()
 
         val lastBytesAgoMs = PlayerDataSourceReadStatsRegistry.lastBytesAgoMs(streamInfo?.url)
@@ -2444,12 +2485,38 @@ class Media3PlayerEngine @Inject constructor(
                 "bandwidth=${_playerStats.value.bandwidthEstimate} videoBitrate=${_playerStats.value.videoBitrate} " +
                 "backgroundSyncActive=$backgroundSyncActive recoveryAction=RETRY_POLICY"
         )
+        Log.w(
+            TAG,
+            "[SEEK_DIAGNOSTICS] manufacturer=${Build.MANUFACTURER} model=${Build.MODEL} sdk=${Build.VERSION.SDK_INT} " +
+                "prevPos=${_currentPosition.value} requestedPos=$lastSeekPositionMs duration=${exoPlayer?.duration} " +
+                "bufferedPos=${exoPlayer?.bufferedPosition} playWhenReady=${exoPlayer?.playWhenReady} " +
+                "mime=${_videoFormat.value.codecV} width=${_videoFormat.value.width} height=${_videoFormat.value.height} " +
+                "videoDecoder=$selectedVideoDecoderName errorCodeName=${error.errorCodeName} " +
+                "framesRenderedBefore=$framesRenderedBefore isRecentSeek=$isRecentSeek"
+        )
+
+        if (isRecentSeek && seekRecoveryAttempt < 1 && streamInfo != null) {
+            seekRecoveryAttempt = 1
+            val targetPos = lastSeekPositionMs ?: exoPlayer?.currentPosition ?: 0L
+            val wasPlaying = exoPlayer?.playWhenReady ?: true
+            val speed = _playbackSpeed.value
+            Log.w(TAG, "[SEEK_RECOVERY] Performing single seek recovery at position=$targetPos wasPlaying=$wasPlaying speed=$speed")
+            recreatePlayer()
+            prepareInternal(
+                streamInfo = streamInfo,
+                preserveRetryState = true,
+                seekPositionMs = targetPos,
+                autoPlay = wasPlaying
+            )
+            setPlaybackSpeed(speed)
+            return
+        }
 
         if (streamInfo == null || mediaId == null || retryPolicy == null || retryContext == null) {
             _retryStatus.value = null
             lastSupportErrorMessage = error.message
             updatePlaybackSupportSnapshot()
-            _error.tryEmit(PlayerError.fromException(error))
+            _error.tryEmit(PlayerError.fromException(error, hasRenderedFramesBefore = framesRenderedBefore, isRecentSeek = isRecentSeek))
             _playbackState.value = PlaybackState.ERROR
             return
         }
