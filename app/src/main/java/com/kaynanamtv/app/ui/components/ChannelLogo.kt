@@ -38,60 +38,43 @@ fun ChannelLogoBadge(
     textStyle: TextStyle = MaterialTheme.typography.titleMedium,
     textColor: Color = AppColors.TextSecondary
 ) {
-    val model = rememberCrossfadeImageModel(logoUrl?.takeIf { it.isNotBlank() })
-    var showFallback by remember(model) { mutableStateOf(true) }
-    val isShimmerActive = model != null && showFallback
-
-    val dynamicGradientBrush = remember<Brush>(channelName) {
-        val hash = channelName.hashCode()
-        val hue1 = (Math.abs(hash) % 360).toFloat()
-        val hue2 = ((Math.abs(hash) + 120) % 360).toFloat()
-        val color1 = androidx.core.graphics.ColorUtils.HSLToColor(floatArrayOf(hue1, 0.55f, 0.22f))
-        val color2 = androidx.core.graphics.ColorUtils.HSLToColor(floatArrayOf(hue2, 0.55f, 0.12f))
-        Brush.linearGradient(
-            colors = listOf(Color(color1), Color(color2))
-        )
-    }
+    val cleanLogoUrl = logoUrl?.trim()?.takeIf { it.isNotBlank() }
+    val model = rememberCrossfadeImageModel(cleanLogoUrl)
+    var isImageLoaded by remember(cleanLogoUrl) { mutableStateOf(false) }
+    var isImageError by remember(cleanLogoUrl) { mutableStateOf(false) }
+    val showInitials = model == null || isImageError || !isImageLoaded
 
     Box(
         modifier = modifier
             .clip(shape)
-            .background(if (showFallback) dynamicGradientBrush else Brush.linearGradient(colors = listOf(backgroundColor, backgroundColor)))
-            .shimmer(isShimmerActive),
+            .background(backgroundColor),
         contentAlignment = Alignment.Center
     ) {
-        if (!showFallback && model != null) {
-            AsyncImage(
-                model = model,
-                contentDescription = channelName,
-                contentScale = ContentScale.Fit,
-                onLoading = { showFallback = true },
-                onError = { showFallback = true },
-                onSuccess = { showFallback = false },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(contentPadding)
-            )
-        } else {
+        if (showInitials) {
             Text(
                 text = channelInitials(channelName),
                 style = textStyle,
                 color = textColor,
                 fontWeight = FontWeight.Bold
             )
-            if (model != null) {
-                AsyncImage(
-                    model = model,
-                    contentDescription = channelName,
-                    contentScale = ContentScale.Fit,
-                    onLoading = { showFallback = true },
-                    onError = { showFallback = true },
-                    onSuccess = { showFallback = false },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(contentPadding)
-                )
-            }
+        }
+        if (model != null) {
+            AsyncImage(
+                model = model,
+                contentDescription = channelName,
+                contentScale = ContentScale.Fit,
+                onSuccess = {
+                    isImageLoaded = true
+                    isImageError = false
+                },
+                onError = {
+                    isImageError = true
+                    isImageLoaded = false
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(contentPadding)
+            )
         }
     }
 }
