@@ -1708,6 +1708,9 @@ interface MovieDao {
     )
     suspend fun syncAllWatchProgressFromHistory()
 
+    @Query("SELECT * FROM movies WHERE provider_id = :providerId AND watch_progress > 0")
+    suspend fun getMoviesWithWatchProgress(providerId: Long): List<MovieEntity>
+
     @Query("UPDATE movies SET watch_progress = 0, watch_count = 0, last_watched_at = 0")
     suspend fun resetAllWatchProgress()
 
@@ -2827,6 +2830,9 @@ interface EpisodeDao {
         """
     )
     suspend fun syncAllWatchProgressFromHistory()
+
+    @Query("SELECT * FROM episodes WHERE provider_id = :providerId AND watch_progress > 0")
+    suspend fun getEpisodesWithWatchProgress(providerId: Long): List<EpisodeEntity>
 
     @Query("UPDATE episodes SET watch_progress = 0, last_watched_at = 0")
     suspend fun resetAllWatchProgress()

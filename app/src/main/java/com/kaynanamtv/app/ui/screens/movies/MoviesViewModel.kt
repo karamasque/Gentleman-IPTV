@@ -380,7 +380,7 @@ class MoviesViewModel @Inject constructor(
                     launch {
                         getContinueWatching(
                             providerId = provider.id,
-                            limit = 20,
+                            limit = Int.MAX_VALUE,
                             scope = ContinueWatchingScope.MOVIES
                         )
                             .collect { result ->
@@ -1188,11 +1188,14 @@ class MoviesViewModel @Inject constructor(
         val filtered = when (filterType) {
             LibraryFilterType.ALL -> searched
             LibraryFilterType.FAVORITES -> searched.filter { it.isFavorite }
-            LibraryFilterType.IN_PROGRESS -> searched.filter { movie ->
-                movie.watchProgress > 0L && !isPlaybackComplete(
-                    movie.watchProgress,
-                    movie.durationSeconds.takeIf { it > 0 }?.times(1000L) ?: 0L
-                )
+            LibraryFilterType.IN_PROGRESS -> {
+                val continueKeys = _uiState.value.continueWatching.map { it.contentId }.toSet()
+                searched.filter { movie ->
+                    movie.id in continueKeys || (movie.watchProgress > 0L && !isPlaybackComplete(
+                        movie.watchProgress,
+                        movie.durationSeconds.takeIf { it > 0 }?.times(1000L) ?: 0L
+                    ))
+                }.distinctBy { it.streamUrl?.takeIf { s -> s.isNotBlank() } ?: it.streamId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
             }
             LibraryFilterType.UNWATCHED -> searched.filter { it.watchProgress <= 0L }
             LibraryFilterType.RECENTLY_UPDATED -> searched.filter { movieAddedScore(it) > 0L }

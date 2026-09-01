@@ -31,4 +31,5 @@ interface PlaybackHistoryRepository {
     suspend fun clearAllHistory(): Result<Unit>
     suspend fun clearHistoryForProvider(providerId: Long): Result<Unit>
     suspend fun clearLiveHistoryForProvider(providerId: Long): Result<Unit>
+    suspend fun reconcileCatalogWatchProgress(providerId: Long): Result<Unit>
 }

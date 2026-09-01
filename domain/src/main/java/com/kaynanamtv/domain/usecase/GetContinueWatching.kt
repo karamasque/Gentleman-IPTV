@@ -102,9 +102,22 @@ class GetContinueWatching @Inject constructor(
     }
 
     private fun continueWatchingKey(entry: PlaybackHistory): String = when (entry.contentType) {
-        ContentType.MOVIE -> "movie:${entry.providerId}:${entry.contentId}"
-        ContentType.SERIES -> "series:${entry.providerId}:${entry.contentId}"
-        ContentType.SERIES_EPISODE -> "episode:${entry.providerId}:${entry.contentId}"
+        ContentType.MOVIE -> {
+            val streamKey = entry.streamUrl.takeIf { it.isNotBlank() } ?: entry.contentId.toString()
+            "movie:${entry.providerId}:$streamKey"
+        }
+        ContentType.SERIES -> "series:${entry.providerId}:${entry.seriesId?.takeIf { it > 0L } ?: entry.contentId}"
+        ContentType.SERIES_EPISODE -> {
+            val seriesRemoteId = entry.seriesId?.takeIf { it > 0L } ?: 0L
+            val seasonNum = entry.seasonNumber ?: 0
+            val episodeNum = entry.episodeNumber ?: 0
+            if (seriesRemoteId > 0L && seasonNum > 0 && episodeNum > 0) {
+                "episode:${entry.providerId}:${seriesRemoteId}:S${seasonNum}:E${episodeNum}"
+            } else {
+                val streamKey = entry.streamUrl.takeIf { it.isNotBlank() } ?: entry.contentId.toString()
+                "episode:${entry.providerId}:$streamKey"
+            }
+        }
         ContentType.LIVE -> "live:${entry.providerId}:${entry.contentId}"
     }
 

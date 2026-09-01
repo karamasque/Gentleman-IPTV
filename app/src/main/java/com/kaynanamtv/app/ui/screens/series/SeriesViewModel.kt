@@ -384,7 +384,7 @@ class SeriesViewModel @Inject constructor(
                     launch {
                         getContinueWatching(
                             providerId = provider.id,
-                            limit = 20,
+                            limit = Int.MAX_VALUE,
                             scope = ContinueWatchingScope.SERIES
                         )
                             .collect { result ->
@@ -1203,10 +1203,12 @@ class SeriesViewModel @Inject constructor(
                     (series.genre?.contains(normalizedQuery, ignoreCase = true) == true)
             }
         }
+        val continueSeriesIds = _uiState.value.continueWatching.mapNotNull { it.seriesId ?: it.contentId }.toSet()
         val filtered = when (filterType) {
             LibraryFilterType.ALL -> searched
             LibraryFilterType.FAVORITES -> searched.filter { it.isFavorite }
-            LibraryFilterType.IN_PROGRESS -> searched.filter { it.id in historyKeys }
+            LibraryFilterType.IN_PROGRESS -> searched.filter { it.id in historyKeys || it.id in continueSeriesIds }
+                .distinctBy { it.seriesId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
             LibraryFilterType.UNWATCHED -> searched.filter { it.id !in completedSeriesIds }
             LibraryFilterType.RECENTLY_UPDATED -> searched.filter { seriesUpdatedScore(it) > 0L }
             LibraryFilterType.TOP_RATED -> searched.filter { it.rating > 0f }

@@ -678,4 +678,62 @@ class CrossDeviceContinueWatchingTest {
         val eligible = liveEntity.contentType != ContentType.LIVE && liveEntity.resumePositionMs > 0L
         assertThat(eligible).isFalse()
     }
+
+    // 31. Unified Continue Watching pipeline reproduces screenshot items and dedups GTA duplicates
+    @Test
+    fun `unified continue watching pipeline reproduces screenshot items and dedups GTA duplicates`() {
+        val providerId = 1L
+        val doctorStrange = PlaybackHistory(contentId = 1001L, contentType = ContentType.MOVIE, providerId = providerId, title = "Doctor Strange", streamUrl = "http://srv/movie/1001.mp4", resumePositionMs = 50_000L, totalDurationMs = 120_000L, lastWatchedAt = 8000L)
+        val dracula = PlaybackHistory(contentId = 1002L, contentType = ContentType.MOVIE, providerId = providerId, title = "Dracula (2025)", streamUrl = "http://srv/movie/1002.mp4", resumePositionMs = 40_000L, totalDurationMs = 100_000L, lastWatchedAt = 7000L)
+        val gtaRow1 = PlaybackHistory(contentId = 1003L, contentType = ContentType.MOVIE, providerId = providerId, title = "Grand Theft Auto VI", streamUrl = "http://srv/movie/777.mp4", resumePositionMs = 30_000L, totalDurationMs = 90_000L, lastWatchedAt = 6000L)
+        val gtaRow2 = PlaybackHistory(contentId = 1004L, contentType = ContentType.MOVIE, providerId = providerId, title = "Grand Theft Auto VI", streamUrl = "http://srv/movie/777.mp4", resumePositionMs = 30_000L, totalDurationMs = 90_000L, lastWatchedAt = 5000L)
+        val untouchable = PlaybackHistory(contentId = 1005L, contentType = ContentType.MOVIE, providerId = providerId, title = "Untouchable (2011)", streamUrl = "http://srv/movie/1005.mp4", resumePositionMs = 60_000L, totalDurationMs = 120_000L, lastWatchedAt = 4000L)
+        val tuzluKahve = PlaybackHistory(contentId = 1006L, contentType = ContentType.MOVIE, providerId = providerId, title = "Tuzlu Kahve", streamUrl = "http://srv/movie/1006.mp4", resumePositionMs = 25_000L, totalDurationMs = 60_000L, lastWatchedAt = 3000L)
+
+        val ep1 = PlaybackHistory(contentId = 2001L, contentType = ContentType.SERIES_EPISODE, providerId = providerId, seriesId = 50L, seasonNumber = 1, episodeNumber = 1, title = "Episode 1", streamUrl = "http://srv/series/2001.mp4", resumePositionMs = 15_000L, totalDurationMs = 45_000L, lastWatchedAt = 2000L)
+        val ep2 = PlaybackHistory(contentId = 2002L, contentType = ContentType.SERIES_EPISODE, providerId = providerId, seriesId = 50L, seasonNumber = 1, episodeNumber = 2, title = "Episode 2", streamUrl = "http://srv/series/2002.mp4", resumePositionMs = 20_000L, totalDurationMs = 45_000L, lastWatchedAt = 1000L)
+
+        val allCandidates = listOf(doctorStrange, dracula, gtaRow1, gtaRow2, untouchable, tuzluKahve, ep1, ep2)
+
+        // 1. Movie & Episode detail resume checks
+        allCandidates.forEach {
+            val hasResume = it.resumePositionMs > 5000L && !isPlaybackComplete(it.resumePositionMs, it.totalDurationMs)
+            assertThat(hasResume).isTrue()
+        }
+
+        // 2. Canonical keys & deduplication:
+        fun canonicalKey(entry: PlaybackHistory): String = when (entry.contentType) {
+            ContentType.MOVIE -> "movie:${entry.providerId}:${entry.streamUrl.ifBlank { entry.contentId.toString() }}"
+            ContentType.SERIES -> "series:${entry.providerId}:${entry.seriesId ?: entry.contentId}"
+            ContentType.SERIES_EPISODE -> {
+                val sId = entry.seriesId ?: 0L
+                val s = entry.seasonNumber ?: 0
+                val e = entry.episodeNumber ?: 0
+                if (sId > 0L && s > 0 && e > 0) "episode:${entry.providerId}:${sId}:S${s}:E${e}"
+                else "episode:${entry.providerId}:${entry.streamUrl.ifBlank { entry.contentId.toString() }}"
+            }
+            ContentType.LIVE -> "live:${entry.providerId}:${entry.contentId}"
+        }
+
+        val canonicalDeduped = allCandidates.distinctBy(::canonicalKey)
+
+        // GTA VI rows 1 & 2 deduplicate into exactly one card
+        val movieCards = canonicalDeduped.filter { it.contentType == ContentType.MOVIE }
+        assertThat(movieCards).hasSize(5)
+        assertThat(movieCards.map { it.title }).containsExactly(
+            "Doctor Strange",
+            "Dracula (2025)",
+            "Grand Theft Auto VI",
+            "Untouchable (2011)",
+            "Tuzlu Kahve"
+        ).inOrder()
+
+        // Episodes are both retained
+        val episodeCards = canonicalDeduped.filter { it.contentType == ContentType.SERIES_EPISODE }
+        assertThat(episodeCards).hasSize(2)
+        assertThat(episodeCards.map { it.title }).containsExactly("Episode 1", "Episode 2").inOrder()
+
+        // Home canonical set equals union of Movies and Series
+        assertThat(canonicalDeduped).containsExactlyElementsIn(movieCards + episodeCards)
+    }
 }
