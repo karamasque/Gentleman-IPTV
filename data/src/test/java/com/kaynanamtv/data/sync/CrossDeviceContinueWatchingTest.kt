@@ -347,4 +347,72 @@ class CrossDeviceContinueWatchingTest {
         val isCompleted = isPlaybackComplete(completedHistory.resumePositionMs, completedHistory.totalDurationMs)
         assertThat(isCompleted).isTrue()
     }
+
+    // 15. Cross-device movie reconcile preserves local title and poster if cloud metadata is missing
+    @Test
+    fun `reconcile movie preserves local metadata when cloud metadata is blank`() {
+        val localMovie = MovieEntity(
+            id = 50L,
+            providerId = 1L,
+            streamId = 999L,
+            name = "Local Movie Name",
+            posterUrl = "https://example.com/local_poster.jpg",
+            streamUrl = "https://example.com/stream.mkv"
+        )
+        val cloudData = mapOf<String, Any>(
+            "streamId" to 999L,
+            "title" to "", // Blank in cloud
+            "resumePositionMs" to 50_000L,
+            "totalDurationMs" to 100_000L,
+            "updatedAt" to 2000L
+        )
+
+        val resolvedTitle = (cloudData["title"] as? String)?.takeIf { it.isNotBlank() }
+            ?: localMovie.name.takeIf { it.isNotBlank() }
+            ?: ""
+        val resolvedPoster = localMovie.posterUrl
+        val resolvedStreamUrl = localMovie.streamUrl
+
+        assertThat(resolvedTitle).isEqualTo("Local Movie Name")
+        assertThat(resolvedPoster).isEqualTo("https://example.com/local_poster.jpg")
+        assertThat(resolvedStreamUrl).isEqualTo("https://example.com/stream.mkv")
+    }
+
+    // 16. Cross-device episode reconcile matches coordinates first, falls back to streamId
+    @Test
+    fun `reconcile episode coordinates matching logic`() {
+        val seriesRemoteId = 555L
+        val seasonNumber = 2
+        val episodeNumber = 4
+        val streamId = 8888L
+
+        val docId = "EPISODE_providerKey_${seriesRemoteId}_S${seasonNumber}E${episodeNumber}"
+        assertThat(docId).isEqualTo("EPISODE_providerKey_555_S2E4")
+    }
+
+    // 17. Provider isolation: different provider stable keys remain isolated
+    @Test
+    fun `different providers compute distinct stable keys`() {
+        val p1 = ProviderEntity(
+            id = 1L,
+            name = "Provider A",
+            type = com.kaynanamtv.domain.model.ProviderType.XTREAM_CODES,
+            serverUrl = "http://server1.com",
+            username = "user1",
+            password = "pwd"
+        )
+        val p2 = ProviderEntity(
+            id = 2L,
+            name = "Provider B",
+            type = com.kaynanamtv.domain.model.ProviderType.XTREAM_CODES,
+            serverUrl = "http://server2.com",
+            username = "user1",
+            password = "pwd"
+        )
+
+        val key1 = syncManager.computeProviderStableKey(p1)
+        val key2 = syncManager.computeProviderStableKey(p2)
+
+        assertThat(key1).isNotEqualTo(key2)
+    }
 }

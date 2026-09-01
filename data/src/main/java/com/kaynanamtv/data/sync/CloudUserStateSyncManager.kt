@@ -539,9 +539,15 @@ class CloudUserStateSyncManager @Inject constructor(
                                 if (localMovie != null) {
                                     val local = playbackHistoryDao.get(localMovie.id, ContentType.MOVIE.name, localProvider.id)
                                     if (local == null || cloudRevision > 0L || updatedAt > local.lastWatchedAt) {
-                                        val title = (data["title"] as? String)?.takeIf { it.isNotBlank() } ?: localMovie.name
-                                        val posterUrl = localMovie.posterUrl
-                                        val streamUrl = localMovie.streamUrl.takeIf { it.isNotBlank() } ?: ""
+                                        val title = (data["title"] as? String)?.takeIf { it.isNotBlank() }
+                                            ?: localMovie.name.takeIf { it.isNotBlank() }
+                                            ?: local?.title
+                                            ?: ""
+                                        val posterUrl = localMovie.posterUrl?.takeIf { it.isNotBlank() }
+                                            ?: local?.posterUrl
+                                        val streamUrl = localMovie.streamUrl.takeIf { it.isNotBlank() }
+                                            ?: local?.streamUrl
+                                            ?: ""
                                         playbackHistoryDao.insertOrUpdate(
                                             PlaybackHistoryEntity(
                                                 providerId = localProvider.id,
@@ -588,11 +594,17 @@ class CloudUserStateSyncManager @Inject constructor(
                                     val local = playbackHistoryDao.get(localEpisode.id, ContentType.SERIES_EPISODE.name, localProvider.id)
                                     if (local == null || cloudRevision > 0L || updatedAt > local.lastWatchedAt) {
                                         val title = (data["title"] as? String)?.takeIf { it.isNotBlank() }
-                                            ?: localEpisode.title.ifBlank { localSeries?.name ?: "" }
+                                            ?: localEpisode.title.takeIf { it.isNotBlank() }
+                                            ?: localSeries?.name
+                                            ?: local?.title
+                                            ?: ""
                                         val posterUrl = localEpisode.coverUrl?.takeIf { it.isNotBlank() }
                                             ?: localSeries?.posterUrl?.takeIf { it.isNotBlank() }
                                             ?: localSeries?.backdropUrl?.takeIf { it.isNotBlank() }
-                                        val streamUrl = localEpisode.streamUrl.takeIf { it.isNotBlank() } ?: ""
+                                            ?: local?.posterUrl
+                                        val streamUrl = localEpisode.streamUrl.takeIf { it.isNotBlank() }
+                                            ?: local?.streamUrl
+                                            ?: ""
                                         playbackHistoryDao.insertOrUpdate(
                                             PlaybackHistoryEntity(
                                                 providerId = localProvider.id,
