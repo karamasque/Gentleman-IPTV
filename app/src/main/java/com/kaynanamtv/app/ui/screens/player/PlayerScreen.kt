@@ -73,6 +73,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.Job
@@ -1164,36 +1169,116 @@ fun PlayerScreen(
             }
         }
 
-        // Screen Lock / Floating Unlock Prompt Overlay
-        AnimatedVisibility(
-            visible = isScreenLocked && showUnlockPrompt,
-            enter = fadeIn(tween(150)) + scaleIn(tween(150)),
-            exit = fadeOut(tween(200)),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(24.dp)
-        ) {
-            Button(
-                onClick = {
-                    performUnlock()
-                },
-                colors = ButtonDefaults.colors(
-                    containerColor = Color.Black.copy(alpha = 0.75f),
-                    contentColor = Color.White
+        // Screen Lock / Floating Unlock Prompt Overlay (Separate top-level Window Popup)
+        if (isScreenLocked && showUnlockPrompt) {
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = androidx.compose.ui.unit.IntOffset(
+                    with(androidx.compose.ui.platform.LocalDensity.current) { 24.dp.roundToPx() },
+                    with(androidx.compose.ui.platform.LocalDensity.current) { 24.dp.roundToPx() }
                 ),
-                shape = ButtonDefaults.shape(shape = RoundedCornerShape(16.dp)),
-                border = ButtonDefaults.border(
-                    border = Border(border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF6366F1)))
-                ),
-                modifier = Modifier
-                    .height(48.dp)
-                    .focusRequester(unlockButtonFocusRequester)
-                    .focusable()
-            ) {
-                Text(
-                    text = "🔒 " + stringResource(R.string.player_unlock_screen),
-                    fontWeight = FontWeight.Bold
+                properties = PopupProperties(
+                    focusable = true,
+                    dismissOnBackPress = false,
+                    dismissOnClickOutside = false
                 )
+            ) {
+                var holdProgress by remember { mutableFloatStateOf(0f) }
+                val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = holdProgress,
+                    animationSpec = androidx.compose.animation.core.tween(50),
+                    label = "unlock_hold_progress"
+                )
+
+                Box(
+                    modifier = Modifier
+                        .height(48.dp)
+                        .focusRequester(unlockButtonFocusRequester)
+                        .focusable()
+                        .background(
+                            color = Color.Black.copy(alpha = 0.85f),
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .border(
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF6366F1)),
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                down.consume()
+                                unlockPromptJob?.cancel()
+
+                                var unlocked = false
+                                val holdJob = coroutineScope.launch {
+                                    val startTime = System.currentTimeMillis()
+                                    val totalDurationMs = 5000L
+                                    while (true) {
+                                        val elapsed = System.currentTimeMillis() - startTime
+                                        holdProgress = (elapsed.toFloat() / totalDurationMs).coerceIn(0f, 1f)
+                                        if (elapsed >= totalDurationMs) {
+                                            unlocked = true
+                                            performUnlock()
+                                            break
+                                        }
+                                        delay(30)
+                                    }
+                                }
+
+                                val up = waitForUpOrCancellation()
+                                holdJob.cancel()
+                                holdProgress = 0f
+
+                                if (isScreenLocked && !unlocked) {
+                                    // Released early or gesture cancelled: restart 3-second auto-dismiss
+                                    unlockPromptJob?.cancel()
+                                    unlockPromptJob = coroutineScope.launch {
+                                        delay(3000)
+                                        showUnlockPrompt = false
+                                    }
+                                }
+                            }
+                        }
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (animatedProgress > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(animatedProgress)
+                                .background(
+                                    color = Color(0xFF6366F1).copy(alpha = 0.35f),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = if (holdProgress > 0f) {
+                                val remainingSeconds = (5000L * (1f - holdProgress) / 1000L).toInt() + 1
+                                "🔒 ${remainingSeconds} sn basılı tutun..."
+                            } else {
+                                "🔒 " + stringResource(R.string.player_unlock_screen) + " (5 sn basılı tut)"
+                            },
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp)
+                        )
+                        if (holdProgress > 0f) {
+                            CircularProgressIndicator(
+                                progress = { animatedProgress },
+                                modifier = Modifier.size(18.dp),
+                                color = Color(0xFF6366F1),
+                                strokeWidth = 2.5.dp
+                            )
+                        }
+                    }
+                }
             }
         }
 

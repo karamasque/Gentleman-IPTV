@@ -5,15 +5,16 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 /**
- * Validates Player Screen Lock and "Kilidi Aç" interaction contract:
- * 1. Locked-screen tap displays the unlock prompt.
- * 2. When prompt is visible, ancestor pointerInput is completely detached/disabled so Button onClick receives touch cleanly.
- * 3. Direct button touch unlocks immediately and executes exactly once.
- * 4. Button receives focus when prompt appears.
- * 5. DPAD_CENTER unlocks immediately when prompt is visible.
- * 6. ENTER unlocks immediately when prompt is visible.
- * 7. Prompt timeout hides the prompt without unlocking, and reattaches locked-screen tap detector.
- * 8. Normal focus and controls return after unlocking.
+ * Validates Player Screen Lock 5-Second Hold & Top-Level Popup Contract:
+ * 1. Hold 4,999 ms -> remains locked.
+ * 2. Hold 5,000 ms -> unlocks exactly once.
+ * 3. Release early -> remains locked.
+ * 4. Gesture cancellation -> remains locked.
+ * 5. Prompt does not auto-dismiss during hold.
+ * 6. Single tap -> remains locked.
+ * 7. DPAD/ENTER regression -> unlocks immediately.
+ * 8. Prompt timeout hides prompt when not holding.
+ * 9. Normal controls & focus return after unlocking.
  */
 class PlayerUnlockInteractionTest {
 
@@ -24,21 +25,18 @@ class PlayerUnlockInteractionTest {
         var controlsToggled: Boolean = false
     ) {
         var unlockExecutionCount = 0
-        var promptCancelJobCount = 0
+        var autoDismissJobActive = false
+        var holdProgress = 0f
+        var isFingerDown = false
         var mainFocusRequested = false
         var buttonFocusRequested = false
-
-        /**
-         * Simulates whether the ancestor Box has the locked-screen tap gesture detector attached.
-         * In production: isScreenLocked && !showUnlockPrompt
-         */
-        val isAncestorTapDetectorAttached: Boolean
-            get() = isScreenLocked && !showUnlockPrompt
 
         fun performUnlock() {
             isScreenLocked = false
             showUnlockPrompt = false
-            promptCancelJobCount++
+            autoDismissJobActive = false
+            isFingerDown = false
+            holdProgress = 0f
             unlockExecutionCount++
             if (!showControls) {
                 showControls = true
@@ -48,14 +46,50 @@ class PlayerUnlockInteractionTest {
         }
 
         fun onScreenTapped() {
-            if (isAncestorTapDetectorAttached) {
+            if (isScreenLocked && !showUnlockPrompt) {
                 showUnlockPrompt = true
+                autoDismissJobActive = true
                 buttonFocusRequested = true
             }
         }
 
-        fun onUnlockPromptTimeout() {
-            showUnlockPrompt = false
+        fun onPointerDown() {
+            isFingerDown = true
+            // Suspend auto-dismiss while holding
+            autoDismissJobActive = false
+            holdProgress = 0f
+        }
+
+        fun onHoldTick(elapsedMs: Long) {
+            if (!isFingerDown) return
+            holdProgress = (elapsedMs.toFloat() / 5000f).coerceIn(0f, 1f)
+            if (elapsedMs >= 5000L) {
+                performUnlock()
+            }
+        }
+
+        fun onPointerUp(elapsedMs: Long) {
+            isFingerDown = false
+            if (elapsedMs < 5000L && isScreenLocked) {
+                // Released early: reset progress and restart 3s auto-dismiss
+                holdProgress = 0f
+                autoDismissJobActive = true
+            }
+        }
+
+        fun onGestureCancelled() {
+            isFingerDown = false
+            if (isScreenLocked) {
+                holdProgress = 0f
+                autoDismissJobActive = true
+            }
+        }
+
+        fun onAutoDismissTimeout() {
+            if (autoDismissJobActive && !isFingerDown) {
+                showUnlockPrompt = false
+                autoDismissJobActive = false
+            }
         }
 
         fun handlePreviewKeyEvent(keyCode: Int, action: Int = KeyEvent.ACTION_DOWN): Boolean {
@@ -70,6 +104,7 @@ class PlayerUnlockInteractionTest {
                             performUnlock()
                         } else {
                             showUnlockPrompt = true
+                            autoDismissJobActive = true
                             buttonFocusRequested = true
                         }
                         return true
@@ -78,6 +113,7 @@ class PlayerUnlockInteractionTest {
                     else -> {
                         if (!showUnlockPrompt) {
                             showUnlockPrompt = true
+                            autoDismissJobActive = true
                             buttonFocusRequested = true
                         }
                         return true
@@ -89,63 +125,100 @@ class PlayerUnlockInteractionTest {
     }
 
     @Test
-    fun `test 1 and 2 - locked screen tap displays prompt and detaches ancestor pointer detector`() {
-        val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = false)
-
-        // Initially locked and prompt hidden -> ancestor tap detector IS attached
-        assertThat(state.isScreenLocked).isTrue()
-        assertThat(state.showUnlockPrompt).isFalse()
-        assertThat(state.isAncestorTapDetectorAttached).isTrue()
-
-        // 1. Tapping locked screen displays prompt
-        state.onScreenTapped()
-        assertThat(state.isScreenLocked).isTrue()
-        assertThat(state.showUnlockPrompt).isTrue()
-
-        // 2. Crucial structural fix: Ancestor tap detector is now DETACHED so Button onClick receives touches unobstructed
-        assertThat(state.isAncestorTapDetectorAttached).isFalse()
-
-        // 3. Direct button touch unlocks immediately
-        state.performUnlock()
-        assertThat(state.isScreenLocked).isFalse()
-        assertThat(state.showUnlockPrompt).isFalse()
-        assertThat(state.unlockExecutionCount).isEqualTo(1)
-        assertThat(state.isAncestorTapDetectorAttached).isFalse()
-    }
-
-    @Test
-    fun `test 3 - parent gesture does not consume button action and touch unlock executes exactly once`() {
+    fun `test 1 - hold 4999ms remains locked`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
+        state.onPointerDown()
+        state.onHoldTick(4999L)
 
-        // When prompt is visible, ancestor detector is inactive
-        assertThat(state.isAncestorTapDetectorAttached).isFalse()
-
-        // Button receives tap cleanly
-        state.performUnlock()
-        assertThat(state.unlockExecutionCount).isEqualTo(1)
-        assertThat(state.isScreenLocked).isFalse()
+        assertThat(state.isScreenLocked).isTrue()
+        assertThat(state.showUnlockPrompt).isTrue()
+        assertThat(state.unlockExecutionCount).isEqualTo(0)
+        assertThat(state.holdProgress).isLessThan(1.0f)
     }
 
     @Test
-    fun `test 4, 5 and 6 - button receives focus, DPAD_CENTER and ENTER unlock immediately`() {
-        val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = false)
+    fun `test 2 - hold 5000ms unlocks exactly once`() {
+        val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
+        state.onPointerDown()
+        state.onHoldTick(5000L)
 
-        // 1. First DPAD_CENTER displays prompt and requests focus
-        val handledFirstDpad = state.handlePreviewKeyEvent(KeyEvent.KEYCODE_DPAD_CENTER)
-        assertThat(handledFirstDpad).isTrue()
-        assertThat(state.showUnlockPrompt).isTrue()
-        assertThat(state.buttonFocusRequested).isTrue()
-        assertThat(state.isScreenLocked).isTrue()
-        assertThat(state.isAncestorTapDetectorAttached).isFalse()
-
-        // 2. Second DPAD_CENTER with prompt visible triggers immediate unlock
-        val handledSecondDpad = state.handlePreviewKeyEvent(KeyEvent.KEYCODE_DPAD_CENTER)
-        assertThat(handledSecondDpad).isTrue()
         assertThat(state.isScreenLocked).isFalse()
         assertThat(state.showUnlockPrompt).isFalse()
         assertThat(state.unlockExecutionCount).isEqualTo(1)
+        assertThat(state.showControls).isTrue()
+        assertThat(state.mainFocusRequested).isTrue()
+    }
 
-        // 3. ENTER key on locked prompt also unlocks
+    @Test
+    fun `test 3 - release early before 5000ms remains locked and resets progress`() {
+        val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
+        state.onPointerDown()
+        state.onHoldTick(3000L)
+        state.onPointerUp(3000L)
+
+        assertThat(state.isScreenLocked).isTrue()
+        assertThat(state.showUnlockPrompt).isTrue()
+        assertThat(state.unlockExecutionCount).isEqualTo(0)
+        assertThat(state.holdProgress).isEqualTo(0f)
+        assertThat(state.autoDismissJobActive).isTrue()
+    }
+
+    @Test
+    fun `test 4 - gesture cancellation remains locked`() {
+        val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
+        state.onPointerDown()
+        state.onHoldTick(2500L)
+        state.onGestureCancelled()
+
+        assertThat(state.isScreenLocked).isTrue()
+        assertThat(state.showUnlockPrompt).isTrue()
+        assertThat(state.unlockExecutionCount).isEqualTo(0)
+        assertThat(state.holdProgress).isEqualTo(0f)
+        assertThat(state.autoDismissJobActive).isTrue()
+    }
+
+    @Test
+    fun `test 5 - prompt does not auto-dismiss during hold`() {
+        val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
+        state.onPointerDown()
+
+        // Auto dismiss timeout fires while finger is held down
+        state.onAutoDismissTimeout()
+
+        // Prompt MUST NOT disappear
+        assertThat(state.showUnlockPrompt).isTrue()
+        assertThat(state.isScreenLocked).isTrue()
+    }
+
+    @Test
+    fun `test 6 - single tap does not unlock`() {
+        val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
+        state.onPointerDown()
+        state.onHoldTick(80L) // Normal tap is ~80ms
+        state.onPointerUp(80L)
+
+        assertThat(state.isScreenLocked).isTrue()
+        assertThat(state.showUnlockPrompt).isTrue()
+        assertThat(state.unlockExecutionCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `test 7 - dpad center and enter regression pass`() {
+        val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = false)
+
+        // First DPAD shows prompt
+        val handled1 = state.handlePreviewKeyEvent(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertThat(handled1).isTrue()
+        assertThat(state.showUnlockPrompt).isTrue()
+        assertThat(state.isScreenLocked).isTrue()
+
+        // Second DPAD unlocks immediately
+        val handled2 = state.handlePreviewKeyEvent(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertThat(handled2).isTrue()
+        assertThat(state.isScreenLocked).isFalse()
+        assertThat(state.unlockExecutionCount).isEqualTo(1)
+
+        // ENTER key test
         val stateEnter = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
         val handledEnter = stateEnter.handlePreviewKeyEvent(KeyEvent.KEYCODE_ENTER)
         assertThat(handledEnter).isTrue()
@@ -154,27 +227,12 @@ class PlayerUnlockInteractionTest {
     }
 
     @Test
-    fun `test 7 - prompt timeout hides prompt without unlocking screen and reattaches ancestor tap detector`() {
+    fun `test 8 - prompt timeout hides prompt when not holding`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
+        state.autoDismissJobActive = true
+        state.onAutoDismissTimeout()
 
-        state.onUnlockPromptTimeout()
         assertThat(state.showUnlockPrompt).isFalse()
         assertThat(state.isScreenLocked).isTrue()
-        assertThat(state.unlockExecutionCount).isEqualTo(0)
-
-        // Detector reattached for subsequent tap
-        assertThat(state.isAncestorTapDetectorAttached).isTrue()
-    }
-
-    @Test
-    fun `test 8 - normal focus and controls return after unlocking`() {
-        val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true, showControls = false)
-
-        state.performUnlock()
-        assertThat(state.isScreenLocked).isFalse()
-        assertThat(state.showControls).isTrue()
-        assertThat(state.controlsToggled).isTrue()
-        assertThat(state.mainFocusRequested).isTrue()
-        assertThat(state.isAncestorTapDetectorAttached).isFalse()
     }
 }
