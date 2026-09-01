@@ -1193,6 +1193,8 @@ fun PlayerScreen(
                 Box(
                     modifier = Modifier
                         .height(48.dp)
+                        .widthIn(min = 190.dp, max = 280.dp)
+                        .wrapContentWidth(align = Alignment.Start)
                         .focusRequester(unlockButtonFocusRequester)
                         .focusable()
                         .background(
@@ -1212,7 +1214,7 @@ fun PlayerScreen(
                                 var unlocked = false
                                 val holdJob = coroutineScope.launch {
                                     val startTime = System.currentTimeMillis()
-                                    val totalDurationMs = 5000L
+                                    val totalDurationMs = 3000L
                                     while (true) {
                                         val elapsed = System.currentTimeMillis() - startTime
                                         holdProgress = (elapsed.toFloat() / totalDurationMs).coerceIn(0f, 1f)
@@ -1242,28 +1244,16 @@ fun PlayerScreen(
                         .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    if (animatedProgress > 0f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(animatedProgress)
-                                .background(
-                                    color = Color(0xFF6366F1).copy(alpha = 0.35f),
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                        )
-                    }
-
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
                             text = if (holdProgress > 0f) {
-                                val remainingSeconds = (5000L * (1f - holdProgress) / 1000L).toInt() + 1
+                                val remainingSeconds = (3000L * (1f - holdProgress) / 1000L).toInt() + 1
                                 "🔒 ${remainingSeconds} sn basılı tutun..."
                             } else {
-                                "🔒 " + stringResource(R.string.player_unlock_screen) + " (5 sn basılı tut)"
+                                "🔒 " + stringResource(R.string.player_unlock_screen) + " (3 sn)"
                             },
                             color = Color.White,
                             fontWeight = FontWeight.Bold,

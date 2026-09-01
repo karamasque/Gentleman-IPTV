@@ -5,9 +5,9 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 /**
- * Validates Player Screen Lock 5-Second Hold & Top-Level Popup Contract:
- * 1. Hold 4,999 ms -> remains locked.
- * 2. Hold 5,000 ms -> unlocks exactly once.
+ * Validates Player Screen Lock 3-Second Hold & Top-Level Popup Contract:
+ * 1. Hold 2,999 ms -> remains locked.
+ * 2. Hold 3,000 ms -> unlocks exactly once.
  * 3. Release early -> remains locked.
  * 4. Gesture cancellation -> remains locked.
  * 5. Prompt does not auto-dismiss during hold.
@@ -62,15 +62,15 @@ class PlayerUnlockInteractionTest {
 
         fun onHoldTick(elapsedMs: Long) {
             if (!isFingerDown) return
-            holdProgress = (elapsedMs.toFloat() / 5000f).coerceIn(0f, 1f)
-            if (elapsedMs >= 5000L) {
+            holdProgress = (elapsedMs.toFloat() / 3000f).coerceIn(0f, 1f)
+            if (elapsedMs >= 3000L) {
                 performUnlock()
             }
         }
 
         fun onPointerUp(elapsedMs: Long) {
             isFingerDown = false
-            if (elapsedMs < 5000L && isScreenLocked) {
+            if (elapsedMs < 3000L && isScreenLocked) {
                 // Released early: reset progress and restart 3s auto-dismiss
                 holdProgress = 0f
                 autoDismissJobActive = true
@@ -125,10 +125,10 @@ class PlayerUnlockInteractionTest {
     }
 
     @Test
-    fun `test 1 - hold 4999ms remains locked`() {
+    fun `test 1 - hold 2999ms remains locked`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
         state.onPointerDown()
-        state.onHoldTick(4999L)
+        state.onHoldTick(2999L)
 
         assertThat(state.isScreenLocked).isTrue()
         assertThat(state.showUnlockPrompt).isTrue()
@@ -137,10 +137,10 @@ class PlayerUnlockInteractionTest {
     }
 
     @Test
-    fun `test 2 - hold 5000ms unlocks exactly once`() {
+    fun `test 2 - hold 3000ms unlocks exactly once`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
         state.onPointerDown()
-        state.onHoldTick(5000L)
+        state.onHoldTick(3000L)
 
         assertThat(state.isScreenLocked).isFalse()
         assertThat(state.showUnlockPrompt).isFalse()
@@ -150,11 +150,11 @@ class PlayerUnlockInteractionTest {
     }
 
     @Test
-    fun `test 3 - release early before 5000ms remains locked and resets progress`() {
+    fun `test 3 - release early before 3000ms remains locked and resets progress`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
         state.onPointerDown()
-        state.onHoldTick(3000L)
-        state.onPointerUp(3000L)
+        state.onHoldTick(1500L)
+        state.onPointerUp(1500L)
 
         assertThat(state.isScreenLocked).isTrue()
         assertThat(state.showUnlockPrompt).isTrue()
@@ -167,7 +167,7 @@ class PlayerUnlockInteractionTest {
     fun `test 4 - gesture cancellation remains locked`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
         state.onPointerDown()
-        state.onHoldTick(2500L)
+        state.onHoldTick(1800L)
         state.onGestureCancelled()
 
         assertThat(state.isScreenLocked).isTrue()
