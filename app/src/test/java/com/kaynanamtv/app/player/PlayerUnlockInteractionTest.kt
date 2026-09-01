@@ -7,14 +7,13 @@ import org.junit.Test
 /**
  * Validates Player Screen Lock and "Kilidi Aç" interaction contract:
  * 1. Locked-screen tap displays the unlock prompt.
- * 2. Direct button touch unlocks immediately.
- * 3. Parent gesture handling does not consume the button action.
- * 4. Touch unlock executes exactly once.
- * 5. Button receives focus when prompt appears.
- * 6. DPAD_CENTER unlocks immediately when prompt is visible.
- * 7. ENTER unlocks immediately when prompt is visible.
- * 8. Prompt timeout hides the prompt without unlocking.
- * 9. Normal focus and controls return after unlocking.
+ * 2. When prompt is visible, ancestor pointerInput is completely detached/disabled so Button onClick receives touch cleanly.
+ * 3. Direct button touch unlocks immediately and executes exactly once.
+ * 4. Button receives focus when prompt appears.
+ * 5. DPAD_CENTER unlocks immediately when prompt is visible.
+ * 6. ENTER unlocks immediately when prompt is visible.
+ * 7. Prompt timeout hides the prompt without unlocking, and reattaches locked-screen tap detector.
+ * 8. Normal focus and controls return after unlocking.
  */
 class PlayerUnlockInteractionTest {
 
@@ -29,6 +28,13 @@ class PlayerUnlockInteractionTest {
         var mainFocusRequested = false
         var buttonFocusRequested = false
 
+        /**
+         * Simulates whether the ancestor Box has the locked-screen tap gesture detector attached.
+         * In production: isScreenLocked && !showUnlockPrompt
+         */
+        val isAncestorTapDetectorAttached: Boolean
+            get() = isScreenLocked && !showUnlockPrompt
+
         fun performUnlock() {
             isScreenLocked = false
             showUnlockPrompt = false
@@ -42,7 +48,7 @@ class PlayerUnlockInteractionTest {
         }
 
         fun onScreenTapped() {
-            if (isScreenLocked) {
+            if (isAncestorTapDetectorAttached) {
                 showUnlockPrompt = true
                 buttonFocusRequested = true
             }
@@ -83,32 +89,45 @@ class PlayerUnlockInteractionTest {
     }
 
     @Test
-    fun `test 1 and 2 - locked screen tap displays prompt and button touch unlocks immediately`() {
+    fun `test 1 and 2 - locked screen tap displays prompt and detaches ancestor pointer detector`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = false)
+
+        // Initially locked and prompt hidden -> ancestor tap detector IS attached
+        assertThat(state.isScreenLocked).isTrue()
+        assertThat(state.showUnlockPrompt).isFalse()
+        assertThat(state.isAncestorTapDetectorAttached).isTrue()
 
         // 1. Tapping locked screen displays prompt
         state.onScreenTapped()
         assertThat(state.isScreenLocked).isTrue()
         assertThat(state.showUnlockPrompt).isTrue()
 
-        // 2. Direct button touch unlocks immediately
+        // 2. Crucial structural fix: Ancestor tap detector is now DETACHED so Button onClick receives touches unobstructed
+        assertThat(state.isAncestorTapDetectorAttached).isFalse()
+
+        // 3. Direct button touch unlocks immediately
         state.performUnlock()
         assertThat(state.isScreenLocked).isFalse()
         assertThat(state.showUnlockPrompt).isFalse()
         assertThat(state.unlockExecutionCount).isEqualTo(1)
+        assertThat(state.isAncestorTapDetectorAttached).isFalse()
     }
 
     @Test
-    fun `test 3 and 4 - parent gesture does not consume button action and touch unlock executes exactly once`() {
+    fun `test 3 - parent gesture does not consume button action and touch unlock executes exactly once`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
 
+        // When prompt is visible, ancestor detector is inactive
+        assertThat(state.isAncestorTapDetectorAttached).isFalse()
+
+        // Button receives tap cleanly
         state.performUnlock()
         assertThat(state.unlockExecutionCount).isEqualTo(1)
         assertThat(state.isScreenLocked).isFalse()
     }
 
     @Test
-    fun `test 5, 6 and 7 - button receives focus, DPAD_CENTER and ENTER unlock immediately`() {
+    fun `test 4, 5 and 6 - button receives focus, DPAD_CENTER and ENTER unlock immediately`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = false)
 
         // 1. First DPAD_CENTER displays prompt and requests focus
@@ -117,6 +136,7 @@ class PlayerUnlockInteractionTest {
         assertThat(state.showUnlockPrompt).isTrue()
         assertThat(state.buttonFocusRequested).isTrue()
         assertThat(state.isScreenLocked).isTrue()
+        assertThat(state.isAncestorTapDetectorAttached).isFalse()
 
         // 2. Second DPAD_CENTER with prompt visible triggers immediate unlock
         val handledSecondDpad = state.handlePreviewKeyEvent(KeyEvent.KEYCODE_DPAD_CENTER)
@@ -134,17 +154,20 @@ class PlayerUnlockInteractionTest {
     }
 
     @Test
-    fun `test 8 - prompt timeout hides prompt without unlocking screen`() {
+    fun `test 7 - prompt timeout hides prompt without unlocking screen and reattaches ancestor tap detector`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true)
 
         state.onUnlockPromptTimeout()
         assertThat(state.showUnlockPrompt).isFalse()
         assertThat(state.isScreenLocked).isTrue()
         assertThat(state.unlockExecutionCount).isEqualTo(0)
+
+        // Detector reattached for subsequent tap
+        assertThat(state.isAncestorTapDetectorAttached).isTrue()
     }
 
     @Test
-    fun `test 9 - normal focus and controls return after unlocking`() {
+    fun `test 8 - normal focus and controls return after unlocking`() {
         val state = PlayerLockStateHolder(isScreenLocked = true, showUnlockPrompt = true, showControls = false)
 
         state.performUnlock()
@@ -152,5 +175,6 @@ class PlayerUnlockInteractionTest {
         assertThat(state.showControls).isTrue()
         assertThat(state.controlsToggled).isTrue()
         assertThat(state.mainFocusRequested).isTrue()
+        assertThat(state.isAncestorTapDetectorAttached).isFalse()
     }
 }

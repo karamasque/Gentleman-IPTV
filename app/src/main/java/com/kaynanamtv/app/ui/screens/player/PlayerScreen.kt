@@ -613,18 +613,21 @@ fun PlayerScreen(
         handleBackPress()
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .focusRequester(focusRequester)
-            .focusProperties {
-                // Only allow focus on the main background when no overlays are active
-                canFocus = !anyOverlayVisible && !showControls && !isScreenLocked
+    val rootTapModifier = when {
+        isScreenLocked && !showUnlockPrompt -> {
+            Modifier.pointerInput(isScreenLocked, showUnlockPrompt) {
+                detectTapGestures {
+                    showUnlockPrompt = true
+                    unlockPromptJob?.cancel()
+                    unlockPromptJob = coroutineScope.launch {
+                        delay(3000)
+                        showUnlockPrompt = false
+                    }
+                }
             }
-            .focusable()
-            .pointerInput(
-                isScreenLocked,
+        }
+        !isScreenLocked && contentType == "LIVE" && !isCatchUpPlayback -> {
+            Modifier.pointerInput(
                 contentType,
                 isCatchUpPlayback,
                 showControls,
@@ -635,62 +638,78 @@ fun PlayerScreen(
                 showDiagnostics,
                 activeDialog
             ) {
-                if (isScreenLocked) {
-                    detectTapGestures {
-                        showUnlockPrompt = true
-                        unlockPromptJob?.cancel()
-                        unlockPromptJob = coroutineScope.launch {
-                            delay(3000)
-                            showUnlockPrompt = false
-                        }
+                detectTapGestures {
+                    viewModel.notifyUserActivity()
+                    when {
+                        activeDialog != null || showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showDiagnostics -> return@detectTapGestures
+                        showControls -> viewModel.toggleControls()
+                        showChannelInfoOverlay -> viewModel.closeChannelInfoOverlay()
+                        else -> viewModel.openChannelInfoOverlay()
                     }
-                } else if (contentType == "LIVE" && !isCatchUpPlayback) {
-                    detectTapGestures {
+                }
+            }
+        }
+        !isScreenLocked -> {
+            Modifier.pointerInput(
+                contentType,
+                showControls,
+                showChannelInfoOverlay,
+                showChannelListOverlay,
+                showCategoryListOverlay,
+                showEpgOverlay,
+                showDiagnostics,
+                activeDialog
+            ) {
+                detectTapGestures(
+                    onTap = {
                         viewModel.notifyUserActivity()
                         when {
                             activeDialog != null || showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showDiagnostics -> return@detectTapGestures
-                            showControls -> viewModel.toggleControls()
-                            showChannelInfoOverlay -> viewModel.closeChannelInfoOverlay()
-                            else -> viewModel.openChannelInfoOverlay()
+                            else -> viewModel.toggleControls()
+                        }
+                    },
+                    onDoubleTap = { offset ->
+                        viewModel.notifyUserActivity()
+                        if (anyOverlayVisible || showControls) return@detectTapGestures
+                        val isRightSide = offset.x > (size.width * 0.5f)
+                        val deltaSec = 10
+                        val deltaMs = deltaSec * 1000L
+
+                        if (isRightSide) {
+                            viewModel.seekForward(deltaMs)
+                        } else {
+                            viewModel.seekBackward(deltaMs)
+                        }
+
+                        val currentSec = if (doubleTapSeekFeedback?.first == isRightSide) {
+                            (doubleTapSeekFeedback?.second ?: 0) + deltaSec
+                        } else {
+                            deltaSec
+                        }
+                        doubleTapSeekFeedback = Pair(isRightSide, currentSec)
+                        doubleTapFeedbackJob?.cancel()
+                        doubleTapFeedbackJob = coroutineScope.launch {
+                            delay(850)
+                            doubleTapSeekFeedback = null
                         }
                     }
-                } else {
-                    detectTapGestures(
-                        onTap = {
-                            viewModel.notifyUserActivity()
-                            when {
-                                activeDialog != null || showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showDiagnostics -> return@detectTapGestures
-                                else -> viewModel.toggleControls()
-                            }
-                        },
-                        onDoubleTap = { offset ->
-                            viewModel.notifyUserActivity()
-                            if (anyOverlayVisible || showControls) return@detectTapGestures
-                            val isRightSide = offset.x > (size.width * 0.5f)
-                            val deltaSec = 10
-                            val deltaMs = deltaSec * 1000L
-
-                            if (isRightSide) {
-                                viewModel.seekForward(deltaMs)
-                            } else {
-                                viewModel.seekBackward(deltaMs)
-                            }
-
-                            val currentSec = if (doubleTapSeekFeedback?.first == isRightSide) {
-                                (doubleTapSeekFeedback?.second ?: 0) + deltaSec
-                            } else {
-                                deltaSec
-                            }
-                            doubleTapSeekFeedback = Pair(isRightSide, currentSec)
-                            doubleTapFeedbackJob?.cancel()
-                            doubleTapFeedbackJob = coroutineScope.launch {
-                                delay(850)
-                                doubleTapSeekFeedback = null
-                            }
-                        }
-                    )
-                }
+                )
             }
+        }
+        else -> Modifier
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .focusRequester(focusRequester)
+            .focusProperties {
+                // Only allow focus on the main background when no overlays are active
+                canFocus = !anyOverlayVisible && !showControls && !isScreenLocked
+            }
+            .focusable()
+            .then(rootTapModifier)
             .pointerInput(isScreenLocked, contentType) {
                 if (!isScreenLocked && contentType != "LIVE") {
                     detectTransformGestures { _, _, zoom, _ ->
