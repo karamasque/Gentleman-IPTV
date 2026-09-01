@@ -170,7 +170,24 @@ class GetContinueWatchingTest {
     }
 
     @Test
-    fun carousel_limit_is_respected() = runTest {
+    fun all_eligible_items_returned_without_cap_newest_first() = runTest {
+        val items = (1L..25L).map { id ->
+            history(contentId = id, type = ContentType.MOVIE, providerId = 1L, lastWatchedAt = 1000L - id, resumePositionMs = 10_000L)
+        }
+        val useCase = GetContinueWatching(
+            playbackHistoryRepository = FakePlaybackHistoryRepository(history = items)
+        )
+
+        val result = useCase(providerId = 1L).collectOnce()
+
+        // Verifies no 12-item cap: all 25 items are returned in newest-first order
+        assertThat(result).hasSize(25)
+        assertThat(result.first().contentId).isEqualTo(1L)
+        assertThat(result.last().contentId).isEqualTo(25L)
+    }
+
+    @Test
+    fun explicit_limit_is_respected_when_provided() = runTest {
         val items = (1L..20L).map { id ->
             history(contentId = id, type = ContentType.MOVIE, providerId = 1L, lastWatchedAt = 1000L - id, resumePositionMs = 10_000L)
         }
@@ -178,11 +195,11 @@ class GetContinueWatchingTest {
             playbackHistoryRepository = FakePlaybackHistoryRepository(history = items)
         )
 
-        val result = useCase(providerId = 1L, limit = 12).collectOnce()
+        val result = useCase(providerId = 1L, limit = 15).collectOnce()
 
-        assertThat(result).hasSize(12)
+        assertThat(result).hasSize(15)
         assertThat(result.first().contentId).isEqualTo(1L)
-        assertThat(result.last().contentId).isEqualTo(12L)
+        assertThat(result.last().contentId).isEqualTo(15L)
     }
 
     @Test

@@ -31,7 +31,7 @@ class GetContinueWatching @Inject constructor(
 
     operator fun invoke(
         providerId: Long,
-        limit: Int = 24,
+        limit: Int = Int.MAX_VALUE,
         scope: ContinueWatchingScope = ContinueWatchingScope.ALL_VOD,
         requireResumePosition: Boolean = false
     ): Flow<ContinueWatchingResult> = invoke(
@@ -43,7 +43,7 @@ class GetContinueWatching @Inject constructor(
 
     operator fun invoke(
         providerIds: Set<Long>,
-        limit: Int = 24,
+        limit: Int = Int.MAX_VALUE,
         scope: ContinueWatchingScope = ContinueWatchingScope.ALL_VOD,
         requireResumePosition: Boolean = false
     ): Flow<ContinueWatchingResult> {
@@ -60,13 +60,14 @@ class GetContinueWatching @Inject constructor(
 
         return historyFlow
             .map<List<PlaybackHistory>, ContinueWatchingResult> { history ->
-                ContinueWatchingResult.Items(
-                    history.toContinueWatching(
-                        limit = limit,
-                        scope = scope,
-                        requireResumePosition = requireResumePosition
-                    )
+                logger.log(Level.FINE, "[DIAG] FLOW_CANDIDATE_COUNT rawCount=${history.size} providerIds=$normalizedProviderIds scope=$scope")
+                val processed = history.toContinueWatching(
+                    limit = limit,
+                    scope = scope,
+                    requireResumePosition = requireResumePosition
                 )
+                logger.log(Level.FINE, "[DIAG] FINAL_CONTINUE_WATCHING_COUNT finalCount=${processed.size}")
+                ContinueWatchingResult.Items(processed)
             }
             .catch { error ->
                 if (error.shouldRethrowDomainFlowFailure()) {
@@ -81,13 +82,19 @@ class GetContinueWatching @Inject constructor(
         limit: Int,
         scope: ContinueWatchingScope,
         requireResumePosition: Boolean
-    ): List<PlaybackHistory> = asSequence()
-        .filter { entry -> scope.matches(entry.contentType) }
-        .filterNot { entry -> entry.isCompleted() }
-        .filter { entry -> !requireResumePosition || entry.isResumeEligible() }
-        .distinctBy(::continueWatchingKey)
-        .take(limit)
-        .toList()
+    ): List<PlaybackHistory> {
+        val seq = asSequence()
+            .filter { entry -> scope.matches(entry.contentType) }
+            .filterNot { entry -> entry.isCompleted() }
+            .filter { entry -> !requireResumePosition || entry.isResumeEligible() }
+            .distinctBy(::continueWatchingKey)
+
+        return if (limit > 0 && limit < Int.MAX_VALUE) {
+            seq.take(limit).toList()
+        } else {
+            seq.toList()
+        }
+    }
 
     private fun ContinueWatchingScope.matches(contentType: ContentType): Boolean = when (this) {
         ContinueWatchingScope.ALL_VOD -> contentType != ContentType.LIVE

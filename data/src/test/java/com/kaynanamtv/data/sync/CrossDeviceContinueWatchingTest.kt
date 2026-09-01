@@ -415,4 +415,17 @@ class CrossDeviceContinueWatchingTest {
 
         assertThat(key1).isNotEqualTo(key2)
     }
+
+    // 18. Sanitized hashing test: ensures deterministic 8-byte hex prefix without exposing raw UID or tokens
+    @Test
+    fun `sanitizedHash produces consistent non-empty hash without raw leaks`() {
+        val uid = "user_abc123_xyz789"
+        val hash1 = syncManager.sanitizedHash(uid)
+        val hash2 = syncManager.sanitizedHash(uid)
+
+        assertThat(hash1).isEqualTo(hash2)
+        assertThat(hash1).isNotEmpty()
+        assertThat(hash1).doesNotContain(uid)
+        assertThat(syncManager.sanitizedHash("")).isEqualTo("empty")
+    }
 }

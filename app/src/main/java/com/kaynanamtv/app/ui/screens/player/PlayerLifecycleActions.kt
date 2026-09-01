@@ -28,6 +28,9 @@ internal suspend fun PlayerViewModel.persistPlaybackProgress(forceCloudSync: Boo
     val dur = playerEngine.duration.value
 
     if (pos > 0 && dur > 0) {
+        if (forceCloudSync) {
+            android.util.Log.d("PlayerLifecycle", "[DIAG_DEV_A] FINAL_FLUSH_REQUEST providerId=$currentProviderId contentId=$currentContentId type=$currentContentType pos=$pos dur=$dur")
+        }
         val history = buildPlaybackHistorySnapshot(pos, dur) ?: return
         logRepositoryFailure(
             operation = "Persist playback resume position",

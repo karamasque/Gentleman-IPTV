@@ -119,6 +119,18 @@ class CloudUserStateSyncManager @Inject constructor(
     )
 
     /**
+     * Sanitizes sensitive identifiers to a deterministic SHA-256 hash prefix for safe cross-device log correlation.
+     */
+    fun sanitizedHash(value: String): String {
+        if (value.isBlank()) return "empty"
+        return runCatching {
+            val md = MessageDigest.getInstance("SHA-256")
+            val bytes = md.digest(value.toByteArray(Charsets.UTF_8))
+            bytes.take(8).joinToString("") { "%02x".format(it) }
+        }.getOrDefault("hash_err")
+    }
+
+    /**
      * Resolves and fetches the targeted watch progress document from Firestore for a specific movie or episode.
      * Maximum 1 document read. Returns null on timeout, offline, missing document, or malformed data.
      */
@@ -207,6 +219,8 @@ class CloudUserStateSyncManager @Inject constructor(
             val now = System.currentTimeMillis()
             val isCompleted = durationMs > 0L && positionMs >= (durationMs * 0.95) // 95% completion threshold
 
+            Log.d(TAG, "[DIAG_DEV_A] LOCAL_PROGRESS_WRITE_REQUEST providerId=$providerId contentId=$contentId type=$contentType pos=$positionMs dur=$durationMs force=$forceCloudSync")
+
             val historyEntity = PlaybackHistoryEntity(
                 providerId = providerId,
                 contentId = contentId,
@@ -223,19 +237,25 @@ class CloudUserStateSyncManager @Inject constructor(
             // 1. Local Room DB update (Instant Source of Truth)
             runCatching {
                 playbackHistoryDao.insertOrUpdate(historyEntity)
-            }.onFailure { Log.w(TAG, "Failed to persist local playback history", it) }
+                Log.d(TAG, "[DIAG_DEV_A] LOCAL_PROGRESS_WRITE_SUCCESS contentId=$contentId")
+            }.onFailure {
+                Log.w(TAG, "[DIAG_DEV_A] LOCAL_PROGRESS_WRITE_FAILURE contentId=$contentId", it)
+            }
 
             // 2. Multi-device Cloud Sync (Async, non-blocking OCC transaction)
-            val user = FirebaseAuth.getInstance().currentUser ?: return@launch
-            if (user.isAnonymous) return@launch
-
-            // Defer blind offline canonical writes: check network before attempting Firestore transaction
-            if (!isNetworkAvailable()) {
-                Log.d(TAG, "Offline: skipping blind canonical cloud write for contentId $contentId (Room updated)")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user == null || user.isAnonymous) {
+                Log.d(TAG, "[DIAG_DEV_A] CLOUD_WRITE_SKIPPED reason=AUTH_INVALID isAnonymous=${user?.isAnonymous}")
                 return@launch
             }
 
-            val provider = runCatching { providerDao.getById(providerId) }.getOrNull() ?: return@launch
+            Log.d(TAG, "[DIAG_DEV_A] FIREBASE_USER_STATE uidHash=${sanitizedHash(user.uid)} isAnonymous=${user.isAnonymous}")
+
+            val provider = runCatching { providerDao.getById(providerId) }.getOrNull()
+            if (provider == null) {
+                Log.d(TAG, "[DIAG_DEV_A] CLOUD_WRITE_SKIPPED reason=PROVIDER_NOT_FOUND providerId=$providerId")
+                return@launch
+            }
             val providerStableKey = computeProviderStableKey(provider)
 
             val (cloudDocId, metadata) = when (contentType) {
@@ -295,6 +315,14 @@ class CloudUserStateSyncManager @Inject constructor(
                 else -> return@launch
             }
 
+            Log.d(TAG, "[DIAG_DEV_A] CLOUD_WRITE_ELIGIBLE docIdHash=${sanitizedHash(cloudDocId)} providerKeyHash=${sanitizedHash(providerStableKey)} pos=$positionMs dur=$durationMs rev=$baseRevision")
+
+            // Defer blind offline canonical writes: check network before attempting Firestore transaction
+            if (!isNetworkAvailable()) {
+                Log.d(TAG, "[DIAG_DEV_A] CLOUD_WRITE_SKIPPED reason=OFFLINE docIdHash=${sanitizedHash(cloudDocId)}")
+                return@launch
+            }
+
             // Write coalescing: sync if forced (pause/exit/stop/complete) or if >= 25s elapsed AND position delta >= 15s
             val lastSyncedTime = lastSyncedProgressTimes[cloudDocId] ?: 0L
             val lastSyncedPos = lastSyncedProgressPositions[cloudDocId] ?: -1L
@@ -302,48 +330,56 @@ class CloudUserStateSyncManager @Inject constructor(
 
             val shouldSync = forceCloudSync || isCompleted || (now - lastSyncedTime >= 25_000L && posDelta >= 15_000L)
 
-            if (shouldSync) {
-                lastSyncedProgressTimes[cloudDocId] = now
-                lastSyncedProgressPositions[cloudDocId] = positionMs
+            if (!shouldSync) {
+                Log.d(TAG, "[DIAG_DEV_A] CLOUD_WRITE_SKIPPED reason=WRITE_COALESCING_COOLDOWN lastSyncedAgo=${now - lastSyncedTime}ms posDelta=${posDelta}ms docIdHash=${sanitizedHash(cloudDocId)}")
+                return@launch
+            }
 
-                runCatching {
-                    val firestore = FirebaseFirestore.getInstance()
-                    val docRef = firestore.collection("users").document(user.uid)
-                        .collection("watch_history").document(cloudDocId)
+            lastSyncedProgressTimes[cloudDocId] = now
+            lastSyncedProgressPositions[cloudDocId] = positionMs
 
-                    firestore.runTransaction { transaction ->
-                        val snapshot = transaction.get(docRef)
-                        val cloudExists = snapshot.exists()
-                        val cloudData = snapshot.data
-                        val cloudRevision = (cloudData?.get("revision") as? Long) ?: 0L
-                        val cloudSessionId = (cloudData?.get("playbackSessionId") as? String) ?: ""
-                        val cloudSeq = (cloudData?.get("checkpointSeq") as? Long) ?: 0L
+            Log.d(TAG, "[DIAG_DEV_A] CLOUD_WRITE_REQUEST docIdHash=${sanitizedHash(cloudDocId)} session=${sanitizedHash(playbackSessionId)} seq=$checkpointSeq")
 
-                        val isSameSession = cloudExists && cloudSessionId.isNotBlank() && cloudSessionId == playbackSessionId
+            runCatching {
+                val firestore = FirebaseFirestore.getInstance()
+                val docRef = firestore.collection("users").document(user.uid)
+                    .collection("watch_history").document(cloudDocId)
 
-                        if (isSameSession) {
-                            if (checkpointSeq > cloudSeq) {
-                                metadata["revision"] = cloudRevision
-                                metadata["playbackSessionId"] = playbackSessionId
-                                metadata["checkpointSeq"] = checkpointSeq
-                                transaction.set(docRef, metadata, SetOptions.merge())
-                            } else {
-                                Log.d(TAG, "CheckpointSeq $checkpointSeq <= cloudSeq $cloudSeq for session $playbackSessionId (ignored)")
-                            }
+                firestore.runTransaction { transaction ->
+                    val snapshot = transaction.get(docRef)
+                    val cloudExists = snapshot.exists()
+                    val cloudData = snapshot.data
+                    val cloudRevision = (cloudData?.get("revision") as? Long) ?: 0L
+                    val cloudSessionId = (cloudData?.get("playbackSessionId") as? String) ?: ""
+                    val cloudSeq = (cloudData?.get("checkpointSeq") as? Long) ?: 0L
+
+                    val isSameSession = cloudExists && cloudSessionId.isNotBlank() && cloudSessionId == playbackSessionId
+
+                    if (isSameSession) {
+                        if (checkpointSeq > cloudSeq) {
+                            metadata["revision"] = cloudRevision
+                            metadata["playbackSessionId"] = playbackSessionId
+                            metadata["checkpointSeq"] = checkpointSeq
+                            transaction.set(docRef, metadata, SetOptions.merge())
                         } else {
-                            if (!cloudExists || cloudRevision == baseRevision || (cloudRevision == 0L && baseRevision == 0L)) {
-                                val newRevision = if (cloudExists) cloudRevision + 1L else 1L
-                                metadata["revision"] = newRevision
-                                metadata["playbackSessionId"] = playbackSessionId
-                                metadata["checkpointSeq"] = checkpointSeq
-                                transaction.set(docRef, metadata, SetOptions.merge())
-                                Log.d(TAG, "OCC: Claimed canonical session $playbackSessionId, revision $newRevision for $cloudDocId")
-                            } else {
-                                Log.w(TAG, "OCC Conflict for $cloudDocId: cloudRevision=$cloudRevision != baseRevision=$baseRevision. Cloud write rejected.")
-                            }
+                            Log.d(TAG, "[DIAG_DEV_A] CLOUD_WRITE_IGNORED reason=CHECKPOINT_SEQ_OBSOLETE currentSeq=$checkpointSeq cloudSeq=$cloudSeq")
                         }
-                    }.await()
-                }.onFailure { Log.w(TAG, "Failed to publish OCC watch progress to Firestore (non-fatal)", it) }
+                    } else {
+                        if (!cloudExists || cloudRevision == baseRevision || (cloudRevision == 0L && baseRevision == 0L)) {
+                            val newRevision = if (cloudExists) cloudRevision + 1L else 1L
+                            metadata["revision"] = newRevision
+                            metadata["playbackSessionId"] = playbackSessionId
+                            metadata["checkpointSeq"] = checkpointSeq
+                            transaction.set(docRef, metadata, SetOptions.merge())
+                            Log.d(TAG, "[DIAG_DEV_A] OCC_CLAIMED_SESSION session=${sanitizedHash(playbackSessionId)} rev=$newRevision docIdHash=${sanitizedHash(cloudDocId)}")
+                        } else {
+                            Log.w(TAG, "[DIAG_DEV_A] OCC_CONFLICT docIdHash=${sanitizedHash(cloudDocId)} cloudRevision=$cloudRevision != baseRevision=$baseRevision")
+                        }
+                    }
+                }.await()
+                Log.d(TAG, "[DIAG_DEV_A] CLOUD_WRITE_SUCCESS docIdHash=${sanitizedHash(cloudDocId)} session=${sanitizedHash(playbackSessionId)} rev=${metadata["revision"]}")
+            }.onFailure {
+                Log.w(TAG, "[DIAG_DEV_A] CLOUD_WRITE_FAILURE docIdHash=${sanitizedHash(cloudDocId)} error=${it.javaClass.simpleName} msg=${it.message}", it)
             }
         }
     }
@@ -466,28 +502,35 @@ class CloudUserStateSyncManager @Inject constructor(
      * Guarded by mutex and 60-second cooldown to eliminate duplicate queries and read spikes.
      */
     fun reconcileFromCloud(force: Boolean = false) {
-        val user = FirebaseAuth.getInstance().currentUser ?: return
-        if (user.isAnonymous) return
+        Log.d(TAG, "[DIAG_DEV_B] RECONCILE_REQUEST force=$force")
+        val user = FirebaseAuth.getInstance().currentUser
+        if (user == null || user.isAnonymous) {
+            Log.d(TAG, "[DIAG_DEV_B] RECONCILE_SKIPPED reason=AUTH_INVALID isAnonymous=${user?.isAnonymous}")
+            return
+        }
         val now = System.currentTimeMillis()
         if (!force && (now - lastReconcileTime < RECONCILE_MIN_INTERVAL_MS)) {
-            Log.d(TAG, "reconcileFromCloud: throttled by cooldown")
+            Log.d(TAG, "[DIAG_DEV_B] RECONCILE_SKIPPED reason=THROTTLED_COOLDOWN elapsed=${now - lastReconcileTime}ms")
             return
         }
         syncScope.launch {
             if (!reconcileMutex.tryLock()) {
-                Log.d(TAG, "reconcileFromCloud: already in progress (coalesced)")
+                Log.d(TAG, "[DIAG_DEV_B] RECONCILE_SKIPPED reason=MUTEX_LOCKED")
                 return@launch
             }
             try {
                 lastReconcileTime = System.currentTimeMillis()
                 val token = runCatching { user.getIdToken(true).await() }.getOrNull()
                 if (token == null || token.token.isNullOrBlank()) {
-                    Log.d(TAG, "Skipping cloud user state reconcile: active server auth session is not valid")
+                    Log.d(TAG, "[DIAG_DEV_B] RECONCILE_SKIPPED reason=AUTH_TOKEN_INVALID")
                     return@launch
                 }
 
                 val localProviders = runCatching { providerDao.getAllSync() }.getOrDefault(emptyList())
-                if (localProviders.isEmpty()) return@launch
+                if (localProviders.isEmpty()) {
+                    Log.d(TAG, "[DIAG_DEV_B] RECONCILE_SKIPPED reason=NO_LOCAL_PROVIDERS")
+                    return@launch
+                }
 
                 val providersByStableKey = localProviders.associateBy { computeProviderStableKey(it) }
                 val syncStartTime = System.currentTimeMillis()
@@ -495,17 +538,22 @@ class CloudUserStateSyncManager @Inject constructor(
                 // 1. Reconcile Watch History (Delta Sync with Safety Window and Partial Cursor Protection)
                 runCatching {
                     val lastCursor = getWatchHistorySyncCursor(user.uid)
+                    Log.d(TAG, "[DIAG_DEV_B] RECONCILE_STARTED uidHash=${sanitizedHash(user.uid)} isAnonymous=${user.isAnonymous} lastCursor=$lastCursor")
+
                     val firestore = FirebaseFirestore.getInstance()
                     val collectionRef = firestore.collection("users").document(user.uid).collection("watch_history")
 
                     val query = if (lastCursor > 0L) {
                         val queryStart = (lastCursor - CLOCK_SKEW_SAFETY_WINDOW_MS).coerceAtLeast(0L)
+                        Log.d(TAG, "[DIAG_DEV_B] QUERY_START queryStart=$queryStart lastCursor=$lastCursor")
                         collectionRef.whereGreaterThan("updatedAt", queryStart)
                     } else {
+                        Log.d(TAG, "[DIAG_DEV_B] QUERY_START fullCollection=true")
                         collectionRef
                     }
 
                     val historySnapshot = query.get().await()
+                    Log.d(TAG, "[DIAG_DEV_B] QUERY_SUCCESS docCount=${historySnapshot.documents.size}")
                     var minUnresolvedWatchHistoryTime: Long? = null
 
                     for (doc in historySnapshot.documents) {
@@ -525,10 +573,15 @@ class CloudUserStateSyncManager @Inject constructor(
                             ?: (totalDurationMs > 0L && resumePositionMs >= totalDurationMs * 0.95)
                         val cloudRevision = (data["revision"] as? Long) ?: 0L
 
+                        Log.d(TAG, "[DIAG_DEV_B] CLOUD_DOCUMENT docIdHash=${sanitizedHash(doc.id)} providerKeyHash=${sanitizedHash(providerStableKey)} type=$contentType streamId=$streamId pos=$resumePositionMs dur=$totalDurationMs updatedAt=$updatedAt rev=$cloudRevision")
+
                         if (localProvider == null) {
+                            Log.w(TAG, "[DIAG_DEV_B] LOCAL_PROVIDER_NOT_FOUND providerKeyHash=${sanitizedHash(providerStableKey)}")
                             minUnresolvedWatchHistoryTime = minOf(minUnresolvedWatchHistoryTime ?: updatedAt, updatedAt)
                             continue
                         }
+
+                        Log.d(TAG, "[DIAG_DEV_B] LOCAL_PROVIDER_MATCHED localProviderId=${localProvider.id}")
 
                         when (contentType) {
                             ContentType.MOVIE -> {
@@ -537,6 +590,7 @@ class CloudUserStateSyncManager @Inject constructor(
                                 } else null
 
                                 if (localMovie != null) {
+                                    Log.d(TAG, "[DIAG_DEV_B] CATALOG_ITEM_MATCHED type=MOVIE localId=${localMovie.id}")
                                     val local = playbackHistoryDao.get(localMovie.id, ContentType.MOVIE.name, localProvider.id)
                                     if (local == null || cloudRevision > 0L || updatedAt > local.lastWatchedAt) {
                                         val title = (data["title"] as? String)?.takeIf { it.isNotBlank() }
@@ -566,8 +620,10 @@ class CloudUserStateSyncManager @Inject constructor(
                                             )
                                         )
                                         movieDao.syncWatchProgressFromHistory(localMovie.id, localProvider.id)
+                                        Log.d(TAG, "[DIAG_DEV_B] ROOM_UPSERT_SUCCESS type=MOVIE contentId=${localMovie.id} pos=$resumePositionMs")
                                     }
                                 } else {
+                                    Log.w(TAG, "[DIAG_DEV_B] CATALOG_ITEM_UNRESOLVED type=MOVIE streamId=$streamId")
                                     minUnresolvedWatchHistoryTime = minOf(minUnresolvedWatchHistoryTime ?: updatedAt, updatedAt)
                                 }
                             }
@@ -591,6 +647,7 @@ class CloudUserStateSyncManager @Inject constructor(
                                 }
 
                                 if (localEpisode != null) {
+                                    Log.d(TAG, "[DIAG_DEV_B] CATALOG_ITEM_MATCHED type=SERIES_EPISODE localId=${localEpisode.id}")
                                     val local = playbackHistoryDao.get(localEpisode.id, ContentType.SERIES_EPISODE.name, localProvider.id)
                                     if (local == null || cloudRevision > 0L || updatedAt > local.lastWatchedAt) {
                                         val title = (data["title"] as? String)?.takeIf { it.isNotBlank() }
@@ -623,8 +680,10 @@ class CloudUserStateSyncManager @Inject constructor(
                                             )
                                         )
                                         episodeDao.syncWatchProgressFromHistory(localEpisode.id, localProvider.id)
+                                        Log.d(TAG, "[DIAG_DEV_B] ROOM_UPSERT_SUCCESS type=SERIES_EPISODE contentId=${localEpisode.id} pos=$resumePositionMs")
                                     }
                                 } else {
+                                    Log.w(TAG, "[DIAG_DEV_B] CATALOG_ITEM_UNRESOLVED type=SERIES_EPISODE seriesRemoteId=$seriesRemoteId S${seasonNumber}E${episodeNumber}")
                                     minUnresolvedWatchHistoryTime = minOf(minUnresolvedWatchHistoryTime ?: updatedAt, updatedAt)
                                 }
                             }
@@ -637,11 +696,14 @@ class CloudUserStateSyncManager @Inject constructor(
                     if (minUnresolvedWatchHistoryTime != null) {
                         val safeCursor = (minUnresolvedWatchHistoryTime - 1000L).coerceAtLeast(0L)
                         setWatchHistorySyncCursor(user.uid, safeCursor)
-                        Log.d(TAG, "Watch history cursor partially advanced to $safeCursor due to unresolved items")
+                        Log.d(TAG, "[DIAG_DEV_B] WATCH_HISTORY_CURSOR_PARTIAL advancedTo=$safeCursor due to unresolved items")
                     } else {
                         setWatchHistorySyncCursor(user.uid, syncStartTime)
+                        Log.d(TAG, "[DIAG_DEV_B] WATCH_HISTORY_CURSOR_ADVANCED advancedTo=$syncStartTime")
                     }
-                }.onFailure { Log.w(TAG, "Failed to reconcile watch history from cloud", it) }
+                }.onFailure {
+                    Log.w(TAG, "[DIAG_DEV_B] QUERY_FAILURE error=${it.javaClass.simpleName} msg=${it.message}", it)
+                }
 
                 // 2. Reconcile Favorites (Delta Sync with Safety Window)
                 runCatching {
