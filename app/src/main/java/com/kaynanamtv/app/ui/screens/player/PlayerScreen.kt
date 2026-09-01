@@ -282,6 +282,7 @@ fun PlayerScreen(
     var doubleTapFeedbackJob by remember { mutableStateOf<Job?>(null) }
     
     val focusRequester = remember { FocusRequester() }
+    val unlockButtonFocusRequester = remember { FocusRequester() }
     val channelListFocusRequester = remember { FocusRequester() }
     val categoryListFocusRequester = remember { FocusRequester() }
     val playButtonFocusRequester = remember { FocusRequester() }
@@ -498,6 +499,28 @@ fun PlayerScreen(
         )
     }
 
+    val performUnlock = remember(showControls) {
+        {
+            isScreenLocked = false
+            showUnlockPrompt = false
+            unlockPromptJob?.cancel()
+            if (!showControls) {
+                viewModel.toggleControls()
+            }
+            try {
+                focusRequester.requestFocus()
+            } catch (_: Exception) { }
+        }
+    }
+
+    LaunchedEffect(isScreenLocked, showUnlockPrompt) {
+        if (isScreenLocked && showUnlockPrompt) {
+            try {
+                unlockButtonFocusRequester.requestFocus()
+            } catch (_: Exception) { }
+        }
+    }
+
     LaunchedEffect(title, artworkUrl, archiveTitle, seriesId, seasonNumber, episodeNumber, prepareIdentity) {
         videoZoomScale = 1f
         isScreenLocked = false
@@ -566,8 +589,7 @@ fun PlayerScreen(
         {
             when {
                 isScreenLocked -> {
-                    isScreenLocked = false
-                    showUnlockPrompt = false
+                    performUnlock()
                 }
                 viewModel.hasPendingNumericChannelInput() -> viewModel.clearNumericChannelInput()
                 autoPlayCountdown != null -> viewModel.cancelAutoPlay()
@@ -710,6 +732,39 @@ fun PlayerScreen(
                     return@onPreviewKeyEvent false
                 }
                 viewModel.notifyUserActivity()
+                if (isScreenLocked) {
+                    when (event.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_DPAD_CENTER,
+                        KeyEvent.KEYCODE_ENTER,
+                        KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                            if (showUnlockPrompt) {
+                                performUnlock()
+                            } else {
+                                showUnlockPrompt = true
+                                unlockPromptJob?.cancel()
+                                unlockPromptJob = coroutineScope.launch {
+                                    delay(3000)
+                                    showUnlockPrompt = false
+                                }
+                            }
+                            return@onPreviewKeyEvent true
+                        }
+                        KeyEvent.KEYCODE_BACK -> {
+                            return@onPreviewKeyEvent false
+                        }
+                        else -> {
+                            if (!showUnlockPrompt) {
+                                showUnlockPrompt = true
+                                unlockPromptJob?.cancel()
+                                unlockPromptJob = coroutineScope.launch {
+                                    delay(3000)
+                                    showUnlockPrompt = false
+                                }
+                            }
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+                }
                 if (nextEpisodeCountdownVisible) {
                     return@onPreviewKeyEvent false
                 }
@@ -1101,11 +1156,7 @@ fun PlayerScreen(
         ) {
             Button(
                 onClick = {
-                    isScreenLocked = false
-                    showUnlockPrompt = false
-                    if (!showControls) {
-                        viewModel.toggleControls()
-                    }
+                    performUnlock()
                 },
                 colors = ButtonDefaults.colors(
                     containerColor = Color.Black.copy(alpha = 0.75f),
@@ -1115,7 +1166,10 @@ fun PlayerScreen(
                 border = ButtonDefaults.border(
                     border = Border(border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF6366F1)))
                 ),
-                modifier = Modifier.height(48.dp)
+                modifier = Modifier
+                    .height(48.dp)
+                    .focusRequester(unlockButtonFocusRequester)
+                    .focusable()
             ) {
                 Text(
                     text = "🔒 " + stringResource(R.string.player_unlock_screen),
