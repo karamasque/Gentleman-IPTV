@@ -185,7 +185,7 @@ class HomeHistoryShelfSqlScopeTest {
     }
 
     @Test
-    fun `TEST E - series deduplication keeps only latest episode of same series`() = runTest {
+    fun `TEST E - distinct episodes of same series remain separate in newest-first order`() = runTest {
         val vodEntities = listOf(
             PlaybackHistoryLiteEntity(
                 contentId = 402L,
@@ -223,8 +223,8 @@ class HomeHistoryShelfSqlScopeTest {
 
         val continueWatching = (getContinueWatching(providerId = 1L, limit = 12).first() as ContinueWatchingResult.Items).items
 
-        // Should keep episode 402 (newest) and movie 403, collapsing older episode 401
-        assertThat(continueWatching.map { it.contentId }).containsExactly(402L, 403L).inOrder()
+        // Keeps both episodes (402, 401) and movie (403) in newest-first order
+        assertThat(continueWatching.map { it.contentId }).containsExactly(402L, 401L, 403L).inOrder()
     }
 
     @Test

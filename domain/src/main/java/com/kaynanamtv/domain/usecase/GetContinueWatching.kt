@@ -60,14 +60,13 @@ class GetContinueWatching @Inject constructor(
 
         return historyFlow
             .map<List<PlaybackHistory>, ContinueWatchingResult> { history ->
-                logger.log(Level.FINE, "[DIAG] FLOW_CANDIDATE_COUNT rawCount=${history.size} providerIds=$normalizedProviderIds scope=$scope")
-                val processed = history.toContinueWatching(
-                    limit = limit,
-                    scope = scope,
-                    requireResumePosition = requireResumePosition
+                ContinueWatchingResult.Items(
+                    history.toContinueWatching(
+                        limit = limit,
+                        scope = scope,
+                        requireResumePosition = requireResumePosition
+                    )
                 )
-                logger.log(Level.FINE, "[DIAG] FINAL_CONTINUE_WATCHING_COUNT finalCount=${processed.size}")
-                ContinueWatchingResult.Items(processed)
             }
             .catch { error ->
                 if (error.shouldRethrowDomainFlowFailure()) {
@@ -104,8 +103,8 @@ class GetContinueWatching @Inject constructor(
 
     private fun continueWatchingKey(entry: PlaybackHistory): String = when (entry.contentType) {
         ContentType.MOVIE -> "movie:${entry.providerId}:${entry.contentId}"
-        ContentType.SERIES,
-        ContentType.SERIES_EPISODE -> "series:${entry.providerId}:${entry.seriesId?.takeIf { it > 0L } ?: entry.contentId}"
+        ContentType.SERIES -> "series:${entry.providerId}:${entry.contentId}"
+        ContentType.SERIES_EPISODE -> "episode:${entry.providerId}:${entry.contentId}"
         ContentType.LIVE -> "live:${entry.providerId}:${entry.contentId}"
     }
 

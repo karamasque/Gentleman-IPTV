@@ -15,7 +15,7 @@ import org.junit.Test
 class GetContinueWatchingTest {
 
     @Test
-    fun collapses_multiple_episode_entries_into_one_series_resume() = runTest {
+    fun distinct_episodes_remain_separate_and_do_not_collapse() = runTest {
         val useCase = GetContinueWatching(
             playbackHistoryRepository = FakePlaybackHistoryRepository(
                 history = listOf(
@@ -28,9 +28,9 @@ class GetContinueWatchingTest {
 
         val result = useCase(providerId = 1L, limit = 5).collectOnce()
 
-        assertThat(result).hasSize(2)
-        assertThat(result.first().contentId).isEqualTo(21L)
-        assertThat(result.last().contentId).isEqualTo(11L)
+        // Every incomplete episode remains separate in newest-first order
+        assertThat(result).hasSize(3)
+        assertThat(result.map { it.contentId }).containsExactly(21L, 20L, 11L).inOrder()
     }
 
     @Test

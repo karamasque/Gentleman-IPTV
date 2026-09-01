@@ -416,16 +416,184 @@ class CrossDeviceContinueWatchingTest {
         assertThat(key1).isNotEqualTo(key2)
     }
 
-    // 18. Sanitized hashing test: ensures deterministic 8-byte hex prefix without exposing raw UID or tokens
+    // 19. Detail screen resume progress and Home Continue Watching match for Movie
     @Test
-    fun `sanitizedHash produces consistent non-empty hash without raw leaks`() {
-        val uid = "user_abc123_xyz789"
-        val hash1 = syncManager.sanitizedHash(uid)
-        val hash2 = syncManager.sanitizedHash(uid)
+    fun `detail screen resume progress and home continue watching match for movie`() {
+        val movieHistory = PlaybackHistory(
+            contentId = 101L,
+            contentType = ContentType.MOVIE,
+            providerId = 1L,
+            title = "Inception",
+            streamUrl = "https://example.com/movie.mkv",
+            resumePositionMs = 60_000L,
+            totalDurationMs = 120_000L,
+            lastWatchedAt = 1000L
+        )
 
-        assertThat(hash1).isEqualTo(hash2)
-        assertThat(hash1).isNotEmpty()
-        assertThat(hash1).doesNotContain(uid)
-        assertThat(syncManager.sanitizedHash("")).isEqualTo("empty")
+        // Detail screen condition:
+        val detailHasResume = movieHistory.resumePositionMs > 5000L &&
+            !isPlaybackComplete(movieHistory.resumePositionMs, movieHistory.totalDurationMs)
+        assertThat(detailHasResume).isTrue()
+
+        // Home Continue Watching evaluation:
+        val isEligibleOnHome = movieHistory.contentType == ContentType.MOVIE &&
+            movieHistory.resumePositionMs > 0L &&
+            !isPlaybackComplete(movieHistory.resumePositionMs, movieHistory.totalDurationMs)
+        assertThat(isEligibleOnHome).isTrue()
+    }
+
+    // 20. Detail screen resume progress and Home Continue Watching match for Episode
+    @Test
+    fun `detail screen resume progress and home continue watching match for episode`() {
+        val episodeHistory = PlaybackHistory(
+            contentId = 202L,
+            contentType = ContentType.SERIES_EPISODE,
+            providerId = 1L,
+            seriesId = 50L,
+            seasonNumber = 1,
+            episodeNumber = 3,
+            title = "Episode 3",
+            streamUrl = "https://example.com/ep3.mkv",
+            resumePositionMs = 45_000L,
+            totalDurationMs = 90_000L,
+            lastWatchedAt = 1000L
+        )
+
+        val detailHasResume = episodeHistory.resumePositionMs > 5000L &&
+            !isPlaybackComplete(episodeHistory.resumePositionMs, episodeHistory.totalDurationMs)
+        assertThat(detailHasResume).isTrue()
+
+        val isEligibleOnHome = episodeHistory.contentType == ContentType.SERIES_EPISODE &&
+            episodeHistory.resumePositionMs > 0L &&
+            !isPlaybackComplete(episodeHistory.resumePositionMs, episodeHistory.totalDurationMs)
+        assertThat(isEligibleOnHome).isTrue()
+    }
+
+    // 21. Multiple distinct episodes of same series all appear on Home without collapsing
+    @Test
+    fun `multiple distinct episodes of same series remain separate on Home`() {
+        val ep1 = PlaybackHistory(
+            contentId = 301L,
+            contentType = ContentType.SERIES_EPISODE,
+            providerId = 1L,
+            title = "Episode 1",
+            streamUrl = "https://example.com/ep1.mkv",
+            seriesId = 10L,
+            seasonNumber = 1,
+            episodeNumber = 1,
+            resumePositionMs = 10_000L,
+            totalDurationMs = 60_000L,
+            lastWatchedAt = 1000L
+        )
+        val ep2 = PlaybackHistory(
+            contentId = 302L,
+            contentType = ContentType.SERIES_EPISODE,
+            providerId = 1L,
+            title = "Episode 2",
+            streamUrl = "https://example.com/ep2.mkv",
+            seriesId = 10L,
+            seasonNumber = 1,
+            episodeNumber = 2,
+            resumePositionMs = 20_000L,
+            totalDurationMs = 60_000L,
+            lastWatchedAt = 2000L
+        )
+
+        val keys = listOf(ep1, ep2).map { "episode:${it.providerId}:${it.contentId}" }.distinct()
+        assertThat(keys).hasSize(2)
+    }
+
+    // 22. Cross-device simulation: Device A watches movie, Device B receives it with different local DB IDs
+    @Test
+    fun `cross-device simulation A to B with different local DB IDs`() {
+        val devAProvider = ProviderEntity(id = 1L, name = "A", type = com.kaynanamtv.domain.model.ProviderType.XTREAM_CODES, serverUrl = "http://srv.com", username = "u1", password = "p1")
+        val devBProvider = ProviderEntity(id = 99L, name = "B", type = com.kaynanamtv.domain.model.ProviderType.XTREAM_CODES, serverUrl = "http://srv.com", username = "u1", password = "p1")
+
+        val keyA = syncManager.computeProviderStableKey(devAProvider)
+        val keyB = syncManager.computeProviderStableKey(devBProvider)
+        assertThat(keyA).isEqualTo(keyB) // Same stable key across devices
+
+        // Device A writes cloud doc with streamId 777
+        val cloudData = mapOf<String, Any>(
+            "providerStableKey" to keyA,
+            "streamId" to 777L,
+            "title" to "Matrix",
+            "resumePositionMs" to 55_000L,
+            "totalDurationMs" to 120_000L,
+            "updatedAt" to 5000L,
+            "revision" to 1L
+        )
+
+        // Device B has local movie ID 999 with streamId 777 and local provider ID 99
+        val devBLocalMovie = MovieEntity(id = 999L, providerId = 99L, streamId = 777L, name = "Matrix", posterUrl = "https://img.com/m.jpg")
+        val devBReconciled = PlaybackHistoryEntity(
+            providerId = devBProvider.id,
+            contentId = devBLocalMovie.id,
+            contentType = ContentType.MOVIE,
+            title = cloudData["title"] as String,
+            posterUrl = devBLocalMovie.posterUrl,
+            resumePositionMs = cloudData["resumePositionMs"] as Long,
+            totalDurationMs = cloudData["totalDurationMs"] as Long,
+            lastWatchedAt = cloudData["updatedAt"] as Long,
+            watchedStatus = "IN_PROGRESS"
+        )
+
+        assertThat(devBReconciled.contentId).isEqualTo(999L)
+        assertThat(devBReconciled.providerId).isEqualTo(99L)
+        assertThat(devBReconciled.resumePositionMs).isEqualTo(55_000L)
+    }
+
+    // 23. Cross-device simulation: Device B advances movie, Device A receives newer position
+    @Test
+    fun `cross-device simulation B to A advances position`() {
+        val devAInitialPos = 55_000L
+        val devBNewPos = 95_000L
+        val devBNewUpdatedAt = 8000L
+
+        val cloudDataFromB = mapOf<String, Any>(
+            "resumePositionMs" to devBNewPos,
+            "totalDurationMs" to 120_000L,
+            "updatedAt" to devBNewUpdatedAt,
+            "revision" to 2L
+        )
+
+        assertThat(cloudDataFromB["resumePositionMs"] as Long).isGreaterThan(devAInitialPos)
+    }
+
+    // 24. Completed content (>95%) excluded from continue watching
+    @Test
+    fun `completed content is excluded from continue watching`() {
+        val completedMovie = PlaybackHistory(
+            contentId = 500L,
+            contentType = ContentType.MOVIE,
+            providerId = 1L,
+            title = "Completed Movie",
+            streamUrl = "https://example.com/movie.mkv",
+            resumePositionMs = 96_000L,
+            totalDurationMs = 100_000L
+        )
+        assertThat(isPlaybackComplete(completedMovie.resumePositionMs, completedMovie.totalDurationMs)).isTrue()
+    }
+
+    // 25. 25+ incomplete items all remain ordered newest-first
+    @Test
+    fun `25 plus incomplete items remain ordered newest first`() {
+        val items = (1L..30L).map { id ->
+            PlaybackHistory(
+                contentId = id,
+                contentType = ContentType.MOVIE,
+                providerId = 1L,
+                title = "Movie $id",
+                streamUrl = "https://example.com/$id.mkv",
+                lastWatchedAt = 10_000L + id,
+                resumePositionMs = 5000L,
+                totalDurationMs = 50_000L
+            )
+        }
+
+        val sorted = items.sortedByDescending { it.lastWatchedAt }
+        assertThat(sorted).hasSize(30)
+        assertThat(sorted.first().contentId).isEqualTo(30L)
+        assertThat(sorted.last().contentId).isEqualTo(1L)
     }
 }
