@@ -101,7 +101,7 @@ class GetContinueWatching @Inject constructor(
         ContinueWatchingScope.SERIES -> contentType == ContentType.SERIES || contentType == ContentType.SERIES_EPISODE
     }
 
-    internal fun continueWatchingKey(entry: PlaybackHistory): String = when (entry.contentType) {
+    fun continueWatchingKey(entry: PlaybackHistory): String = when (entry.contentType) {
         ContentType.MOVIE -> {
             val streamKey = parseStreamIdOrUrl(entry.streamUrl) ?: entry.contentId.toString()
             "movie:${entry.providerId}:$streamKey"

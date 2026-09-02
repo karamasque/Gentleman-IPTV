@@ -79,6 +79,7 @@ class CloudUserStateSyncManager @Inject constructor(
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lastSyncedProgressTimes = ConcurrentHashMap<String, Long>()
     private val lastSyncedProgressPositions = ConcurrentHashMap<String, Long>()
+    private val lastRepairTimeByProvider = ConcurrentHashMap<Long, Long>()
     private val reconcileMutex = kotlinx.coroutines.sync.Mutex()
     private var lastReconcileTime = 0L
 
@@ -511,9 +512,7 @@ class CloudUserStateSyncManager @Inject constructor(
                     for (doc in historySnapshot.documents) {
                         val data = doc.data ?: continue
                         val providerStableKey = (data["providerStableKey"] as? String) ?: ""
-                        val legacyProviderId = (data["providerId"] as? Long) ?: 0L
-                        val localProvider = providersByStableKey[providerStableKey]
-                            ?: localProviders.firstOrNull { it.id == legacyProviderId }
+                        val localProvider = if (providerStableKey.isNotBlank()) providersByStableKey[providerStableKey] else null
 
                         val contentTypeStr = (data["contentType"] as? String) ?: continue
                         val contentType = runCatching { ContentType.valueOf(contentTypeStr) }.getOrNull() ?: continue
@@ -523,7 +522,6 @@ class CloudUserStateSyncManager @Inject constructor(
                         val updatedAt = (data["updatedAt"] as? Long) ?: 0L
                         val isCompleted = (data["isCompleted"] as? Boolean)
                             ?: (totalDurationMs > 0L && resumePositionMs >= totalDurationMs * 0.95)
-                        val cloudRevision = (data["revision"] as? Long) ?: 0L
 
                         if (localProvider == null) {
                             minUnresolvedWatchHistoryTime = minOf(minUnresolvedWatchHistoryTime ?: updatedAt, updatedAt)
@@ -538,7 +536,8 @@ class CloudUserStateSyncManager @Inject constructor(
 
                                 if (localMovie != null) {
                                     val local = playbackHistoryDao.get(localMovie.id, ContentType.MOVIE.name, localProvider.id)
-                                    if (local == null || cloudRevision > 0L || updatedAt > local.lastWatchedAt) {
+                                    val shouldUpdate = local == null || (updatedAt > local.lastWatchedAt && (local.watchedStatus != "COMPLETED" || isCompleted))
+                                    if (shouldUpdate) {
                                         val title = (data["title"] as? String)?.takeIf { it.isNotBlank() } ?: localMovie.name
                                         val posterUrl = localMovie.posterUrl
                                         val streamUrl = localMovie.streamUrl.takeIf { it.isNotBlank() } ?: ""
@@ -586,7 +585,8 @@ class CloudUserStateSyncManager @Inject constructor(
 
                                 if (localEpisode != null) {
                                     val local = playbackHistoryDao.get(localEpisode.id, ContentType.SERIES_EPISODE.name, localProvider.id)
-                                    if (local == null || cloudRevision > 0L || updatedAt > local.lastWatchedAt) {
+                                    val shouldUpdate = local == null || (updatedAt > local.lastWatchedAt && (local.watchedStatus != "COMPLETED" || isCompleted))
+                                    if (shouldUpdate) {
                                         val title = (data["title"] as? String)?.takeIf { it.isNotBlank() }
                                             ?: localEpisode.title.ifBlank { localSeries?.name ?: "" }
                                         val posterUrl = localEpisode.coverUrl?.takeIf { it.isNotBlank() }
@@ -650,9 +650,7 @@ class CloudUserStateSyncManager @Inject constructor(
                         val data = doc.data ?: continue
                         val isFavorite = (data["isFavorite"] as? Boolean) ?: false
                         val providerStableKey = (data["providerStableKey"] as? String) ?: ""
-                        val legacyProviderId = (data["providerId"] as? Long) ?: 0L
-                        val localProvider = providersByStableKey[providerStableKey]
-                            ?: localProviders.firstOrNull { it.id == legacyProviderId }
+                        val localProvider = (if (providerStableKey.isNotBlank()) providersByStableKey[providerStableKey] else null)
                             ?: continue
 
                         val contentTypeStr = (data["contentType"] as? String) ?: continue
@@ -707,6 +705,139 @@ class CloudUserStateSyncManager @Inject constructor(
             } finally {
                 reconcileMutex.unlock()
             }
+        }
+    }
+
+    /**
+     * Performs a bounded, idempotent provider-identity repair pass for the specified active provider.
+     * Queries up to 500 incomplete cloud watch-history documents belonging to the active providerStableKey,
+     * resolves them to the local provider ID, and upserts valid local playback_history records.
+     */
+    fun repairActiveProviderHistory(activeProviderId: Long, force: Boolean = false) {
+        if (activeProviderId <= 0L) return
+        val user = FirebaseAuth.getInstance().currentUser ?: return
+        if (user.isAnonymous) return
+        val now = System.currentTimeMillis()
+        val lastRepair = lastRepairTimeByProvider[activeProviderId] ?: 0L
+        if (!force && (now - lastRepair < RECONCILE_MIN_INTERVAL_MS)) {
+            return
+        }
+        syncScope.launch {
+            runCatching {
+                lastRepairTimeByProvider[activeProviderId] = System.currentTimeMillis()
+                val localProvider = providerDao.getById(activeProviderId) ?: return@launch
+                val activeProviderStableKey = computeProviderStableKey(localProvider)
+                if (activeProviderStableKey.isBlank()) return@launch
+
+                val firestore = FirebaseFirestore.getInstance()
+                val snapshot = firestore.collection("users").document(user.uid)
+                    .collection("watch_history")
+                    .whereEqualTo("providerStableKey", activeProviderStableKey)
+                    .limit(500)
+                    .get()
+                    .await()
+
+                for (doc in snapshot.documents) {
+                    val data = doc.data ?: continue
+                    val isCompleted = (data["isCompleted"] as? Boolean) ?: false
+                    val totalDurationMs = (data["totalDurationMs"] as? Long) ?: 0L
+                    val resumePositionMs = (data["resumePositionMs"] as? Long) ?: 0L
+                    if (isCompleted || (totalDurationMs > 0L && resumePositionMs >= totalDurationMs * 0.95)) {
+                        continue
+                    }
+                    val contentTypeStr = (data["contentType"] as? String) ?: continue
+                    val contentType = runCatching { ContentType.valueOf(contentTypeStr) }.getOrNull() ?: continue
+                    val streamId = (data["streamId"] as? Long) ?: (data["contentId"] as? Long) ?: 0L
+                    val updatedAt = (data["updatedAt"] as? Long) ?: 0L
+
+                    when (contentType) {
+                        ContentType.MOVIE -> {
+                            val localMovie = if (streamId > 0L) {
+                                movieDao.getByStreamId(localProvider.id, streamId)
+                            } else null
+
+                            if (localMovie != null) {
+                                val local = playbackHistoryDao.get(localMovie.id, ContentType.MOVIE.name, localProvider.id)
+                                if (local?.watchedStatus == "COMPLETED") continue
+                                if (local != null && local.lastWatchedAt >= updatedAt) continue
+
+                                val title = (data["title"] as? String)?.takeIf { it.isNotBlank() } ?: localMovie.name
+                                val posterUrl = localMovie.posterUrl
+                                val streamUrl = localMovie.streamUrl.takeIf { it.isNotBlank() } ?: ""
+                                playbackHistoryDao.insertOrUpdate(
+                                    PlaybackHistoryEntity(
+                                        providerId = localProvider.id,
+                                        contentId = localMovie.id,
+                                        contentType = ContentType.MOVIE,
+                                        title = title,
+                                        posterUrl = posterUrl,
+                                        streamUrl = streamUrl,
+                                        resumePositionMs = resumePositionMs,
+                                        totalDurationMs = totalDurationMs,
+                                        lastWatchedAt = updatedAt,
+                                        seriesId = null,
+                                        seasonNumber = null,
+                                        episodeNumber = null,
+                                        watchedStatus = "IN_PROGRESS"
+                                    )
+                                )
+                                movieDao.syncWatchProgressFromHistory(localMovie.id, localProvider.id)
+                            }
+                        }
+                        ContentType.SERIES_EPISODE -> {
+                            val seriesRemoteId = (data["seriesRemoteId"] as? Long) ?: 0L
+                            val seasonNumber = (data["seasonNumber"] as? Long)?.toInt() ?: 0
+                            val episodeNumber = (data["episodeNumber"] as? Long)?.toInt() ?: 0
+
+                            val localSeries = if (seriesRemoteId > 0L) {
+                                seriesDao.getBySeriesId(localProvider.id, seriesRemoteId)
+                            } else null
+
+                            val localEpisode = when {
+                                localSeries != null && seasonNumber > 0 && episodeNumber > 0 -> {
+                                    episodeDao.getByCoordinates(localProvider.id, localSeries.id, seasonNumber, episodeNumber)
+                                }
+                                streamId > 0L -> {
+                                    episodeDao.getByEpisodeId(localProvider.id, streamId)
+                                }
+                                else -> null
+                            }
+
+                            if (localEpisode != null) {
+                                val local = playbackHistoryDao.get(localEpisode.id, ContentType.SERIES_EPISODE.name, localProvider.id)
+                                if (local?.watchedStatus == "COMPLETED") continue
+                                if (local != null && local.lastWatchedAt >= updatedAt) continue
+
+                                val title = (data["title"] as? String)?.takeIf { it.isNotBlank() }
+                                    ?: localEpisode.title.ifBlank { localSeries?.name ?: "" }
+                                val posterUrl = localEpisode.coverUrl?.takeIf { it.isNotBlank() }
+                                    ?: localSeries?.posterUrl?.takeIf { it.isNotBlank() }
+                                    ?: localSeries?.backdropUrl?.takeIf { it.isNotBlank() }
+                                val streamUrl = localEpisode.streamUrl.takeIf { it.isNotBlank() } ?: ""
+                                playbackHistoryDao.insertOrUpdate(
+                                    PlaybackHistoryEntity(
+                                        providerId = localProvider.id,
+                                        contentId = localEpisode.id,
+                                        contentType = ContentType.SERIES_EPISODE,
+                                        title = title,
+                                        posterUrl = posterUrl,
+                                        streamUrl = streamUrl,
+                                        resumePositionMs = resumePositionMs,
+                                        totalDurationMs = totalDurationMs,
+                                        lastWatchedAt = updatedAt,
+                                        seriesId = localSeries?.id ?: localEpisode.seriesId,
+                                        seasonNumber = seasonNumber,
+                                        episodeNumber = episodeNumber,
+                                        watchedStatus = "IN_PROGRESS"
+                                    )
+                                )
+                                episodeDao.syncWatchProgressFromHistory(localEpisode.id, localProvider.id)
+                            }
+                        }
+                        else -> { /* No-op */ }
+                    }
+                }
+            }.onFailure { Log.w(TAG, "Failed to repair active provider history", it) }
         }
     }
 }

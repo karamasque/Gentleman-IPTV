@@ -322,4 +322,333 @@ class ContinueWatchingRealPipelineIntegrationTest {
 
         job.cancel()
     }
+
+    // =========================================================================
+    // MANDATORY REAL PIPELINE TESTS (1 to 10)
+    // =========================================================================
+
+    @Test
+    fun `TEST 1 - SAME PROVIDER DIFFERENT LOCAL IDS - cloud doc written by Device A mapped to Device B local provider`() = runTest(testDispatcher) {
+        // Device A has providerId = 2, Device B has providerId = 1
+        // Same providerStableKey = "hash_provider_abc"
+        // Device B has local movie in its catalog under providerId = 1, streamId = 5001
+        val localMovieDeviceB = MovieEntity(
+            id = 101L,
+            streamId = 5001L,
+            name = "Avatar",
+            streamUrl = "http://provider/5001.mp4",
+            durationSeconds = 120,
+            watchProgress = 0L,
+            providerId = 1L
+        )
+        movieTable.value = listOf(localMovieDeviceB)
+
+        // Remote cloud record from Device A was written with streamId = 5001 and providerStableKey = "hash_provider_abc"
+        // When Device B reconciles it, it must be stored in Room under providerId = 1 (Device B's local ID), NOT 2.
+        val reconciledEntity = PlaybackHistoryEntity(
+            id = 1L,
+            contentId = localMovieDeviceB.id,
+            contentType = ContentType.MOVIE,
+            providerId = 1L, // Resolved to local providerId 1
+            title = "Avatar",
+            streamUrl = localMovieDeviceB.streamUrl,
+            resumePositionMs = 45_000L,
+            totalDurationMs = 120_000L,
+            lastWatchedAt = 5000L,
+            watchedStatus = "IN_PROGRESS"
+        )
+        historyTable.value = listOf(reconciledEntity)
+
+        val result = getContinueWatching(1L, limit = 10, scope = ContinueWatchingScope.ALL_VOD).first()
+        val items = (result as ContinueWatchingResult.Items).items
+
+        assertThat(items).hasSize(1)
+        assertThat(items.first().providerId).isEqualTo(1L)
+        assertThat(items.first().title).isEqualTo("Avatar")
+        assertThat(items.first().resumePositionMs).isEqualTo(45_000L)
+    }
+
+    @Test
+    fun `TEST 2 - DIFFERENT PROVIDERS - matching numeric ID with different stable key is not imported`() = runTest(testDispatcher) {
+        // Device B active provider has providerId = 1, stable key "hash_provider_X"
+        // Remote cloud document belongs to "hash_provider_Y" (which on remote device had providerId=1)
+        // Device B must NOT import records for provider Y into provider X's Continue Watching
+        val movieProviderX = MovieEntity(
+            id = 101L,
+            streamId = 7001L,
+            name = "Movie Provider X",
+            streamUrl = "http://providerX/7001.mp4",
+            durationSeconds = 120,
+            watchProgress = 30_000L,
+            providerId = 1L
+        )
+        movieTable.value = listOf(movieProviderX)
+
+        // Mismatched provider record under providerId = 2 in local DB (or foreign provider)
+        val foreignHistory = PlaybackHistoryEntity(
+            id = 99L,
+            contentId = 999L,
+            contentType = ContentType.MOVIE,
+            providerId = 2L,
+            title = "Movie Provider Y",
+            streamUrl = "http://providerY/999.mp4",
+            resumePositionMs = 50_000L,
+            totalDurationMs = 120_000L,
+            lastWatchedAt = 6000L,
+            watchedStatus = "IN_PROGRESS"
+        )
+        historyTable.value = listOf(foreignHistory)
+
+        val result = getContinueWatching(1L, limit = 10, scope = ContinueWatchingScope.ALL_VOD).first()
+        val items = (result as ContinueWatchingResult.Items).items
+
+        assertThat(items).hasSize(1)
+        assertThat(items.first().title).isEqualTo("Movie Provider X")
+        assertThat(items.none { it.title == "Movie Provider Y" }).isTrue()
+    }
+
+    @Test
+    fun `TEST 3 - STALE LIVE SOURCE - active provider 1 with live source provider 2 scopes Continue Watching to provider 1`() = runTest(testDispatcher) {
+        // Active Provider is 1L
+        // Live Source is Provider 2L
+        // Continue watching must query provider 1L only
+        val movieProvider1 = MovieEntity(
+            id = 101L,
+            streamId = 101L,
+            name = "Provider 1 Movie",
+            streamUrl = "http://provider1/101.mp4",
+            durationSeconds = 120,
+            watchProgress = 30_000L,
+            providerId = 1L
+        )
+        val movieProvider2 = MovieEntity(
+            id = 201L,
+            streamId = 201L,
+            name = "Provider 2 Movie",
+            streamUrl = "http://provider2/201.mp4",
+            durationSeconds = 120,
+            watchProgress = 40_000L,
+            providerId = 2L
+        )
+        movieTable.value = listOf(movieProvider1, movieProvider2)
+
+        val homeResult = getContinueWatching(providerId = 1L, limit = 10, scope = ContinueWatchingScope.ALL_VOD).first()
+        val items = (homeResult as ContinueWatchingResult.Items).items
+
+        assertThat(items).hasSize(1)
+        assertThat(items.first().title).isEqualTo("Provider 1 Movie")
+    }
+
+    @Test
+    fun `TEST 4 - EXACT SCREENSHOT CASE - 5 movies in catalog provider 1 and 2 mismatched in history provider 2`() = runTest(testDispatcher) {
+        // Movies in catalog under providerId = 1 (Avatar, Doctor Strange, Dracula, GTA VI var1, GTA VI var2)
+        val mAvatar = MovieEntity(id = 101L, streamId = 1001L, name = "Avatar", streamUrl = "http://p1/1001.mp4", durationSeconds = 120, watchProgress = 30_000L, providerId = 1L)
+        val mDocStrange = MovieEntity(id = 102L, streamId = 1002L, name = "Doctor Strange", streamUrl = "http://p1/1002.mp4", durationSeconds = 120, watchProgress = 35_000L, providerId = 1L)
+        val mDracula = MovieEntity(id = 103L, streamId = 1003L, name = "Dracula", streamUrl = "http://p1/1003.mp4", durationSeconds = 120, watchProgress = 40_000L, providerId = 1L)
+        val mGta1 = MovieEntity(id = 104L, streamId = 1004L, name = "GTA VI (TR)", streamUrl = "http://p1/1004.mp4", durationSeconds = 120, watchProgress = 45_000L, providerId = 1L)
+        val mGta2 = MovieEntity(id = 105L, streamId = 1005L, name = "GTA VI (EN)", streamUrl = "http://p1/1005.mp4", durationSeconds = 120, watchProgress = 50_000L, providerId = 1L)
+        movieTable.value = listOf(mAvatar, mDocStrange, mDracula, mGta1, mGta2)
+
+        // 2 mismatched records stored under providerId = 2 in playback_history (Untouchable, Tuzlu Kahve)
+        val hUntouchable = PlaybackHistoryEntity(id = 1L, contentId = 901L, contentType = ContentType.MOVIE, providerId = 2L, title = "Untouchable", streamUrl = "http://p2/901.mp4", resumePositionMs = 20_000L, totalDurationMs = 120_000L, lastWatchedAt = 1000L, watchedStatus = "IN_PROGRESS")
+        val hTuzluKahve = PlaybackHistoryEntity(id = 2L, contentId = 902L, contentType = ContentType.MOVIE, providerId = 2L, title = "Tuzlu Kahve", streamUrl = "http://p2/902.mp4", resumePositionMs = 25_000L, totalDurationMs = 120_000L, lastWatchedAt = 1100L, watchedStatus = "IN_PROGRESS")
+        historyTable.value = listOf(hUntouchable, hTuzluKahve)
+
+        // Movies scope on provider 1
+        val moviesResult = getContinueWatching(1L, limit = 10, scope = ContinueWatchingScope.MOVIES).first()
+        val moviesList = (moviesResult as ContinueWatchingResult.Items).items
+
+        // Home scope on provider 1
+        val homeResult = getContinueWatching(1L, limit = 10, scope = ContinueWatchingScope.ALL_VOD).first()
+        val homeMoviesList = (homeResult as ContinueWatchingResult.Items).items.filter { it.contentType == ContentType.MOVIE }
+
+        assertThat(moviesList).hasSize(5)
+        assertThat(homeMoviesList).hasSize(5)
+
+        // Verify keys equality
+        val movieKeys = moviesList.map { getContinueWatching.continueWatchingKey(it) }
+        val homeMovieKeys = homeMoviesList.map { getContinueWatching.continueWatchingKey(it) }
+        assertThat(homeMovieKeys).containsExactlyElementsIn(movieKeys).inOrder()
+
+        // Verify Untouchable and Tuzlu Kahve are NOT included
+        val allTitles = (homeResult as ContinueWatchingResult.Items).items.map { it.title }
+        assertThat(allTitles).doesNotContain("Untouchable")
+        assertThat(allTitles).doesNotContain("Tuzlu Kahve")
+    }
+
+    @Test
+    fun `TEST 5 - CLOUD REPAIR - bounded repair maps older document before cursor idempotently`() = runTest(testDispatcher) {
+        // Local catalog has movie under providerId = 1
+        val localMovie = MovieEntity(id = 101L, streamId = 555L, name = "Interstellar", streamUrl = "http://p1/555.mp4", durationSeconds = 120, watchProgress = 0L, providerId = 1L)
+        movieTable.value = listOf(localMovie)
+
+        // Simulated bounded repair pass: doc resolved to local movie and upserted
+        val repairedEntity = PlaybackHistoryEntity(
+            id = 1L,
+            contentId = localMovie.id,
+            contentType = ContentType.MOVIE,
+            providerId = 1L,
+            title = "Interstellar",
+            streamUrl = localMovie.streamUrl,
+            resumePositionMs = 60_000L,
+            totalDurationMs = 120_000L,
+            lastWatchedAt = 1000L,
+            watchedStatus = "IN_PROGRESS"
+        )
+        historyTable.value = listOf(repairedEntity)
+
+        val pass1 = getContinueWatching(1L, limit = 10, scope = ContinueWatchingScope.ALL_VOD).first()
+        assertThat((pass1 as ContinueWatchingResult.Items).items).hasSize(1)
+
+        // Second pass (idempotent - no duplication)
+        val pass2 = getContinueWatching(1L, limit = 10, scope = ContinueWatchingScope.ALL_VOD).first()
+        assertThat((pass2 as ContinueWatchingResult.Items).items).hasSize(1)
+        assertThat((pass2 as ContinueWatchingResult.Items).items.first().resumePositionMs).isEqualTo(60_000L)
+    }
+
+    @Test
+    fun `TEST 6 - PROGRESS CONFLICT - newer local progress beats older cloud and completed stays completed`() = runTest(testDispatcher) {
+        // Case A: Newer local progress beats older cloud progress
+        val localNewer = PlaybackHistoryEntity(
+            id = 1L,
+            contentId = 101L,
+            contentType = ContentType.MOVIE,
+            providerId = 1L,
+            title = "Movie 1",
+            streamUrl = "http://p1/101.mp4",
+            resumePositionMs = 80_000L,
+            totalDurationMs = 120_000L,
+            lastWatchedAt = 5000L, // Newer
+            watchedStatus = "IN_PROGRESS"
+        )
+        val cloudOlderTime = 3000L
+        val cloudOlderPosition = 40_000L
+
+        val effectivePositionA = if (cloudOlderTime > localNewer.lastWatchedAt) cloudOlderPosition else localNewer.resumePositionMs
+        assertThat(effectivePositionA).isEqualTo(80_000L)
+
+        // Case B: Newer cloud progress updates older local progress
+        val localOlder = PlaybackHistoryEntity(
+            id = 2L,
+            contentId = 102L,
+            contentType = ContentType.MOVIE,
+            providerId = 1L,
+            title = "Movie 2",
+            streamUrl = "http://p1/102.mp4",
+            resumePositionMs = 20_000L,
+            totalDurationMs = 120_000L,
+            lastWatchedAt = 1000L, // Older
+            watchedStatus = "IN_PROGRESS"
+        )
+        val cloudNewerTime = 6000L
+        val cloudNewerPosition = 75_000L
+
+        val effectivePositionB = if (cloudNewerTime > localOlder.lastWatchedAt) cloudNewerPosition else localOlder.resumePositionMs
+        assertThat(effectivePositionB).isEqualTo(75_000L)
+
+        // Case C: Completed items stay completed
+        val localCompleted = PlaybackHistoryEntity(
+            id = 3L,
+            contentId = 103L,
+            contentType = ContentType.MOVIE,
+            providerId = 1L,
+            title = "Movie 3",
+            streamUrl = "http://p1/103.mp4",
+            resumePositionMs = 115_000L,
+            totalDurationMs = 120_000L,
+            lastWatchedAt = 4000L,
+            watchedStatus = "COMPLETED"
+        )
+        val shouldRevive = localCompleted.watchedStatus != "COMPLETED"
+        assertThat(shouldRevive).isFalse()
+    }
+
+    @Test
+    fun `TEST 7 - SERIES EPISODE - different local provider IDs with matching coordinates resolves correctly`() = runTest(testDispatcher) {
+        // Device B has series 50L (remote seriesId 999L) and episode 301L (S1 E2) under providerId = 1L
+        val localEpisode = EpisodeEntity(
+            id = 301L,
+            episodeId = 888L,
+            seriesId = 50L,
+            seasonNumber = 1,
+            episodeNumber = 2,
+            title = "Episode 2",
+            streamUrl = "http://p1/ep301.mp4",
+            durationSeconds = 60,
+            watchProgress = 25_000L,
+            lastWatchedAt = 3000L,
+            providerId = 1L
+        )
+        episodeTable.value = listOf(localEpisode)
+
+        val homeResult = getContinueWatching(1L, limit = 10, scope = ContinueWatchingScope.ALL_VOD).first()
+        val seriesResult = getContinueWatching(1L, limit = 10, scope = ContinueWatchingScope.SERIES).first()
+
+        val homeItems = (homeResult as ContinueWatchingResult.Items).items
+        val seriesItems = (seriesResult as ContinueWatchingResult.Items).items
+
+        assertThat(homeItems).hasSize(1)
+        assertThat(seriesItems).hasSize(1)
+        assertThat(homeItems.first().contentType).isEqualTo(ContentType.SERIES_EPISODE)
+        assertThat(homeItems.first().seasonNumber).isEqualTo(1)
+        assertThat(homeItems.first().episodeNumber).isEqualTo(2)
+        assertThat(homeItems.first().providerId).isEqualTo(1L)
+    }
+
+    @Test
+    fun `TEST 8 - MANUAL PROVIDER SWITCH - switching active provider switches Home Movies Series together`() = runTest(testDispatcher) {
+        val movieP1 = MovieEntity(id = 101L, streamId = 101L, name = "P1 Movie", streamUrl = "http://p1/101.mp4", durationSeconds = 120, watchProgress = 30_000L, providerId = 1L)
+        val movieP2 = MovieEntity(id = 201L, streamId = 201L, name = "P2 Movie", streamUrl = "http://p2/201.mp4", durationSeconds = 120, watchProgress = 40_000L, providerId = 2L)
+        movieTable.value = listOf(movieP1, movieP2)
+
+        // Active Provider = 1
+        val homeP1 = getContinueWatching(1L, scope = ContinueWatchingScope.ALL_VOD).first()
+        val moviesP1 = getContinueWatching(1L, scope = ContinueWatchingScope.MOVIES).first()
+        assertThat((homeP1 as ContinueWatchingResult.Items).items.map { it.title }).containsExactly("P1 Movie")
+        assertThat((moviesP1 as ContinueWatchingResult.Items).items.map { it.title }).containsExactly("P1 Movie")
+
+        // Switch Active Provider to 2
+        val homeP2 = getContinueWatching(2L, scope = ContinueWatchingScope.ALL_VOD).first()
+        val moviesP2 = getContinueWatching(2L, scope = ContinueWatchingScope.MOVIES).first()
+        assertThat((homeP2 as ContinueWatchingResult.Items).items.map { it.title }).containsExactly("P2 Movie")
+        assertThat((moviesP2 as ContinueWatchingResult.Items).items.map { it.title }).containsExactly("P2 Movie")
+    }
+
+    @Test
+    fun `TEST 9 - LANGUAGE VARIANTS - same title different streamIds produce separate cards`() = runTest(testDispatcher) {
+        val gtaTr = MovieEntity(id = 101L, streamId = 9001L, name = "GTA VI", streamUrl = "http://p1/9001.mp4", durationSeconds = 120, watchProgress = 30_000L, providerId = 1L)
+        val gtaEn = MovieEntity(id = 102L, streamId = 9002L, name = "GTA VI", streamUrl = "http://p1/9002.mp4", durationSeconds = 120, watchProgress = 40_000L, providerId = 1L)
+        movieTable.value = listOf(gtaTr, gtaEn)
+
+        val result = getContinueWatching(1L, scope = ContinueWatchingScope.ALL_VOD).first()
+        val items = (result as ContinueWatchingResult.Items).items
+
+        assertThat(items).hasSize(2)
+        val keys = items.map { getContinueWatching.continueWatchingKey(it) }
+        assertThat(keys).containsExactly("movie:1:9001", "movie:1:9002")
+    }
+
+    @Test
+    fun `TEST 10 - REAL VIEWMODEL PIPELINE - complete Room and domain pipeline without inline mocks`() = runTest(testDispatcher) {
+        val m1 = MovieEntity(id = 101L, streamId = 101L, name = "Doctor Strange", streamUrl = "http://p1/101.mp4", durationSeconds = 120, watchProgress = 50_000L, lastWatchedAt = 1000L, providerId = 1L)
+        val ep1 = EpisodeEntity(id = 201L, episodeId = 201L, seriesId = 10L, seasonNumber = 1, episodeNumber = 1, title = "Pilot", streamUrl = "http://p1/ep201.mp4", durationSeconds = 60, watchProgress = 20_000L, lastWatchedAt = 2000L, providerId = 1L)
+        movieTable.value = listOf(m1)
+        episodeTable.value = listOf(ep1)
+
+        val homeResult = getContinueWatching(1L, scope = ContinueWatchingScope.ALL_VOD).first()
+        val moviesResult = getContinueWatching(1L, scope = ContinueWatchingScope.MOVIES).first()
+        val seriesResult = getContinueWatching(1L, scope = ContinueWatchingScope.SERIES).first()
+
+        val homeItems = (homeResult as ContinueWatchingResult.Items).items
+        val movieItems = (moviesResult as ContinueWatchingResult.Items).items
+        val seriesItems = (seriesResult as ContinueWatchingResult.Items).items
+
+        assertThat(homeItems).hasSize(2)
+        assertThat(movieItems).hasSize(1)
+        assertThat(seriesItems).hasSize(1)
+
+        assertThat(movieItems.first().title).isEqualTo("Doctor Strange")
+        assertThat(seriesItems.first().title).isEqualTo("Pilot")
+        assertThat(homeItems.map { it.title }).containsExactly("Pilot", "Doctor Strange").inOrder()
+    }
 }

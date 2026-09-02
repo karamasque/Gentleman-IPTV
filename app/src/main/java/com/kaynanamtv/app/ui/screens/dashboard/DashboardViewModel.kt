@@ -105,6 +105,8 @@ class DashboardViewModel @Inject constructor(
     private val _scheduledChannelIds = MutableStateFlow<Set<Long>>(emptySet())
     val scheduledChannelIds: StateFlow<Set<Long>> = _scheduledChannelIds.asStateFlow()
 
+
+
     init {
         viewModelScope.launch {
             recordingManager.observeRecordingItems().collect { items ->
@@ -201,6 +203,7 @@ class DashboardViewModel @Inject constructor(
         liveProviderIds: List<Long>,
         combinedProfileId: Long?
     ): Flow<DashboardUiState> {
+        cloudUserStateSyncManager.repairActiveProviderHistory(provider.id)
         val movieShelf = combine(
             movieRepository.getFreshPreview(provider.id, MOVIE_SHELF_LIMIT),
             preferencesRepository.parentalControlLevel
@@ -236,7 +239,7 @@ class DashboardViewModel @Inject constructor(
         val baseContentShelves = combine(
             observeFavoriteChannels(liveProviderIds).onStart { emit(emptyList()) },
             observeRecentChannels(liveProviderIds).onStart { emit(emptyList()) },
-            observeContinueWatching(liveProviderIds.toSet()).onStart { emit(ContinueWatchingShelf()) },
+            observeContinueWatching(setOf(provider.id)).onStart { emit(ContinueWatchingShelf()) },
             movieShelf.onStart { emit(emptyList()) },
             seriesShelf.onStart { emit(emptyList()) }
         ) { favoriteChannels, recentChannels, continueWatchingShelf, recentMovies, recentSeries ->
@@ -254,8 +257,8 @@ class DashboardViewModel @Inject constructor(
             baseContentShelves,
             observeFavoriteMovies(liveProviderIds).onStart { emit(emptyList()) },
             observeFavoriteSeries(liveProviderIds).onStart { emit(emptyList()) },
-            observeContinueWatchingByScope(liveProviderIds.toSet(), ContinueWatchingScope.MOVIES).onStart { emit(emptyList()) },
-            observeContinueWatchingByScope(liveProviderIds.toSet(), ContinueWatchingScope.SERIES).onStart { emit(emptyList()) }
+            observeContinueWatchingByScope(setOf(provider.id), ContinueWatchingScope.MOVIES).onStart { emit(emptyList()) },
+            observeContinueWatchingByScope(setOf(provider.id), ContinueWatchingScope.SERIES).onStart { emit(emptyList()) }
         ) { shelves, favoriteMovies, favoriteSeries, continueWatchingMovies, continueWatchingSeriesItems ->
             shelves.copy(
                 favoriteMovies = favoriteMovies,
