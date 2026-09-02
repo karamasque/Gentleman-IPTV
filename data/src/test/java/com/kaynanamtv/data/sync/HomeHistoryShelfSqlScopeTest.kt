@@ -41,6 +41,10 @@ class HomeHistoryShelfSqlScopeTest {
     @Before
     fun setUp() {
         whenever(preferencesRepository.isIncognitoMode).thenReturn(flowOf(false))
+        whenever(movieDao.observeMoviesWithWatchProgressByProvider(any(), any())).thenReturn(flowOf(emptyList()))
+        whenever(movieDao.observeMoviesWithWatchProgressByProviders(any(), any())).thenReturn(flowOf(emptyList()))
+        whenever(episodeDao.observeEpisodesWithWatchProgressByProvider(any(), any())).thenReturn(flowOf(emptyList()))
+        whenever(episodeDao.observeEpisodesWithWatchProgressByProviders(any(), any())).thenReturn(flowOf(emptyList()))
         repository = PlaybackHistoryRepositoryImpl(
             dao = historyDao,
             preferencesRepository = preferencesRepository,

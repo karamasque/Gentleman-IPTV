@@ -1,12 +1,13 @@
 package com.kaynanamtv.app.ui.screens.continue_watching
 
-import android.app.Application
 import com.google.common.truth.Truth.assertThat
 import com.kaynanamtv.data.local.DatabaseTransactionRunner
 import com.kaynanamtv.data.local.dao.EpisodeDao
 import com.kaynanamtv.data.local.dao.MovieDao
 import com.kaynanamtv.data.local.dao.PlaybackHistoryDao
 import com.kaynanamtv.data.local.dao.SeriesDao
+import com.kaynanamtv.data.local.entity.EpisodeEntity
+import com.kaynanamtv.data.local.entity.MovieEntity
 import com.kaynanamtv.data.local.entity.PlaybackHistoryEntity
 import com.kaynanamtv.data.local.entity.PlaybackHistoryLiteEntity
 import com.kaynanamtv.data.preferences.PreferencesRepository
@@ -19,6 +20,7 @@ import com.kaynanamtv.domain.usecase.GetContinueWatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
@@ -30,8 +32,10 @@ class ContinueWatchingRealPipelineIntegrationTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
-    // Real in-memory DAO state holder simulating Room table
-    private val historyEntities = mutableListOf<PlaybackHistoryEntity>()
+    // Reactive StateFlows simulating live Room tables
+    private val historyTable = MutableStateFlow<List<PlaybackHistoryEntity>>(emptyList())
+    private val movieTable = MutableStateFlow<List<MovieEntity>>(emptyList())
+    private val episodeTable = MutableStateFlow<List<EpisodeEntity>>(emptyList())
 
     private val playbackHistoryDao: PlaybackHistoryDao = mock()
     private val movieDao: MovieDao = mock()
@@ -51,21 +55,22 @@ class ContinueWatchingRealPipelineIntegrationTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
 
-        historyEntities.clear()
+        historyTable.value = emptyList()
+        movieTable.value = emptyList()
+        episodeTable.value = emptyList()
 
-        // Configure mock DAO to execute real filtering queries matching Daos.kt SQL
+        // Configure mock DAOs to execute real Room-matching queries reactively
         whenever(playbackHistoryDao.getContinueWatchingCandidatesByProvider(any(), any())).thenAnswer { inv ->
             val providerId = inv.getArgument<Long>(0)
             val limit = inv.getArgument<Int>(1)
-            flowOf(
-                historyEntities
-                    .filter {
-                        it.providerId == providerId &&
-                            (it.contentType == ContentType.MOVIE || it.contentType == ContentType.SERIES_EPISODE || it.contentType == ContentType.SERIES) &&
-                            it.resumePositionMs > 0 &&
-                            !it.watchedStatus.startsWith("COMPLETED") &&
-                            (it.totalDurationMs <= 0 || it.resumePositionMs < it.totalDurationMs * 0.95)
-                    }
+            historyTable.map { list ->
+                list.filter {
+                    it.providerId == providerId &&
+                        (it.contentType == ContentType.MOVIE || it.contentType == ContentType.SERIES_EPISODE || it.contentType == ContentType.SERIES) &&
+                        it.resumePositionMs > 0 &&
+                        !it.watchedStatus.startsWith("COMPLETED") &&
+                        (it.totalDurationMs <= 0 || it.resumePositionMs < it.totalDurationMs * 0.95)
+                }
                     .sortedByDescending { it.lastWatchedAt }
                     .take(limit)
                     .map {
@@ -87,21 +92,20 @@ class ContinueWatchingRealPipelineIntegrationTest {
                             episodeNumber = it.episodeNumber
                         )
                     }
-            )
+            }
         }
 
         whenever(playbackHistoryDao.getContinueWatchingCandidatesByProviders(any(), any())).thenAnswer { inv ->
             val providerIds = inv.getArgument<Set<Long>>(0)
             val limit = inv.getArgument<Int>(1)
-            flowOf(
-                historyEntities
-                    .filter {
-                        it.providerId in providerIds &&
-                            (it.contentType == ContentType.MOVIE || it.contentType == ContentType.SERIES_EPISODE || it.contentType == ContentType.SERIES) &&
-                            it.resumePositionMs > 0 &&
-                            !it.watchedStatus.startsWith("COMPLETED") &&
-                            (it.totalDurationMs <= 0 || it.resumePositionMs < it.totalDurationMs * 0.95)
-                    }
+            historyTable.map { list ->
+                list.filter {
+                    it.providerId in providerIds &&
+                        (it.contentType == ContentType.MOVIE || it.contentType == ContentType.SERIES_EPISODE || it.contentType == ContentType.SERIES) &&
+                        it.resumePositionMs > 0 &&
+                        !it.watchedStatus.startsWith("COMPLETED") &&
+                        (it.totalDurationMs <= 0 || it.resumePositionMs < it.totalDurationMs * 0.95)
+                }
                     .sortedByDescending { it.lastWatchedAt }
                     .take(limit)
                     .map {
@@ -123,7 +127,63 @@ class ContinueWatchingRealPipelineIntegrationTest {
                             episodeNumber = it.episodeNumber
                         )
                     }
-            )
+            }
+        }
+
+        whenever(movieDao.observeMoviesWithWatchProgressByProvider(any(), any())).thenAnswer { inv ->
+            val providerId = inv.getArgument<Long>(0)
+            val limit = inv.getArgument<Int>(1)
+            movieTable.map { list ->
+                list.filter {
+                    it.providerId == providerId &&
+                        it.watchProgress > 0 &&
+                        (it.durationSeconds <= 0 || it.watchProgress < it.durationSeconds * 1000L * 0.95)
+                }
+                    .sortedByDescending { if (it.lastWatchedAt > 0L) it.lastWatchedAt else it.addedAt }
+                    .take(limit)
+            }
+        }
+
+        whenever(movieDao.observeMoviesWithWatchProgressByProviders(any(), any())).thenAnswer { inv ->
+            val providerIds = inv.getArgument<Set<Long>>(0)
+            val limit = inv.getArgument<Int>(1)
+            movieTable.map { list ->
+                list.filter {
+                    it.providerId in providerIds &&
+                        it.watchProgress > 0 &&
+                        (it.durationSeconds <= 0 || it.watchProgress < it.durationSeconds * 1000L * 0.95)
+                }
+                    .sortedByDescending { if (it.lastWatchedAt > 0L) it.lastWatchedAt else it.addedAt }
+                    .take(limit)
+            }
+        }
+
+        whenever(episodeDao.observeEpisodesWithWatchProgressByProvider(any(), any())).thenAnswer { inv ->
+            val providerId = inv.getArgument<Long>(0)
+            val limit = inv.getArgument<Int>(1)
+            episodeTable.map { list ->
+                list.filter {
+                    it.providerId == providerId &&
+                        it.watchProgress > 0 &&
+                        (it.durationSeconds <= 0 || it.watchProgress < it.durationSeconds * 1000L * 0.95)
+                }
+                    .sortedByDescending { it.lastWatchedAt }
+                    .take(limit)
+            }
+        }
+
+        whenever(episodeDao.observeEpisodesWithWatchProgressByProviders(any(), any())).thenAnswer { inv ->
+            val providerIds = inv.getArgument<Set<Long>>(0)
+            val limit = inv.getArgument<Int>(1)
+            episodeTable.map { list ->
+                list.filter {
+                    it.providerId in providerIds &&
+                        it.watchProgress > 0 &&
+                        (it.durationSeconds <= 0 || it.watchProgress < it.durationSeconds * 1000L * 0.95)
+                }
+                    .sortedByDescending { it.lastWatchedAt }
+                    .take(limit)
+            }
         }
 
         whenever(preferencesRepository.isIncognitoMode).thenReturn(flowOf(false))
@@ -146,199 +206,120 @@ class ContinueWatchingRealPipelineIntegrationTest {
     }
 
     @Test
-    fun `full continue watching pipeline proves all 10 real requirements`() = runTest(testDispatcher) {
-        // --- 1. SEED DATA ---
-        // 8 incomplete Movies (lastWatchedAt 1000..8000)
-        for (i in 1L..8L) {
-            historyEntities.add(
-                PlaybackHistoryEntity(
-                    id = i,
-                    contentId = 1000L + i,
-                    contentType = ContentType.MOVIE,
-                    providerId = 1L,
-                    title = "Movie $i",
-                    streamUrl = "http://iptv.example.com/movie/u/p/${1000L + i}.mp4",
-                    resumePositionMs = 30_000L,
-                    totalDurationMs = 120_000L,
-                    lastWatchedAt = 1000L + i,
-                    watchedStatus = "IN_PROGRESS"
-                )
-            )
-        }
+    fun `mandatory room reactive test with 5 movies 2 history 3 episodes and deduplication`() = runTest(testDispatcher) {
+        // --- SEED INITIAL DATABASE ---
+        // movies table: 5 eligible Movie progress rows (including 2 language variants)
+        val m1 = MovieEntity(id = 101L, streamId = 101L, name = "Movie A", streamUrl = "http://provider/101.mp4", durationSeconds = 120, watchProgress = 30_000L, lastWatchedAt = 1000L, providerId = 1L)
+        val m2 = MovieEntity(id = 102L, streamId = 102L, name = "Movie B", streamUrl = "http://provider/102.mp4", durationSeconds = 120, watchProgress = 40_000L, lastWatchedAt = 2000L, providerId = 1L)
+        val m3 = MovieEntity(id = 103L, streamId = 103L, name = "Movie C", streamUrl = "http://provider/103.mp4", durationSeconds = 120, watchProgress = 50_000L, lastWatchedAt = 3000L, providerId = 1L)
+        // Two same-title language variants with different streamIds
+        val m4Tr = MovieEntity(id = 104L, streamId = 8881L, name = "Doctor Strange TR", streamUrl = "http://provider/8881.mp4", durationSeconds = 120, watchProgress = 45_000L, lastWatchedAt = 4000L, providerId = 1L)
+        val m5Orig = MovieEntity(id = 105L, streamId = 8882L, name = "Doctor Strange EN", streamUrl = "http://provider/8882.mp4", durationSeconds = 120, watchProgress = 55_000L, lastWatchedAt = 5000L, providerId = 1L)
 
-        // Two same-title language variants with different streamIds (Doctor Strange TR Dub vs Original)
-        val trDub = PlaybackHistoryEntity(
-            id = 20L,
-            contentId = 2001L,
-            contentType = ContentType.MOVIE,
-            providerId = 1L,
-            title = "Doctor Strange in the Multiverse of Madness",
-            streamUrl = "http://iptv.example.com/movie/u/p/8881.mp4", // streamId 8881
-            resumePositionMs = 45_000L,
-            totalDurationMs = 120_000L,
-            lastWatchedAt = 9000L,
-            watchedStatus = "IN_PROGRESS"
-        )
-        val originalDub = PlaybackHistoryEntity(
-            id = 21L,
-            contentId = 2002L,
-            contentType = ContentType.MOVIE,
-            providerId = 1L,
-            title = "Doctor Strange in the Multiverse of Madness",
-            streamUrl = "http://iptv.example.com/movie/u/p/8882.mp4", // streamId 8882
-            resumePositionMs = 50_000L,
-            totalDurationMs = 120_000L,
-            lastWatchedAt = 9100L,
-            watchedStatus = "IN_PROGRESS"
-        )
-        historyEntities.add(trDub)
-        historyEntities.add(originalDub)
+        // One completed movie (must be excluded by eligibility)
+        val mCompleted = MovieEntity(id = 106L, streamId = 106L, name = "Completed Movie", streamUrl = "http://provider/106.mp4", durationSeconds = 100, watchProgress = 98_000L, lastWatchedAt = 6000L, providerId = 1L)
 
-        // One genuine duplicate with same provider + streamId
-        val duplicateMovie = PlaybackHistoryEntity(
-            id = 22L,
-            contentId = 2003L,
-            contentType = ContentType.MOVIE,
-            providerId = 1L,
-            title = "Doctor Strange in the Multiverse of Madness (Copy)",
-            streamUrl = "http://iptv.example.com/movie/u/p/8881.mp4", // Same streamId 8881 on provider 1
-            resumePositionMs = 46_000L,
-            totalDurationMs = 120_000L,
-            lastWatchedAt = 9050L,
-            watchedStatus = "IN_PROGRESS"
-        )
-        historyEntities.add(duplicateMovie)
+        movieTable.value = listOf(m1, m2, m3, m4Tr, m5Orig, mCompleted)
 
-        // 4 incomplete Episodes
-        for (e in 1..4) {
-            historyEntities.add(
-                PlaybackHistoryEntity(
-                    id = 30L + e,
-                    contentId = 3000L + e,
-                    contentType = ContentType.SERIES_EPISODE,
-                    providerId = 1L,
-                    seriesId = 500L,
-                    seasonNumber = 1,
-                    episodeNumber = e,
-                    title = "Breaking Bad S01E0$e",
-                    streamUrl = "http://iptv.example.com/series/u/p/${3000L + e}.mp4",
-                    resumePositionMs = 15_000L,
-                    totalDurationMs = 50_000L,
-                    lastWatchedAt = 9500L + e,
-                    watchedStatus = "IN_PROGRESS"
-                )
-            )
-        }
+        // playback_history table: only 2 matching eligible rows (one genuine duplicate of Movie A with newer progress)
+        val h1 = PlaybackHistoryEntity(id = 1L, contentId = 101L, contentType = ContentType.MOVIE, providerId = 1L, title = "Movie A (from history)", streamUrl = "http://provider/101.mp4", resumePositionMs = 35_000L, totalDurationMs = 120_000L, lastWatchedAt = 1500L, watchedStatus = "IN_PROGRESS")
+        val h2 = PlaybackHistoryEntity(id = 2L, contentId = 102L, contentType = ContentType.MOVIE, providerId = 1L, title = "Movie B", streamUrl = "http://provider/102.mp4", resumePositionMs = 40_000L, totalDurationMs = 120_000L, lastWatchedAt = 2000L, watchedStatus = "IN_PROGRESS")
+        historyTable.value = listOf(h1, h2)
 
-        // One Series entry whose enrichment metadata is initially unavailable
-        val unenrichedEpisode = PlaybackHistoryEntity(
-            id = 40L,
-            contentId = 4001L,
-            contentType = ContentType.SERIES_EPISODE,
-            providerId = 1L,
-            seriesId = 9999L, // Not in seriesRepository
-            seasonNumber = 2,
-            episodeNumber = 1,
-            title = "Unenriched Mystery Show S02E01",
-            streamUrl = "http://iptv.example.com/series/u/p/99991.mp4",
-            resumePositionMs = 20_000L,
-            totalDurationMs = 45_000L,
-            lastWatchedAt = 9600L,
-            watchedStatus = "IN_PROGRESS"
-        )
-        historyEntities.add(unenrichedEpisode)
-        whenever(seriesRepository.getSeriesByIds(eq(listOf(500L, 9999L)))).thenReturn(
-            flowOf(listOf(Series(id = 500L, name = "Breaking Bad", providerId = 1L)))
-        )
+        // episodes table: 3 eligible Episode progress rows
+        val ep1 = EpisodeEntity(id = 201L, episodeId = 201L, seriesId = 50L, seasonNumber = 1, episodeNumber = 1, title = "Episode 1", streamUrl = "http://provider/ep201.mp4", durationSeconds = 60, watchProgress = 15_000L, lastWatchedAt = 7000L, providerId = 1L)
+        val ep2 = EpisodeEntity(id = 202L, episodeId = 202L, seriesId = 50L, seasonNumber = 1, episodeNumber = 2, title = "Episode 2", streamUrl = "http://provider/ep202.mp4", durationSeconds = 60, watchProgress = 20_000L, lastWatchedAt = 7100L, providerId = 1L)
+        val ep3 = EpisodeEntity(id = 203L, episodeId = 203L, seriesId = 51L, seasonNumber = 2, episodeNumber = 1, title = "Episode 3", streamUrl = "http://provider/ep203.mp4", durationSeconds = 60, watchProgress = 25_000L, lastWatchedAt = 7200L, providerId = 1L)
+        episodeTable.value = listOf(ep1, ep2, ep3)
 
-        // Completed Movie and Episode controls (Must be excluded)
-        val completedMovie = PlaybackHistoryEntity(
-            id = 50L,
-            contentId = 5001L,
-            contentType = ContentType.MOVIE,
-            providerId = 1L,
-            title = "Completed Movie",
-            streamUrl = "http://iptv.example.com/movie/u/p/5001.mp4",
-            resumePositionMs = 118_000L,
-            totalDurationMs = 120_000L, // 98.3% -> COMPLETED
-            lastWatchedAt = 9700L,
-            watchedStatus = "COMPLETED_AUTO"
-        )
-        val completedEpisode = PlaybackHistoryEntity(
-            id = 51L,
-            contentId = 5002L,
-            contentType = ContentType.SERIES_EPISODE,
-            providerId = 1L,
-            seriesId = 500L,
-            seasonNumber = 1,
-            episodeNumber = 9,
-            title = "Completed Episode",
-            streamUrl = "http://iptv.example.com/series/u/p/5002.mp4",
-            resumePositionMs = 49_000L,
-            totalDurationMs = 50_000L,
-            lastWatchedAt = 9750L,
-            watchedStatus = "COMPLETED_AUTO"
-        )
-        historyEntities.add(completedMovie)
-        historyEntities.add(completedEpisode)
+        // --- EXECUTE PIPELINE ---
+        val homeResult = getContinueWatching(1L, limit = Int.MAX_VALUE, scope = ContinueWatchingScope.ALL_VOD).first()
+        assertThat(homeResult).isInstanceOf(ContinueWatchingResult.Items::class.java)
+        val allItems = (homeResult as ContinueWatchingResult.Items).items
 
-        // --- 2. EXECUTE PIPELINE ---
-        val result = getContinueWatching(1L, limit = Int.MAX_VALUE, scope = ContinueWatchingScope.ALL_VOD).first()
-        assertThat(result).isInstanceOf(ContinueWatchingResult.Items::class.java)
-        val items = (result as ContinueWatchingResult.Items).items
+        // 1. Unified repository emits 5 Movies, not 2 and not 7
+        val movies = allItems.filter { it.contentType == ContentType.MOVIE }
+        assertThat(movies).hasSize(5)
 
-        // --- 3. ASSERT REQUIREMENT PROOFS ---
+        // 2. Dashboard contains all 5 Movies
+        val movieTitles = movies.map { it.title }
+        assertThat(movieTitles).containsAtLeast("Movie A (from history)", "Movie B", "Movie C", "Doctor Strange TR", "Doctor Strange EN")
 
-        // PROOF 1: Room query returns the correct canonical set
-        assertThat(items).isNotEmpty()
+        // 3. Movies screen contains the identical 5 Movie canonical identities
+        val moviesScreenResult = getContinueWatching(1L, limit = Int.MAX_VALUE, scope = ContinueWatchingScope.MOVIES).first()
+        val moviesScreenItems = (moviesScreenResult as ContinueWatchingResult.Items).items
+        assertThat(moviesScreenItems).containsExactlyElementsIn(movies).inOrder()
 
-        // PROOF 6: Both language variants remain (streamId 8881 and 8882)
-        val drStrangeItems = items.filter { it.title.startsWith("Doctor Strange") }
-        assertThat(drStrangeItems).hasSize(2)
-        val streamUrls = drStrangeItems.map { it.streamUrl }
-        assertThat(streamUrls).containsExactly(
-            "http://iptv.example.com/movie/u/p/8882.mp4",
-            "http://iptv.example.com/movie/u/p/8881.mp4"
-        )
+        // 4. Unified repository contains all 3 Episodes
+        val episodes = allItems.filter { it.contentType == ContentType.SERIES_EPISODE }
+        assertThat(episodes).hasSize(3)
 
-        // PROOF 7: Genuine duplicate appears once (streamId 8881 deduplicated from 2 rows to 1)
-        val stream8881Items = items.filter { it.streamUrl.contains("8881.mp4") }
-        assertThat(stream8881Items).hasSize(1)
+        // 5. Home and Series contain identical Episode identities
+        val seriesScreenResult = getContinueWatching(1L, limit = Int.MAX_VALUE, scope = ContinueWatchingScope.SERIES).first()
+        val seriesScreenItems = (seriesScreenResult as ContinueWatchingResult.Items).items
+        assertThat(seriesScreenItems).containsExactlyElementsIn(episodes).inOrder()
 
-        // PROOF 8: Missing Series enrichment does not remove the Episode
-        val mysteryEp = items.firstOrNull { it.contentId == 4001L }
-        assertThat(mysteryEp).isNotNull()
-        assertThat(mysteryEp?.title).isEqualTo("Unenriched Mystery Show S02E01")
+        // 6. Same-title language variants both remain
+        val variant8881 = movies.firstOrNull { it.streamUrl.contains("8881.mp4") }
+        val variant8882 = movies.firstOrNull { it.streamUrl.contains("8882.mp4") }
+        assertThat(variant8881).isNotNull()
+        assertThat(variant8882).isNotNull()
 
-        // PROOF 9: Completed content remains excluded
-        val completedItems = items.filter { it.contentId == 5001L || it.contentId == 5002L }
+        // 7. Genuine duplicate appears once (Movie A from history merged with catalog Movie A)
+        val movieAItems = movies.filter { it.streamUrl.contains("101.mp4") }
+        assertThat(movieAItems).hasSize(1)
+        assertThat(movieAItems.first().resumePositionMs).isEqualTo(35_000L) // Newest progress from history preserved
+
+        // 8. Completed item is excluded
+        val completedItems = allItems.filter { it.contentId == 106L }
         assertThat(completedItems).isEmpty()
+    }
 
-        // PROOF 2: Total eligible Movies = 8 + 2 (variants) = 10 unique movie cards
-        val movieItems = items.filter { it.contentType == ContentType.MOVIE }
-        assertThat(movieItems).hasSize(10)
+    @Test
+    fun `reactive invalidation without restart on table mutation`() = runTest(testDispatcher) {
+        val collectedEmissions = mutableListOf<List<PlaybackHistory>>()
 
-        // Total eligible Episodes = 4 + 1 (unenriched) = 5 episode cards
-        val episodeItems = items.filter { it.contentType == ContentType.SERIES_EPISODE }
-        assertThat(episodeItems).hasSize(5)
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) {
+            getContinueWatching(1L, limit = Int.MAX_VALUE, scope = ContinueWatchingScope.ALL_VOD)
+                .collect { result ->
+                    if (result is ContinueWatchingResult.Items) {
+                        collectedEmissions.add(result.items)
+                    }
+                }
+        }
 
-        // Total Dashboard items = 10 + 5 = 15
-        assertThat(items).hasSize(15)
+        // Start with 5 movies
+        val m1 = MovieEntity(id = 101L, streamId = 101L, name = "Movie 1", streamUrl = "http://provider/101.mp4", durationSeconds = 120, watchProgress = 30_000L, lastWatchedAt = 1000L, providerId = 1L)
+        val m2 = MovieEntity(id = 102L, streamId = 102L, name = "Movie 2", streamUrl = "http://provider/102.mp4", durationSeconds = 120, watchProgress = 30_000L, lastWatchedAt = 2000L, providerId = 1L)
+        val m3 = MovieEntity(id = 103L, streamId = 103L, name = "Movie 3", streamUrl = "http://provider/103.mp4", durationSeconds = 120, watchProgress = 30_000L, lastWatchedAt = 3000L, providerId = 1L)
+        val m4 = MovieEntity(id = 104L, streamId = 104L, name = "Movie 4", streamUrl = "http://provider/104.mp4", durationSeconds = 120, watchProgress = 30_000L, lastWatchedAt = 4000L, providerId = 1L)
+        val m5 = MovieEntity(id = 105L, streamId = 105L, name = "Movie 5", streamUrl = "http://provider/105.mp4", durationSeconds = 120, watchProgress = 30_000L, lastWatchedAt = 5000L, providerId = 1L)
+        movieTable.value = listOf(m1, m2, m3, m4, m5)
 
-        // --- 4. VIEWMODEL CONSUMERS AGREEMENT PROOF ---
-        // MoviesViewModel
-        val moviesResult = getContinueWatching(1L, limit = Int.MAX_VALUE, scope = ContinueWatchingScope.MOVIES).first()
-        val moviesVmItems = (moviesResult as ContinueWatchingResult.Items).items
-        assertThat(moviesVmItems).containsExactlyElementsIn(movieItems).inOrder()
+        assertThat(collectedEmissions.last().filter { it.contentType == ContentType.MOVIE }).hasSize(5)
 
-        // SeriesViewModel
-        val seriesResult = getContinueWatching(1L, limit = Int.MAX_VALUE, scope = ContinueWatchingScope.SERIES).first()
-        val seriesVmItems = (seriesResult as ContinueWatchingResult.Items).items
-        assertThat(seriesVmItems).containsExactlyElementsIn(episodeItems).inOrder()
+        // Step 1: Insert a sixth Movie with watch_progress > 0
+        val m6 = MovieEntity(id = 106L, streamId = 106L, name = "Movie 6", streamUrl = "http://provider/106.mp4", durationSeconds = 120, watchProgress = 20_000L, lastWatchedAt = 6000L, providerId = 1L)
+        movieTable.value = listOf(m1, m2, m3, m4, m5, m6)
 
-        // PROOF 10: No second collector overwrites Dashboard state
-        val dashboardShelfResult = getContinueWatching(setOf(1L), limit = Int.MAX_VALUE, scope = ContinueWatchingScope.ALL_VOD).first()
-        val dashboardItems = (dashboardShelfResult as ContinueWatchingResult.Items).items
-        assertThat(dashboardItems).containsExactlyElementsIn(items).inOrder()
+        // Step 2: Assert Home emits 6 without restart
+        assertThat(collectedEmissions.last().filter { it.contentType == ContentType.MOVIE }).hasSize(6)
+
+        // Step 3: Update that Movie to completed (watch_progress >= 95% of duration)
+        val m6Completed = m6.copy(watchProgress = 118_000L)
+        movieTable.value = listOf(m1, m2, m3, m4, m5, m6Completed)
+
+        // Step 4: Assert Home returns to 5
+        assertThat(collectedEmissions.last().filter { it.contentType == ContentType.MOVIE }).hasSize(5)
+
+        // Step 5: Insert an Episode progress row
+        val ep1 = EpisodeEntity(id = 301L, episodeId = 301L, seriesId = 88L, seasonNumber = 1, episodeNumber = 1, title = "Episode 1", streamUrl = "http://provider/ep301.mp4", durationSeconds = 60, watchProgress = 20_000L, lastWatchedAt = 8000L, providerId = 1L)
+        episodeTable.value = listOf(ep1)
+
+        // Step 6: Assert Home emits it immediately (5 movies + 1 episode = 6 total items)
+        assertThat(collectedEmissions.last()).hasSize(6)
+        assertThat(collectedEmissions.last().filter { it.contentType == ContentType.SERIES_EPISODE }).hasSize(1)
+
+        job.cancel()
     }
 }

@@ -928,6 +928,30 @@ interface MovieDao {
     @Query("SELECT * FROM movies WHERE watch_progress > 0 ORDER BY last_watched_at DESC LIMIT :limit")
     suspend fun getMoviesWithWatchProgress(limit: Int = 100): List<MovieEntity>
 
+    @Query(
+        """
+        SELECT * FROM movies
+        WHERE provider_id = :providerId
+          AND watch_progress > 0
+          AND (duration_seconds <= 0 OR watch_progress < duration_seconds * 1000 * 0.95)
+        ORDER BY CASE WHEN last_watched_at > 0 THEN last_watched_at ELSE added_at END DESC
+        LIMIT :limit
+        """
+    )
+    fun observeMoviesWithWatchProgressByProvider(providerId: Long, limit: Int = 100): Flow<List<MovieEntity>>
+
+    @Query(
+        """
+        SELECT * FROM movies
+        WHERE provider_id IN (:providerIds)
+          AND watch_progress > 0
+          AND (duration_seconds <= 0 OR watch_progress < duration_seconds * 1000 * 0.95)
+        ORDER BY CASE WHEN last_watched_at > 0 THEN last_watched_at ELSE added_at END DESC
+        LIMIT :limit
+        """
+    )
+    fun observeMoviesWithWatchProgressByProviders(providerIds: Set<Long>, limit: Int = 100): Flow<List<MovieEntity>>
+
     @Query("SELECT * FROM movies WHERE provider_id = :providerId ORDER BY added_at DESC, name ASC, id ASC")
     fun getByProvider(providerId: Long): Flow<List<MovieBrowseEntity>>
 
@@ -2732,6 +2756,30 @@ interface SeriesDao {
 interface EpisodeDao {
     @Query("SELECT * FROM episodes WHERE watch_progress > 0 ORDER BY last_watched_at DESC LIMIT :limit")
     suspend fun getEpisodesWithWatchProgress(limit: Int = 100): List<EpisodeEntity>
+
+    @Query(
+        """
+        SELECT * FROM episodes
+        WHERE provider_id = :providerId
+          AND watch_progress > 0
+          AND (duration_seconds <= 0 OR watch_progress < duration_seconds * 1000 * 0.95)
+        ORDER BY CASE WHEN last_watched_at > 0 THEN last_watched_at ELSE 0 END DESC
+        LIMIT :limit
+        """
+    )
+    fun observeEpisodesWithWatchProgressByProvider(providerId: Long, limit: Int = 100): Flow<List<EpisodeEntity>>
+
+    @Query(
+        """
+        SELECT * FROM episodes
+        WHERE provider_id IN (:providerIds)
+          AND watch_progress > 0
+          AND (duration_seconds <= 0 OR watch_progress < duration_seconds * 1000 * 0.95)
+        ORDER BY CASE WHEN last_watched_at > 0 THEN last_watched_at ELSE 0 END DESC
+        LIMIT :limit
+        """
+    )
+    fun observeEpisodesWithWatchProgressByProviders(providerIds: Set<Long>, limit: Int = 100): Flow<List<EpisodeEntity>>
 
     @Query("SELECT * FROM episodes WHERE series_id = :seriesId ORDER BY season_number ASC, episode_number ASC")
     fun getBySeries(seriesId: Long): Flow<List<EpisodeBrowseEntity>>
