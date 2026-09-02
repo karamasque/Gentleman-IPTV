@@ -19,8 +19,8 @@ class GetContinueWatchingTest {
         val useCase = GetContinueWatching(
             playbackHistoryRepository = FakePlaybackHistoryRepository(
                 history = listOf(
-                    history(contentId = 21L, type = ContentType.SERIES_EPISODE, seriesId = 7L, lastWatchedAt = 300L, resumePositionMs = 50_000L),
-                    history(contentId = 20L, type = ContentType.SERIES_EPISODE, seriesId = 7L, lastWatchedAt = 200L, resumePositionMs = 40_000L),
+                    history(contentId = 21L, type = ContentType.SERIES_EPISODE, seriesId = 7L, seasonNumber = 1, episodeNumber = 1, lastWatchedAt = 300L, resumePositionMs = 50_000L),
+                    history(contentId = 20L, type = ContentType.SERIES_EPISODE, seriesId = 7L, seasonNumber = 1, episodeNumber = 1, lastWatchedAt = 200L, resumePositionMs = 40_000L),
                     history(contentId = 11L, type = ContentType.MOVIE, lastWatchedAt = 100L, resumePositionMs = 10_000L)
                 )
             )
@@ -153,6 +153,8 @@ class GetContinueWatchingTest {
         type: ContentType,
         providerId: Long = 1L,
         seriesId: Long? = null,
+        seasonNumber: Int? = null,
+        episodeNumber: Int? = null,
         lastWatchedAt: Long,
         resumePositionMs: Long
     ) = PlaybackHistory(
@@ -164,7 +166,9 @@ class GetContinueWatchingTest {
         resumePositionMs = resumePositionMs,
         totalDurationMs = 120_000L,
         lastWatchedAt = lastWatchedAt,
-        seriesId = seriesId
+        seriesId = seriesId,
+        seasonNumber = seasonNumber,
+        episodeNumber = episodeNumber
     )
 
     private class FakePlaybackHistoryRepository(

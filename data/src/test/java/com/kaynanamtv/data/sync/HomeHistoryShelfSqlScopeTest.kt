@@ -204,7 +204,7 @@ class HomeHistoryShelfSqlScopeTest {
                 providerId = 1L,
                 seriesId = 70L,
                 seasonNumber = 1,
-                episodeNumber = 1,
+                episodeNumber = 2,
                 resumePositionMs = 20_000L,
                 totalDurationMs = 60_000L,
                 lastWatchedAt = 8000L

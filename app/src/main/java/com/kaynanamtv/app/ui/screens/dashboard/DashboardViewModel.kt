@@ -417,7 +417,7 @@ class DashboardViewModel @Inject constructor(
     private fun observeContinueWatching(providerIds: Set<Long>): Flow<ContinueWatchingShelf> =
         getContinueWatching(
             providerIds = providerIds,
-            limit = CONTINUE_WATCHING_LIMIT,
+            limit = Int.MAX_VALUE,
             scope = ContinueWatchingScope.ALL_VOD
         ).flatMapLatest { result ->
             when (result) {
@@ -448,6 +448,8 @@ class DashboardViewModel @Inject constructor(
                                 items = enrichedItems,
                                 series = series.orderedByRequestedSeriesIds(seriesIds)
                             )
+                        }.onStart {
+                            emit(ContinueWatchingShelf(items = result.items))
                         }
                     }
                 }
@@ -461,7 +463,7 @@ class DashboardViewModel @Inject constructor(
     ): Flow<List<PlaybackHistory>> =
         getContinueWatching(
             providerIds = providerIds,
-            limit = CONTINUE_WATCHING_LIMIT,
+            limit = Int.MAX_VALUE,
             scope = scope
         ).map { result ->
             when (result) {

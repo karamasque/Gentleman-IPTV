@@ -31,7 +31,7 @@ class GetContinueWatching @Inject constructor(
 
     operator fun invoke(
         providerId: Long,
-        limit: Int = 24,
+        limit: Int = Int.MAX_VALUE,
         scope: ContinueWatchingScope = ContinueWatchingScope.ALL_VOD,
         requireResumePosition: Boolean = false
     ): Flow<ContinueWatchingResult> = invoke(
@@ -43,7 +43,7 @@ class GetContinueWatching @Inject constructor(
 
     operator fun invoke(
         providerIds: Set<Long>,
-        limit: Int = 24,
+        limit: Int = Int.MAX_VALUE,
         scope: ContinueWatchingScope = ContinueWatchingScope.ALL_VOD,
         requireResumePosition: Boolean = false
     ): Flow<ContinueWatchingResult> {
@@ -81,13 +81,19 @@ class GetContinueWatching @Inject constructor(
         limit: Int,
         scope: ContinueWatchingScope,
         requireResumePosition: Boolean
-    ): List<PlaybackHistory> = asSequence()
-        .filter { entry -> scope.matches(entry.contentType) }
-        .filterNot { entry -> entry.isCompleted() }
-        .filter { entry -> !requireResumePosition || entry.isResumeEligible() }
-        .distinctBy(::continueWatchingKey)
-        .take(limit)
-        .toList()
+    ): List<PlaybackHistory> {
+        val seq = asSequence()
+            .filter { entry -> scope.matches(entry.contentType) }
+            .filterNot { entry -> entry.isCompleted() }
+            .filter { entry -> !requireResumePosition || entry.isResumeEligible() }
+            .distinctBy(::continueWatchingKey)
+
+        return if (limit > 0 && limit < Int.MAX_VALUE) {
+            seq.take(limit).toList()
+        } else {
+            seq.toList()
+        }
+    }
 
     private fun ContinueWatchingScope.matches(contentType: ContentType): Boolean = when (this) {
         ContinueWatchingScope.ALL_VOD -> contentType != ContentType.LIVE
@@ -95,11 +101,36 @@ class GetContinueWatching @Inject constructor(
         ContinueWatchingScope.SERIES -> contentType == ContentType.SERIES || contentType == ContentType.SERIES_EPISODE
     }
 
-    private fun continueWatchingKey(entry: PlaybackHistory): String = when (entry.contentType) {
-        ContentType.MOVIE -> "movie:${entry.contentId}"
-        ContentType.SERIES,
-        ContentType.SERIES_EPISODE -> "series:${entry.seriesId?.takeIf { it > 0L } ?: entry.contentId}"
-        ContentType.LIVE -> "live:${entry.contentId}"
+    internal fun continueWatchingKey(entry: PlaybackHistory): String = when (entry.contentType) {
+        ContentType.MOVIE -> {
+            val streamKey = parseStreamIdOrUrl(entry.streamUrl) ?: entry.contentId.toString()
+            "movie:${entry.providerId}:$streamKey"
+        }
+        ContentType.SERIES -> {
+            val seriesKey = entry.seriesId?.takeIf { it > 0L } ?: entry.contentId
+            "series:${entry.providerId}:$seriesKey"
+        }
+        ContentType.SERIES_EPISODE -> {
+            val seriesRemoteId = entry.seriesId?.takeIf { it > 0L }
+            val seasonNum = entry.seasonNumber
+            val episodeNum = entry.episodeNumber
+            if (seriesRemoteId != null && seasonNum != null && episodeNum != null && seasonNum >= 0 && episodeNum >= 0) {
+                "episode:${entry.providerId}:$seriesRemoteId:S${seasonNum}:E${episodeNum}"
+            } else {
+                val streamKey = parseStreamIdOrUrl(entry.streamUrl) ?: entry.contentId.toString()
+                "episode:${entry.providerId}:$streamKey"
+            }
+        }
+        ContentType.LIVE -> "live:${entry.providerId}:${entry.contentId}"
+    }
+
+    private fun parseStreamIdOrUrl(url: String): String? {
+        if (url.isBlank()) return null
+        val match = Regex("""/(\d+)\.[a-zA-Z0-9]+(?:\?|$)""").find(url)
+        if (match != null) {
+            return match.groupValues[1]
+        }
+        return url.trim()
     }
 
     private fun PlaybackHistory.isResumeEligible(): Boolean = when (contentType) {

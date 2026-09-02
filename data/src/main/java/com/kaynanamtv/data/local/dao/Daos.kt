@@ -925,6 +925,9 @@ interface TmdbIdentityDao {
 @Dao
 @RewriteQueriesToDropUnusedColumns
 interface MovieDao {
+    @Query("SELECT * FROM movies WHERE watch_progress > 0 ORDER BY last_watched_at DESC LIMIT :limit")
+    suspend fun getMoviesWithWatchProgress(limit: Int = 100): List<MovieEntity>
+
     @Query("SELECT * FROM movies WHERE provider_id = :providerId ORDER BY added_at DESC, name ASC, id ASC")
     fun getByProvider(providerId: Long): Flow<List<MovieBrowseEntity>>
 
@@ -2727,6 +2730,9 @@ interface SeriesDao {
 @Dao
 @RewriteQueriesToDropUnusedColumns
 interface EpisodeDao {
+    @Query("SELECT * FROM episodes WHERE watch_progress > 0 ORDER BY last_watched_at DESC LIMIT :limit")
+    suspend fun getEpisodesWithWatchProgress(limit: Int = 100): List<EpisodeEntity>
+
     @Query("SELECT * FROM episodes WHERE series_id = :seriesId ORDER BY season_number ASC, episode_number ASC")
     fun getBySeries(seriesId: Long): Flow<List<EpisodeBrowseEntity>>
 

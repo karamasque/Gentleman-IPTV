@@ -5,6 +5,7 @@ import com.kaynanamtv.data.local.dao.EpisodeDao
 import com.kaynanamtv.data.local.dao.MovieDao
 import com.kaynanamtv.data.local.dao.PlaybackHistoryDao
 import com.kaynanamtv.data.local.dao.SeriesDao
+import com.kaynanamtv.data.local.entity.PlaybackHistoryEntity
 import com.kaynanamtv.data.mapper.toDomain
 import com.kaynanamtv.data.mapper.toEntity
 import com.kaynanamtv.domain.model.ContentType
@@ -53,6 +54,76 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
             while (true) {
                 delay(RESUME_POSITION_FLUSH_INTERVAL_MS)
                 flushPendingResumeUpdates()
+            }
+        }
+        repositoryScope.launch(Dispatchers.IO) {
+            try {
+                reconcileLocalCatalogWatchProgress()
+            } catch (e: Exception) {
+                // Non-blocking background catalog progress reconciliation
+            }
+        }
+    }
+
+    private suspend fun reconcileLocalCatalogWatchProgress() {
+        val moviesWithProgress = movieDao.getMoviesWithWatchProgress(limit = 100)
+        for (movie in moviesWithProgress) {
+            if (movie.watchProgress <= 0L) continue
+            val existing = dao.get(movie.id, ContentType.MOVIE.name, movie.providerId)
+            if (existing == null) {
+                dao.insertOrUpdate(
+                    PlaybackHistoryEntity(
+                        contentId = movie.id,
+                        contentType = ContentType.MOVIE,
+                        providerId = movie.providerId,
+                        title = movie.name,
+                        posterUrl = movie.posterUrl ?: movie.backdropUrl,
+                        streamUrl = movie.streamUrl,
+                        resumePositionMs = movie.watchProgress,
+                        totalDurationMs = movie.durationSeconds * 1000L,
+                        lastWatchedAt = movie.lastWatchedAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        watchedStatus = "IN_PROGRESS"
+                    )
+                )
+            } else if (movie.watchProgress > existing.resumePositionMs && movie.lastWatchedAt >= existing.lastWatchedAt) {
+                dao.insertOrUpdate(
+                    existing.copy(
+                        resumePositionMs = movie.watchProgress,
+                        lastWatchedAt = movie.lastWatchedAt.takeIf { it > 0L } ?: existing.lastWatchedAt
+                    )
+                )
+            }
+        }
+
+        val episodesWithProgress = episodeDao.getEpisodesWithWatchProgress(limit = 100)
+        for (ep in episodesWithProgress) {
+            if (ep.watchProgress <= 0L) continue
+            val existing = dao.get(ep.id, ContentType.SERIES_EPISODE.name, ep.providerId)
+            if (existing == null) {
+                dao.insertOrUpdate(
+                    PlaybackHistoryEntity(
+                        contentId = ep.id,
+                        contentType = ContentType.SERIES_EPISODE,
+                        providerId = ep.providerId,
+                        seriesId = ep.seriesId.takeIf { it > 0L },
+                        seasonNumber = ep.seasonNumber.takeIf { it >= 0 },
+                        episodeNumber = ep.episodeNumber.takeIf { it >= 0 },
+                        title = ep.title,
+                        posterUrl = ep.coverUrl,
+                        streamUrl = ep.streamUrl,
+                        resumePositionMs = ep.watchProgress,
+                        totalDurationMs = ep.durationSeconds * 1000L,
+                        lastWatchedAt = ep.lastWatchedAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        watchedStatus = "IN_PROGRESS"
+                    )
+                )
+            } else if (ep.watchProgress > existing.resumePositionMs && ep.lastWatchedAt >= existing.lastWatchedAt) {
+                dao.insertOrUpdate(
+                    existing.copy(
+                        resumePositionMs = ep.watchProgress,
+                        lastWatchedAt = ep.lastWatchedAt.takeIf { it > 0L } ?: existing.lastWatchedAt
+                    )
+                )
             }
         }
     }

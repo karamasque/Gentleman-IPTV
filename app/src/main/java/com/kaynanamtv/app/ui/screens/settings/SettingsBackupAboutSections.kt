@@ -392,5 +392,6 @@ internal fun LazyListScope.settingsAboutSection(
     item {
         SettingsRow(label = stringResource(R.string.settings_build), value = stringResource(R.string.settings_build_desc))
         SettingsRow(label = stringResource(R.string.settings_build_verification), value = buildVerificationLabel)
+        SettingsRow(label = "Continue Watching Recovery", value = "CW-R1")
     }
 }

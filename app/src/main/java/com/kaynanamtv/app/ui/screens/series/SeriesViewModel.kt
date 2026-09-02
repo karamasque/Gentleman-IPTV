@@ -384,7 +384,7 @@ class SeriesViewModel @Inject constructor(
                     launch {
                         getContinueWatching(
                             providerId = provider.id,
-                            limit = 20,
+                            limit = Int.MAX_VALUE,
                             scope = ContinueWatchingScope.SERIES
                         )
                             .collect { result ->
@@ -407,14 +407,18 @@ class SeriesViewModel @Inject constructor(
                 .flatMapLatest { provider ->
                     combine(
                         favoriteRepository.getAllFavorites(provider.id, ContentType.SERIES),
-                        playbackHistoryRepository.getRecentlyWatchedByProvider(provider.id, limit = 24),
+                        getContinueWatching(provider.id, limit = Int.MAX_VALUE, scope = ContinueWatchingScope.SERIES),
                         seriesRepository.getTopRatedPreview(provider.id, VodBrowseDefaults.PREVIEW_ROW_LIMIT),
                         seriesRepository.getFreshPreview(provider.id, VodBrowseDefaults.PREVIEW_ROW_LIMIT)
-                    ) { allFavorites, history, topRated, fresh ->
+                    ) { allFavorites, continueResult, topRated, fresh ->
+                        val continueItems = when (continueResult) {
+                            is ContinueWatchingResult.Items -> continueResult.items
+                            ContinueWatchingResult.Degraded -> emptyList()
+                        }
                         SeriesLibraryLensDependencies(
                             providerId = provider.id,
                             allFavorites = allFavorites,
-                            history = history,
+                            history = continueItems,
                             topRated = topRated,
                             fresh = fresh
                         )
