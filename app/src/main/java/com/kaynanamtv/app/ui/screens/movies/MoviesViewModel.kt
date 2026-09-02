@@ -403,10 +403,14 @@ class MoviesViewModel @Inject constructor(
                 .flatMapLatest { provider ->
                     combine(
                         favoriteRepository.getAllFavorites(provider.id, ContentType.MOVIE),
-                        playbackHistoryRepository.getRecentlyWatchedByProvider(provider.id, limit = 24),
+                        getContinueWatching(provider.id, limit = Int.MAX_VALUE, scope = ContinueWatchingScope.MOVIES),
                         movieRepository.getTopRatedPreview(provider.id, VodBrowseDefaults.PREVIEW_ROW_LIMIT),
                         movieRepository.getFreshPreview(provider.id, VodBrowseDefaults.PREVIEW_ROW_LIMIT)
-                    ) { allFavorites, history, topRated, fresh ->
+                    ) { allFavorites, continueResult, topRated, fresh ->
+                        val history = when (continueResult) {
+                            is ContinueWatchingResult.Items -> continueResult.items
+                            ContinueWatchingResult.Degraded -> emptyList()
+                        }
                         MovieLibraryLensDependencies(
                             providerId = provider.id,
                             allFavorites = allFavorites,
@@ -432,9 +436,8 @@ class MoviesViewModel @Inject constructor(
                     val continueIds = dependencies.history
                         .asSequence()
                         .filter { it.contentType == ContentType.MOVIE }
-                        .sortedByDescending { it.lastWatchedAt }
-                        .distinctBy { it.contentId }
                         .map { it.contentId }
+                        .distinct()
                         .take(VodBrowseDefaults.PREVIEW_ROW_LIMIT)
                         .toList()
 
@@ -447,7 +450,7 @@ class MoviesViewModel @Inject constructor(
                         emptyList()
                     } else {
                         movieRepository.getMoviesByIds(continueIds).first().orderByIds(continueIds)
-                    }.markMovieFavorites(globalFavoriteIds)
+                    }.markMovieFavorites(globalFavoriteIds).distinctBy { it.streamId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
 
                     _uiState.update {
                         it.copy(
@@ -1029,23 +1032,47 @@ class MoviesViewModel @Inject constructor(
 
         val (selectedItems, totalCount, hasMoreRemote) = when (request.selectedCategory) {
             VodBrowseDefaults.FULL_LIBRARY_CATEGORY -> {
-                val result = movieRepository
-                    .browseMovies(
-                        LibraryBrowseQuery(
-                            providerId = request.providerId,
-                            sortBy = request.sortBy,
-                            filterBy = LibraryFilterBy(type = request.filterType),
-                            searchQuery = effectiveQuery,
-                            limit = request.loadLimit,
-                            offset = 0
-                        )
+                if (request.filterType == LibraryFilterType.IN_PROGRESS) {
+                    val continueWatchingList = _uiState.value.continueWatching
+                    val continueIds = continueWatchingList.map { it.contentId }
+                    val items = if (continueIds.isEmpty()) {
+                        emptyList()
+                    } else {
+                        movieRepository.getMoviesByIds(continueIds).first()
+                            .filterNot { movie -> movie.categoryId in request.hiddenCategoryIds }
+                            .orderByIds(continueIds)
+                            .distinctBy { it.streamId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
+                    }
+                    val filteredItems = applyLocalBrowseToMovies(
+                        items,
+                        request.filterType,
+                        request.sortBy,
+                        effectiveQuery
                     )
-                    .first()
-                Triple(
-                    result.items.filterNot { movie -> movie.categoryId in request.hiddenCategoryIds },
-                    result.totalCount,
-                    result.hasMoreRemote
-                )
+                    Triple(
+                        filteredItems.take(request.loadLimit),
+                        filteredItems.size,
+                        false
+                    )
+                } else {
+                    val result = movieRepository
+                        .browseMovies(
+                            LibraryBrowseQuery(
+                                providerId = request.providerId,
+                                sortBy = request.sortBy,
+                                filterBy = LibraryFilterBy(type = request.filterType),
+                                searchQuery = effectiveQuery,
+                                limit = request.loadLimit,
+                                offset = 0
+                            )
+                        )
+                        .first()
+                    Triple(
+                        result.items.filterNot { movie -> movie.categoryId in request.hiddenCategoryIds },
+                        result.totalCount,
+                        result.hasMoreRemote
+                    )
+                }
             }
             VodBrowseDefaults.FAVORITES_CATEGORY -> {
                 val ids = request.allFavorites

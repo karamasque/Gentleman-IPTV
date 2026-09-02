@@ -103,8 +103,13 @@ class GetContinueWatching @Inject constructor(
 
     private fun continueWatchingKey(entry: PlaybackHistory): String = when (entry.contentType) {
         ContentType.MOVIE -> {
-            val streamKey = entry.streamUrl.takeIf { it.isNotBlank() } ?: entry.contentId.toString()
-            "movie:${entry.providerId}:$streamKey"
+            val streamId = entry.streamId?.takeIf { it > 0L }
+            if (streamId != null) {
+                "movie:${entry.providerId}:$streamId"
+            } else {
+                val streamKey = sanitizeStreamUrl(entry.streamUrl).takeIf { it.isNotBlank() } ?: entry.contentId.toString()
+                "movie:${entry.providerId}:$streamKey"
+            }
         }
         ContentType.SERIES -> "series:${entry.providerId}:${entry.seriesId?.takeIf { it > 0L } ?: entry.contentId}"
         ContentType.SERIES_EPISODE -> {
@@ -114,11 +119,21 @@ class GetContinueWatching @Inject constructor(
             if (seriesRemoteId > 0L && seasonNum > 0 && episodeNum > 0) {
                 "episode:${entry.providerId}:${seriesRemoteId}:S${seasonNum}:E${episodeNum}"
             } else {
-                val streamKey = entry.streamUrl.takeIf { it.isNotBlank() } ?: entry.contentId.toString()
-                "episode:${entry.providerId}:$streamKey"
+                val streamId = entry.streamId?.takeIf { it > 0L }
+                if (streamId != null) {
+                    "episode:${entry.providerId}:$streamId"
+                } else {
+                    val streamKey = sanitizeStreamUrl(entry.streamUrl).takeIf { it.isNotBlank() } ?: entry.contentId.toString()
+                    "episode:${entry.providerId}:$streamKey"
+                }
             }
         }
         ContentType.LIVE -> "live:${entry.providerId}:${entry.contentId}"
+    }
+
+    private fun sanitizeStreamUrl(url: String): String {
+        if (url.isBlank()) return ""
+        return url.substringAfterLast('/')
     }
 
     private fun PlaybackHistory.isResumeEligible(): Boolean = when (contentType) {

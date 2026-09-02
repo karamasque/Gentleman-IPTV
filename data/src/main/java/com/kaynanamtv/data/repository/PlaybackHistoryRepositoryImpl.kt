@@ -377,10 +377,12 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
                         ?: movie?.posterUrl?.takeIf { it.isNotBlank() }
                         ?: movie?.backdropUrl?.takeIf { it.isNotBlank() }
                     val resolvedStreamUrl = history.streamUrl.ifBlank { movie?.streamUrl ?: "" }
+                    val resolvedStreamId = movie?.streamId?.takeIf { it > 0L } ?: history.streamId
                     history.copy(
                         title = history.title.ifBlank { movie?.name ?: "" },
                         posterUrl = resolvedPoster,
-                        streamUrl = resolvedStreamUrl
+                        streamUrl = resolvedStreamUrl,
+                        streamId = resolvedStreamId
                     )
                 }
                 ContentType.SERIES_EPISODE -> {
@@ -392,10 +394,12 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
                         ?: series?.posterUrl?.takeIf { it.isNotBlank() }
                         ?: series?.backdropUrl?.takeIf { it.isNotBlank() }
                     val resolvedStreamUrl = history.streamUrl.ifBlank { episode?.streamUrl ?: "" }
+                    val resolvedStreamId = episode?.episodeId?.takeIf { it > 0L } ?: history.streamId
                     history.copy(
                         title = history.title.ifBlank { episode?.title ?: series?.name ?: "" },
                         posterUrl = resolvedPoster,
-                        streamUrl = resolvedStreamUrl
+                        streamUrl = resolvedStreamUrl,
+                        streamId = resolvedStreamId
                     )
                 }
                 ContentType.SERIES -> {

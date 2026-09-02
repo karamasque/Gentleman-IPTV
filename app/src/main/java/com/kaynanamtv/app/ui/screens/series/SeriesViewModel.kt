@@ -407,10 +407,14 @@ class SeriesViewModel @Inject constructor(
                 .flatMapLatest { provider ->
                     combine(
                         favoriteRepository.getAllFavorites(provider.id, ContentType.SERIES),
-                        playbackHistoryRepository.getRecentlyWatchedByProvider(provider.id, limit = 24),
+                        getContinueWatching(provider.id, limit = Int.MAX_VALUE, scope = ContinueWatchingScope.SERIES),
                         seriesRepository.getTopRatedPreview(provider.id, VodBrowseDefaults.PREVIEW_ROW_LIMIT),
                         seriesRepository.getFreshPreview(provider.id, VodBrowseDefaults.PREVIEW_ROW_LIMIT)
-                    ) { allFavorites, history, topRated, fresh ->
+                    ) { allFavorites, continueResult, topRated, fresh ->
+                        val history = when (continueResult) {
+                            is ContinueWatchingResult.Items -> continueResult.items
+                            ContinueWatchingResult.Degraded -> emptyList()
+                        }
                         SeriesLibraryLensDependencies(
                             providerId = provider.id,
                             allFavorites = allFavorites,
@@ -438,9 +442,8 @@ class SeriesViewModel @Inject constructor(
                         .filter {
                             it.contentType == ContentType.SERIES || it.contentType == ContentType.SERIES_EPISODE
                         }
-                        .sortedByDescending { it.lastWatchedAt }
-                        .distinctBy { it.seriesId ?: it.contentId }
-                        .map { it.seriesId ?: it.contentId }
+                        .mapNotNull { it.seriesId ?: it.contentId }
+                        .distinct()
                         .take(VodBrowseDefaults.PREVIEW_ROW_LIMIT)
                         .toList()
 
@@ -453,7 +456,7 @@ class SeriesViewModel @Inject constructor(
                         emptyList()
                     } else {
                         seriesRepository.getSeriesByIds(continueIds).first().orderByIds(continueIds)
-                    }.markSeriesFavorites(globalFavoriteIds)
+                    }.markSeriesFavorites(globalFavoriteIds).distinctBy { it.seriesId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
 
                     _uiState.update {
                         it.copy(
@@ -1035,23 +1038,48 @@ class SeriesViewModel @Inject constructor(
 
         val (selectedItems, totalCount, hasMoreRemote) = when (request.selectedCategory) {
             VodBrowseDefaults.FULL_LIBRARY_CATEGORY -> {
-                val result = seriesRepository
-                    .browseSeries(
-                        LibraryBrowseQuery(
-                            providerId = request.providerId,
-                            sortBy = request.sortBy,
-                            filterBy = LibraryFilterBy(type = request.filterType),
-                            searchQuery = effectiveQuery,
-                            limit = request.loadLimit,
-                            offset = 0
-                        )
+                if (request.filterType == LibraryFilterType.IN_PROGRESS) {
+                    val continueWatchingList = _uiState.value.continueWatching
+                    val continueSeriesIds = continueWatchingList.mapNotNull { it.seriesId ?: it.contentId }.distinct()
+                    val items = if (continueSeriesIds.isEmpty()) {
+                        emptyList()
+                    } else {
+                        seriesRepository.getSeriesByIds(continueSeriesIds).first()
+                            .filterNot { item -> item.categoryId in request.hiddenCategoryIds }
+                            .orderByIds(continueSeriesIds)
+                            .distinctBy { it.seriesId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
+                    }
+                    val filteredItems = applyLocalBrowseToSeries(
+                        items = items,
+                        history = continueWatchingList,
+                        filterType = request.filterType,
+                        sortBy = request.sortBy,
+                        query = effectiveQuery
                     )
-                    .first()
-                Triple(
-                    result.items.filterNot { item -> item.categoryId in request.hiddenCategoryIds },
-                    result.totalCount,
-                    result.hasMoreRemote
-                )
+                    Triple(
+                        filteredItems.take(request.loadLimit),
+                        filteredItems.size,
+                        false
+                    )
+                } else {
+                    val result = seriesRepository
+                        .browseSeries(
+                            LibraryBrowseQuery(
+                                providerId = request.providerId,
+                                sortBy = request.sortBy,
+                                filterBy = LibraryFilterBy(type = request.filterType),
+                                searchQuery = effectiveQuery,
+                                limit = request.loadLimit,
+                                offset = 0
+                            )
+                        )
+                        .first()
+                    Triple(
+                        result.items.filterNot { item -> item.categoryId in request.hiddenCategoryIds },
+                        result.totalCount,
+                        result.hasMoreRemote
+                    )
+                }
             }
             VodBrowseDefaults.FAVORITES_CATEGORY -> {
                 val ids = request.allFavorites
