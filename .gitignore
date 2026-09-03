@@ -88,3 +88,5 @@ gradle_*_rerun.log
 release_apks/
 backups/
 *.patch
+
+build_backup_*/

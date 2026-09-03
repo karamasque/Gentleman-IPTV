@@ -676,8 +676,8 @@ private fun TopNavigationBar(
             // Brand Logo & Name
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(start = 2.dp, end = 12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(start = 2.dp, end = 10.dp)
             ) {
                 androidx.compose.foundation.Image(
                     painter = androidx.compose.ui.res.painterResource(id = R.drawable.kaynanamtv_brand_logo),
@@ -686,13 +686,32 @@ private fun TopNavigationBar(
                     modifier = Modifier.size(36.dp)
                 )
                 Text(
-                    text = stringResource(R.string.app_name),
+                    text = "KaynanamTV",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.3.sp
                     ),
                     color = AppColors.TextPrimary
                 )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(Color(0xFF9333EA), Color(0xFFE11D48))
+                            )
+                        )
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "CW-R4B",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp
+                    )
+                }
             }
 
             // Navigation Tabs with smooth horizontal scroll support for all form factors

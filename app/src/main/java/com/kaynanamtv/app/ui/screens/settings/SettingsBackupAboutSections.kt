@@ -392,6 +392,10 @@ internal fun LazyListScope.settingsAboutSection(
     item {
         SettingsRow(label = stringResource(R.string.settings_build), value = stringResource(R.string.settings_build_desc))
         SettingsRow(label = stringResource(R.string.settings_build_verification), value = buildVerificationLabel)
-        SettingsRow(label = "Continue Watching Recovery", value = "CW-R4")
+        SettingsRow(label = "Continue Watching Recovery", value = "CW-R4B")
+        SettingsRow(label = "Build Marker", value = CW_BUILD_MARKER)
     }
 }
+
+const val CW_BUILD_MARKER = "CW-R4B-ee2d6f2"
+

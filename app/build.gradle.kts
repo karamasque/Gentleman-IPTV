@@ -60,14 +60,15 @@ android {
         applicationId = "com.kaynanamtv.app"
         minSdk = 25
         targetSdk = 36
-        versionCode = 131
-        versionName = "1.1.31"
+        versionCode = 135
+        versionName = "1.1.35-cw-r4b-test"
         multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "OFFICIAL_APPLICATION_ID", "\"com.kaynanamtv.app\"")
         buildConfigField("String", "OFFICIAL_SIGNING_CERT_SHA256", "\"$officialSigningCertSha256\"")
         buildConfigField("String", "APP_UPDATE_CHANNEL", "\"stable\"")
         buildConfigField("long", "BUILD_TIMESTAMP_UTC", "0L")
+        buildConfigField("String", "CW_BUILD_MARKER", "\"CW-R4B-ee2d6f2\"")
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
