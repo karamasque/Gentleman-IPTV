@@ -30,7 +30,6 @@ class ContinueWatchingPipelineIntegrationTest {
 
         val doctorStrange = PlaybackHistory(
             contentId = 101L,
-            streamId = 501L,
             contentType = ContentType.MOVIE,
             providerId = providerId,
             title = "Doctor Strange",
@@ -41,7 +40,6 @@ class ContinueWatchingPipelineIntegrationTest {
         )
         val dracula = PlaybackHistory(
             contentId = 102L,
-            streamId = 502L,
             contentType = ContentType.MOVIE,
             providerId = providerId,
             title = "Dracula (2025)",
@@ -53,7 +51,6 @@ class ContinueWatchingPipelineIntegrationTest {
         // Two Room rows for GTA VI with the same remote streamId 777
         val gtaRow1 = PlaybackHistory(
             contentId = 103L,
-            streamId = 777L,
             contentType = ContentType.MOVIE,
             providerId = providerId,
             title = "Grand Theft Auto VI",
@@ -64,7 +61,6 @@ class ContinueWatchingPipelineIntegrationTest {
         )
         val gtaRow2 = PlaybackHistory(
             contentId = 104L,
-            streamId = 777L,
             contentType = ContentType.MOVIE,
             providerId = providerId,
             title = "Grand Theft Auto VI",
@@ -75,7 +71,6 @@ class ContinueWatchingPipelineIntegrationTest {
         )
         val untouchable = PlaybackHistory(
             contentId = 105L,
-            streamId = 505L,
             contentType = ContentType.MOVIE,
             providerId = providerId,
             title = "Untouchable (2011)",
@@ -86,7 +81,6 @@ class ContinueWatchingPipelineIntegrationTest {
         )
         val tuzluKahve = PlaybackHistory(
             contentId = 106L,
-            streamId = 506L,
             contentType = ContentType.MOVIE,
             providerId = providerId,
             title = "Tuzlu Kahve",
@@ -98,7 +92,6 @@ class ContinueWatchingPipelineIntegrationTest {
 
         val ep1 = PlaybackHistory(
             contentId = 201L,
-            streamId = 801L,
             seriesId = 50L,
             seasonNumber = 1,
             episodeNumber = 1,
@@ -112,7 +105,6 @@ class ContinueWatchingPipelineIntegrationTest {
         )
         val ep2 = PlaybackHistory(
             contentId = 202L,
-            streamId = 802L,
             seriesId = 50L,
             seasonNumber = 1,
             episodeNumber = 2,
@@ -128,7 +120,6 @@ class ContinueWatchingPipelineIntegrationTest {
         // Completed movie (should be excluded)
         val completedMovie = PlaybackHistory(
             contentId = 107L,
-            streamId = 507L,
             contentType = ContentType.MOVIE,
             providerId = providerId,
             title = "Completed Movie",
@@ -198,7 +189,6 @@ class ContinueWatchingPipelineIntegrationTest {
         val largeList = (1..30).map { i ->
             PlaybackHistory(
                 contentId = 1000L + i,
-                streamId = 2000L + i,
                 contentType = ContentType.MOVIE,
                 providerId = providerId,
                 title = "Movie $i",

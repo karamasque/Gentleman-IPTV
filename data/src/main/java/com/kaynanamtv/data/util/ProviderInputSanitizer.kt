@@ -53,12 +53,6 @@ object ProviderInputSanitizer {
             val prefix = protocolMatch.value.lowercase()
             raw = prefix + raw.substring(protocolMatch.value.length)
         }
-        
-        // Auto-fix get.php M3U URLs that lack a type parameter to prevent 404 errors
-        if (raw.contains("/get.php", ignoreCase = true) && !raw.contains("type=", ignoreCase = true)) {
-            val separator = if (raw.contains("?")) "&" else "?"
-            raw = "${raw}${separator}type=m3u_plus"
-        }
         return raw
     }
 

@@ -280,7 +280,7 @@ internal class SyncManagerM3uImporter(
         block: suspend (StreamedPlaylist) -> Unit
     ) {
         val rawUrl = provider.m3uUrl.ifBlank { provider.serverUrl }
-        val urlStr = upgradeXtreamM3uUrl(rawUrl)
+        val urlStr = rawUrl
         if (urlStr.startsWith("file:")) {
             java.io.File(java.net.URI(urlStr)).inputStream().use { input ->
                 block(StreamedPlaylist(inputStream = input, sourceName = urlStr))
@@ -462,19 +462,7 @@ internal class SyncManagerM3uImporter(
         return value.orEmpty().lowercase().replace(Regex("\\s+"), " ").trim()
     }
 
-    fun upgradeXtreamM3uUrl(url: String): String {
-        if (!url.contains("/get.php", ignoreCase = true)) return url
-        var result = url
-        if (result.contains("type=m3u", ignoreCase = true) && !result.contains("type=m3u_plus", ignoreCase = true)) {
-            result = result.replace("type=m3u", "type=m3u_plus", ignoreCase = true)
-        } else if (!result.contains("type=", ignoreCase = true)) {
-            result = if (result.contains("?")) "$result&type=m3u_plus" else "$result?type=m3u_plus"
-        }
-        if (!result.contains("output=", ignoreCase = true)) {
-            result = if (result.contains("?")) "$result&output=ts" else "$result?output=ts"
-        }
-        return result
-    }
+    fun upgradeXtreamM3uUrl(url: String): String = url
 
     fun deriveXtreamEpgUrl(m3uUrl: String): String? {
         if (!m3uUrl.contains("/get.php", ignoreCase = true)) return null

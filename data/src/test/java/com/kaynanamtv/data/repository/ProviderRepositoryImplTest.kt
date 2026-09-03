@@ -385,7 +385,7 @@ class ProviderRepositoryImplTest {
         )
 
         assertThat(result.isError).isTrue()
-        assertThat((result as Result.Error).message).contains("already exists")
+        assertThat((result as Result.Error).message).contains("zaten mevcut")
         verify(providerDao, never()).insert(any())
         verify(providerDao, never()).update(any())
     }
