@@ -693,25 +693,6 @@ private fun TopNavigationBar(
                     ),
                     color = AppColors.TextPrimary
                 )
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(Color(0xFF9333EA), Color(0xFFE11D48))
-                            )
-                        )
-                        .padding(horizontal = 7.dp, vertical = 3.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "CW-R4B",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 0.5.sp
-                    )
-                }
             }
 
             // Navigation Tabs with smooth horizontal scroll support for all form factors
