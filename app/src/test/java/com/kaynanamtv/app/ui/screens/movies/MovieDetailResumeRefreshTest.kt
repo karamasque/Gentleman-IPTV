@@ -7,6 +7,7 @@ import com.kaynanamtv.app.cast.CastPlaybackCoordinator
 import com.kaynanamtv.app.plugins.KaynanamTVPluginManager
 import com.kaynanamtv.data.preferences.PreferencesRepository
 import com.kaynanamtv.domain.model.ContentType
+import com.kaynanamtv.domain.model.ExternalRatings
 import com.kaynanamtv.domain.model.Movie
 import com.kaynanamtv.domain.model.PlaybackHistory
 import com.kaynanamtv.domain.model.Result
@@ -68,6 +69,10 @@ class MovieDetailResumeRefreshTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         whenever(castPlaybackCoordinator.playbackEvents).thenReturn(castEventsFlow.asSharedFlow())
+        runTest(testDispatcher) {
+            whenever(favoriteRepository.isFavorite(any(), any(), any())).thenReturn(false)
+            whenever(externalRatingsRepository.getRatings(any())).thenReturn(Result.success(ExternalRatings.unavailable()))
+        }
     }
 
     @After
@@ -76,7 +81,7 @@ class MovieDetailResumeRefreshTest {
     }
 
     private fun createViewModel(): MovieDetailViewModel {
-        val savedStateHandle = SavedStateHandle(mapOf("movieId" to 101L))
+        val savedStateHandle = SavedStateHandle(mapOf("movieId" to 101L, "providerId" to 1L))
         return MovieDetailViewModel(
             savedStateHandle = savedStateHandle,
             movieRepository = movieRepository,
@@ -95,7 +100,7 @@ class MovieDetailResumeRefreshTest {
     @Test
     fun `initial load with zero progress shows no resume`() = runTest(testDispatcher) {
         whenever(movieRepository.getMovie(101L)).thenReturn(testMovie)
-        whenever(movieRepository.getMovieDetails(eq(1L), eq(101L), any())).thenReturn(Result.success(testMovie))
+        whenever(movieRepository.getMovieDetails(eq(1L), eq(101L), org.mockito.kotlin.anyOrNull())).thenReturn(Result.success(testMovie))
         whenever(playbackHistoryRepository.getPlaybackHistory(101L, ContentType.MOVIE, 1L)).thenReturn(null)
         whenever(movieRepository.getRelatedContent(eq(1L), eq(101L), eq(10))).thenReturn(flowOf(emptyList()))
 
@@ -110,7 +115,7 @@ class MovieDetailResumeRefreshTest {
     fun `refreshPlaybackState updates resume position when Room progress changes to 15 min`() = runTest(testDispatcher) {
         // Initial load: 0 progress
         whenever(movieRepository.getMovie(101L)).thenReturn(testMovie)
-        whenever(movieRepository.getMovieDetails(eq(1L), eq(101L), any())).thenReturn(Result.success(testMovie))
+        whenever(movieRepository.getMovieDetails(eq(1L), eq(101L), org.mockito.kotlin.anyOrNull())).thenReturn(Result.success(testMovie))
         whenever(playbackHistoryRepository.getPlaybackHistory(101L, ContentType.MOVIE, 1L)).thenReturn(null)
         whenever(movieRepository.getRelatedContent(eq(1L), eq(101L), eq(10))).thenReturn(flowOf(emptyList()))
 
@@ -143,7 +148,7 @@ class MovieDetailResumeRefreshTest {
     @Test
     fun `refreshPlaybackState does not show resume for completed content`() = runTest(testDispatcher) {
         whenever(movieRepository.getMovie(101L)).thenReturn(testMovie)
-        whenever(movieRepository.getMovieDetails(eq(1L), eq(101L), any())).thenReturn(Result.success(testMovie))
+        whenever(movieRepository.getMovieDetails(eq(1L), eq(101L), org.mockito.kotlin.anyOrNull())).thenReturn(Result.success(testMovie))
         whenever(movieRepository.getRelatedContent(eq(1L), eq(101L), eq(10))).thenReturn(flowOf(emptyList()))
 
         val viewModel = createViewModel()

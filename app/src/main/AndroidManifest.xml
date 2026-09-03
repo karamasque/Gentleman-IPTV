@@ -49,6 +49,7 @@
             <action android:name="android.intent.action.INSTALL_PACKAGE" />
             <data android:scheme="package" />
         </intent>
+        <package android:name="org.videolan.vlc" />
     </queries>
 
     <application

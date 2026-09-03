@@ -83,7 +83,7 @@ class PlayerZapActionsTest {
         val shouldPreload = shouldPreloadAdjacentChannel(
             streamUrl = "http://cdn.example.com/live/stream.ts",
             providerType = ProviderType.M3U,
-            maxConnections = 1,
+            maxConnections = 2,
             preloadCoolingDown = false
         )
 

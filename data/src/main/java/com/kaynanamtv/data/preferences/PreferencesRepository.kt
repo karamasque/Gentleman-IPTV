@@ -439,6 +439,7 @@ class PreferencesRepository @Inject constructor(
         when (preferences[PreferencesKeys.PLAYER_ENGINE_PREFERENCE]) {
             "MEDIA3" -> com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
             "VLC" -> com.kaynanamtv.domain.model.PlayerEnginePreference.VLC
+            "EXTERNAL_VLC" -> com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC
             else -> com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO
         }
     }

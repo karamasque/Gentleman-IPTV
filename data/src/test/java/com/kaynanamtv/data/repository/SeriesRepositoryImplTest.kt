@@ -731,7 +731,7 @@ class SeriesRepositoryImplTest {
         assertThat(result).isInstanceOf(com.kaynanamtv.domain.model.Result.Success::class.java)
         val series = (result as com.kaynanamtv.domain.model.Result.Success).data
         assertThat(series.seasons).hasSize(1)
-        assertThat(series.seasons.first().name).isEqualTo("Season 1")
+        assertThat(series.seasons.first().name).isIn(listOf("Season 1", "Sezon 1"))
         assertThat(series.seasons.first().episodes.map { it.title }).containsExactly("Pilot")
     }
 

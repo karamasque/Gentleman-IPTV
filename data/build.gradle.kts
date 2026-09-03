@@ -25,6 +25,18 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
+        unitTests.all { test ->
+            test.jvmArgs(
+                "-Dfile.encoding=UTF-8",
+                "-Dsun.jnu.encoding=UTF-8",
+                "-Duser.language=en",
+                "-Duser.country=US"
+            )
+            test.systemProperty("file.encoding", "UTF-8")
+            test.systemProperty("sun.jnu.encoding", "UTF-8")
+            test.systemProperty("user.language", "en")
+            test.systemProperty("user.country", "US")
+        }
     }
 
 

@@ -67,4 +67,28 @@ class ExternalPlayerLauncherTest {
         assertThat(intent.type).isEqualTo("video/mp2t")
         assertThat(intent.categories).contains(Intent.CATEGORY_BROWSABLE)
     }
+
+    @Test
+    fun `buildVlcIntent configures official VLC package and extras`() {
+        val intent = checkNotNull(
+            ExternalPlayerLauncher.buildVlcIntent(
+                url = "https://example.com/movie.mp4",
+                title = "Test Movie",
+                headers = mapOf("Authorization" to "Bearer token123")
+            )
+        )
+
+        assertThat(intent.action).isEqualTo(Intent.ACTION_VIEW)
+        assertThat(intent.`package`).isEqualTo("org.videolan.vlc")
+        assertThat(intent.getStringExtra("title")).isEqualTo("Test Movie")
+        val extraHeaders = intent.getStringArrayExtra("extra_headers")
+        assertThat(extraHeaders).asList().contains("Authorization: Bearer token123")
+    }
+
+    @Test
+    fun `launchVlc returns NoHandler when VLC is not installed`() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val result = ExternalPlayerLauncher.launchVlc(context, "https://example.com/stream.m3u8")
+        assertThat(result).isInstanceOf(ExternalPlayerLaunchResult.NoHandler::class.java)
+    }
 }

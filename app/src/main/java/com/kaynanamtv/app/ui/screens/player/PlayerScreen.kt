@@ -302,6 +302,40 @@ fun PlayerScreen(
             Unit
         }
     }
+    val context = LocalContext.current
+    val handleOpenExternalVlc: () -> Unit = remember(context, viewModel, streamUrl, title, playbackTitle) {
+        {
+            val streamInfo = viewModel.currentResolvedStreamInfo
+            val url = streamInfo?.url?.takeIf { it.isNotBlank() } ?: streamUrl
+            if (url.isNotBlank()) {
+                coroutineScope.launch {
+                    viewModel.persistPlaybackProgress()
+                }
+                val headers = streamInfo?.headers ?: emptyMap()
+                val result = com.kaynanamtv.app.player.external.ExternalPlayerLauncher.launchVlc(
+                    context = context,
+                    url = url,
+                    title = playbackTitle.ifBlank { title },
+                    headers = headers
+                )
+                if (result is com.kaynanamtv.app.player.external.ExternalPlayerLaunchResult.NoHandler) {
+                    viewModel.showPlayerNotice(message = "Harici VLC yüklü değil.")
+                }
+            }
+        }
+    }
+
+    val playerEnginePreference by viewModel.preferencesRepository.playerEnginePreference.collectAsStateWithLifecycle(
+        initialValue = com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO
+    )
+    var autoExternalVlcAttempted by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(playerEnginePreference, streamUrl) {
+        if (playerEnginePreference == com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC && !autoExternalVlcAttempted) {
+            autoExternalVlcAttempted = true
+            handleOpenExternalVlc()
+        }
+    }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -1477,6 +1511,8 @@ fun PlayerScreen(
             onToggleDiagnostics = viewModel::toggleDiagnostics,
             remoteCurrentPosition = remoteCurrentPosition,
             remoteDuration = remoteDuration,
+            showExternalPlayerAction = true,
+            onOpenExternalPlayer = handleOpenExternalVlc,
             onOpenGuide = {
                 viewModel.openEpgOverlay()
             },
@@ -1938,6 +1974,8 @@ private fun PlayerControlsOverlayHost(
     onSeekPreviewPositionChanged: (Long?) -> Unit,
     remoteCurrentPosition: Long = 0L,
     remoteDuration: Long = 0L,
+    showExternalPlayerAction: Boolean = false,
+    onOpenExternalPlayer: () -> Unit = {},
     nextProgram: com.kaynanamtv.domain.model.Program? = null,
     onToggleDiagnostics: () -> Unit = {},
     onOpenGuide: () -> Unit = {},
@@ -2010,6 +2048,8 @@ private fun PlayerControlsOverlayHost(
         onSeekToLiveEdge = onSeekToLiveEdge,
         onSeekToPosition = onSeekToPosition,
         onSetScrubbingMode = onSetScrubbingMode,
+        showExternalPlayerAction = showExternalPlayerAction,
+        onOpenExternalPlayer = onOpenExternalPlayer,
         seekPreview = seekPreview,
         onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
         onToggleDiagnostics = onToggleDiagnostics,

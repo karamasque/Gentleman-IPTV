@@ -34,25 +34,46 @@ class PlayerEngineFactory @Inject constructor(
     }
 
     /**
-     * Resolves the target player engine. Media3 (with bundled FFmpeg extension) is the sole unified engine.
+     * Resolves the target player engine. Media3 (with bundled FFmpeg extension) is the default unified engine,
+     * while VLC provides an isolated LibVLC-backed player engine.
      */
     fun resolveEngineType(preference: PlayerEnginePreference = PlayerEnginePreference.AUTO): PlayerEngineType {
-        Log.i(TAG, "[PLAYER_ENGINE] Standardized on MEDIA3 (ExoPlayer + FFmpeg)")
-        return PlayerEngineType.MEDIA3
+        return when (preference) {
+            PlayerEnginePreference.VLC -> {
+                Log.i(TAG, "[PLAYER_ENGINE] Selected Internal LibVLC engine")
+                PlayerEngineType.VLC
+            }
+            PlayerEnginePreference.MEDIA3 -> {
+                Log.i(TAG, "[PLAYER_ENGINE] Selected Media3 engine")
+                PlayerEngineType.MEDIA3
+            }
+            PlayerEnginePreference.EXTERNAL_VLC -> {
+                Log.i(TAG, "[PLAYER_ENGINE] External VLC preference (fallback engine: Media3)")
+                PlayerEngineType.MEDIA3
+            }
+            PlayerEnginePreference.AUTO -> {
+                Log.i(TAG, "[PLAYER_ENGINE] Auto resolved to Media3 (ExoPlayer + FFmpeg)")
+                PlayerEngineType.MEDIA3
+            }
+        }
     }
 
     fun createEngine(type: PlayerEngineType = PlayerEngineType.MEDIA3): PlayerEngine {
-        return Media3PlayerEngine(
-            context = context,
-            okHttpClient = okHttpClient,
-            playbackCompatibilityRepository = playbackCompatibilityRepository,
-            audioCompatibilityMemoryStore = audioCompatibilityMemoryStore,
-            playbackSupportSnapshotStore = playbackSupportSnapshotStore,
-            playbackContentionManager = playbackContentionManager
-        )
+        return when (type) {
+            PlayerEngineType.VLC -> VlcPlayerEngine(context)
+            PlayerEngineType.MEDIA3 -> Media3PlayerEngine(
+                context = context,
+                okHttpClient = okHttpClient,
+                playbackCompatibilityRepository = playbackCompatibilityRepository,
+                audioCompatibilityMemoryStore = audioCompatibilityMemoryStore,
+                playbackSupportSnapshotStore = playbackSupportSnapshotStore,
+                playbackContentionManager = playbackContentionManager
+            )
+        }
     }
 }
 
 enum class PlayerEngineType {
-    MEDIA3
+    MEDIA3,
+    VLC
 }

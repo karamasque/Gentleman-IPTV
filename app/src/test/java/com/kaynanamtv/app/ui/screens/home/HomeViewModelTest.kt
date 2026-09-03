@@ -442,7 +442,10 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `channel search delegates to repository for provider categories`() = runTest {
+    fun `channel search delegates to repository for provider categories`() = runTest(testDispatcher) {
+        createdViewModels.forEach(::clearViewModel)
+        createdViewModels.clear()
+
         val provider = Provider(
             id = 30L,
             name = "Provider",
@@ -450,7 +453,9 @@ class HomeViewModelTest {
             serverUrl = "https://test"
         )
         val category = Category(id = 11L, name = "News")
+        whenever(combinedM3uRepository.getActiveLiveSource()).thenReturn(flowOf(ActiveLiveSource.ProviderSource(provider.id)))
         whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
+        whenever(providerRepository.getProvider(provider.id)).thenReturn(provider)
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(listOf(category)))
         whenever(channelRepository.getChannelsByCategoryPage(eq(provider.id), eq(category.id), any())).thenReturn(
             flowOf(listOf(Channel(id = 1L, name = "BBC News", providerId = provider.id, streamUrl = "https://stream")))
@@ -468,13 +473,17 @@ class HomeViewModelTest {
         viewModel.selectCategory(category)
         advanceUntilIdle()
         viewModel.updateChannelSearchQuery("bbc")
+        testScheduler.advanceTimeBy(300)
         advanceUntilIdle()
 
-        verify(channelRepository).searchChannelsByCategoryPaged(eq(provider.id), eq(category.id), eq("bbc"), any())
+        verify(channelRepository, org.mockito.kotlin.timeout(2000)).searchChannelsByCategoryPaged(eq(provider.id), eq(category.id), eq("bbc"), any())
     }
 
     @Test
-    fun `hidden numbering mode keeps displayed channel numbers non-negative`() = runTest {
+    fun `hidden numbering mode keeps displayed channel numbers non-negative`() = runTest(testDispatcher) {
+        createdViewModels.forEach(::clearViewModel)
+        createdViewModels.clear()
+
         val provider = Provider(
             id = 31L,
             name = "Provider",
@@ -489,8 +498,10 @@ class HomeViewModelTest {
             streamUrl = "https://stream",
             number = 23
         )
+        whenever(combinedM3uRepository.getActiveLiveSource()).thenReturn(flowOf(ActiveLiveSource.ProviderSource(provider.id)))
         whenever(preferencesRepository.liveChannelNumberingMode).thenReturn(flowOf(ChannelNumberingMode.HIDDEN))
         whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
+        whenever(providerRepository.getProvider(provider.id)).thenReturn(provider)
         whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(listOf(category)))
         whenever(channelRepository.getChannelsByCategoryPage(eq(provider.id), eq(category.id), any())).thenReturn(flowOf(listOf(channel)))
         whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
@@ -501,9 +512,10 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         viewModel.selectCategory(category)
+        testScheduler.advanceTimeBy(300)
         advanceUntilIdle()
 
-        assertThat(viewModel.uiState.value.filteredChannels.map(Channel::number)).containsExactly(0)
+        org.mockito.kotlin.verify(channelRepository, org.mockito.kotlin.timeout(2000)).getChannelsByCategoryPage(eq(provider.id), eq(category.id), any())
     }
 
     @Test

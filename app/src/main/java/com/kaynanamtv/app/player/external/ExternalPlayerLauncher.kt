@@ -69,6 +69,95 @@ object ExternalPlayerLauncher {
         }
     }
 
+    const val VLC_PACKAGE_NAME = "org.videolan.vlc"
+
+    private fun sanitizeUrlForLog(url: String): String {
+        return runCatching {
+            val uri = Uri.parse(url)
+            val scheme = uri.scheme ?: "unknown"
+            val host = uri.host ?: "unknown"
+            "$scheme://$host/*** (sanitized)"
+        }.getOrDefault("*** (sanitized)")
+    }
+
+    /**
+     * Builds an explicit [Intent] for official VLC Android app (org.videolan.vlc).
+     */
+    fun buildVlcIntent(
+        url: String,
+        title: String? = null,
+        headers: Map<String, String> = emptyMap()
+    ): Intent? {
+        val trimmed = url.trim()
+        if (trimmed.isBlank()) return null
+        val parsed = Uri.parse(trimmed)
+        if (parsed.scheme?.lowercase() !in allowedExternalPlayerSchemes) return null
+
+        return Intent(Intent.ACTION_VIEW).apply {
+            setPackage(VLC_PACKAGE_NAME)
+            setDataAndType(parsed, inferExternalPlayerMimeType(trimmed))
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            title?.takeIf { it.isNotBlank() }?.let {
+                putExtra("title", it)
+            }
+            if (headers.isNotEmpty()) {
+                val headersArray = headers.map { "${it.key}: ${it.value}" }.toTypedArray()
+                putExtra("extra_headers", headersArray)
+            }
+        }
+    }
+
+    /**
+     * Checks whether official VLC Android is installed on the device.
+     */
+    fun isVlcInstalled(context: Context): Boolean {
+        val packageManager = context.packageManager
+        return runCatching {
+            packageManager.getPackageInfo(VLC_PACKAGE_NAME, 0)
+            true
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Launch the given URL in official VLC Android app.
+     */
+    fun launchVlc(
+        context: Context,
+        url: String,
+        title: String? = null,
+        headers: Map<String, String> = emptyMap()
+    ): ExternalPlayerLaunchResult {
+        val trimmed = url.trim()
+        val intent = buildVlcIntent(trimmed, title, headers)
+            ?: return ExternalPlayerLaunchResult.InvalidUrl(
+                rawUrl = url,
+                reason = "Invalid or non-whitelisted URL scheme"
+            )
+
+        val packageManager: PackageManager = context.packageManager
+        if (intent.resolveActivity(packageManager) == null && !isVlcInstalled(context)) {
+            Log.w("ExternalPlayerLauncher", "Official VLC is not installed: ${sanitizeUrlForLog(url)}")
+            return ExternalPlayerLaunchResult.NoHandler(url = url)
+        }
+
+        if (context !is Activity) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        return try {
+            context.startActivity(intent)
+            val mimeType = inferExternalPlayerMimeType(trimmed)
+            Log.i("ExternalPlayerLauncher", "Launched VLC player for stream: ${sanitizeUrlForLog(url)}")
+            ExternalPlayerLaunchResult.Success(url = url, mimeType = mimeType)
+        } catch (e: ActivityNotFoundException) {
+            Log.w("ExternalPlayerLauncher", "No VLC activity found for: ${sanitizeUrlForLog(url)}", e)
+            ExternalPlayerLaunchResult.NoHandler(url = url)
+        } catch (e: RuntimeException) {
+            Log.e("ExternalPlayerLauncher", "Failed to launch VLC for: ${sanitizeUrlForLog(url)}", e)
+            ExternalPlayerLaunchResult.Failed(url = url, errorMessage = e.message ?: "Unknown runtime error")
+        }
+    }
+
     /**
      * Launch the given URL in an external player.
      *

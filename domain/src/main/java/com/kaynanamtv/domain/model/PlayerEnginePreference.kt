@@ -19,5 +19,10 @@ enum class PlayerEnginePreference {
     /**
      * Always use internal LibVLC engine.
      */
-    VLC
+    VLC,
+
+    /**
+     * Launch external VLC app (org.videolan.vlc).
+     */
+    EXTERNAL_VLC
 }
