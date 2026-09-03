@@ -43,7 +43,6 @@ internal fun LazyListScope.settingsPlaybackSection(
     playerEnginePreferenceLabel: String,
     playbackBufferModeLabel: String,
     audioOutputPreferenceLabel: String,
-    externalPlaybackModeLabel: String,
     surfaceModeLabel: String,
     vodHttpProtocolLabel: String,
     playbackSpeedLabel: String,
@@ -70,7 +69,6 @@ internal fun LazyListScope.settingsPlaybackSection(
     onShowVideoDecoderModeDialogChange: (Boolean) -> Unit,
     onShowPlaybackBufferModeDialogChange: (Boolean) -> Unit,
     onShowAudioOutputPreferenceDialogChange: (Boolean) -> Unit,
-    onShowExternalPlaybackModeDialogChange: (Boolean) -> Unit,
     onShowSurfaceModeDialogChange: (Boolean) -> Unit,
     onShowVodHttpProtocolDialogChange: (Boolean) -> Unit,
     onShowPlaybackSpeedDialogChange: (Boolean) -> Unit,
@@ -112,7 +110,7 @@ internal fun LazyListScope.settingsPlaybackSection(
 
         if (showPlayerEngineDialog) {
             PremiumSelectionDialog(
-                title = "Oynatıcı Motoru",
+                title = "Oynatıcı",
                 onDismiss = { showPlayerEngineDialog = false }
             ) {
                 playerEngineOptions.forEachIndexed { index, (pref, label) ->
@@ -159,9 +157,9 @@ internal fun LazyListScope.settingsPlaybackSection(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
         )
 
-        // Oynatıcı Motoru (Otomatik / Media3 / VLC)
+        // Oynatıcı (Otomatik / Media3 / Dahili VLC / Harici VLC)
         ClickableSettingsRow(
-            label = "Oynatıcı Motoru",
+            label = "Oynatıcı",
             value = playerEnginePreferenceLabel,
             onClick = { showPlayerEngineDialog = true }
         )
@@ -192,13 +190,6 @@ internal fun LazyListScope.settingsPlaybackSection(
             label = stringResource(R.string.settings_audio_decoder_mode),
             value = audioDecoderModeLabel,
             onClick = { onShowAudioDecoderModeDialogChange(true) }
-        )
-
-        // Varsayılan Oynatıcı (Dahili / Harici)
-        ClickableSettingsRow(
-            label = stringResource(R.string.settings_external_playback),
-            value = externalPlaybackModeLabel,
-            onClick = { onShowExternalPlaybackModeDialogChange(true) }
         )
 
         // Ses Çıkış Modu (Stereo / Passthrough / Surround)

@@ -132,17 +132,6 @@ internal fun SettingsScreenDialogs(
         )
     }
 
-    if (dialogState.showExternalPlaybackModeDialog) {
-        ExternalPlaybackModeDialog(
-            selectedMode = uiState.playerExternalPlaybackMode,
-            onDismiss = { dialogState.showExternalPlaybackModeDialog = false },
-            onModeSelected = { mode ->
-                viewModel.setExternalPlaybackMode(mode)
-                dialogState.showExternalPlaybackModeDialog = false
-            }
-        )
-    }
-
     if (dialogState.showVodViewModeDialog) {
         VodViewModeDialog(
             selectedMode = uiState.vodViewMode,
@@ -409,57 +398,4 @@ internal fun SettingsScreenDialogs(
     )
 }
 
-@Composable
-internal fun ExternalPlaybackModeDialog(
-    selectedMode: ExternalPlaybackMode,
-    onDismiss: () -> Unit,
-    onModeSelected: (ExternalPlaybackMode) -> Unit
-) {
-    val modes = listOf(ExternalPlaybackMode.INTERNAL_PLAYER, ExternalPlaybackMode.EXTERNAL_PLAYER)
-    PremiumDialog(
-        title = stringResource(R.string.settings_external_playback),
-        subtitle = stringResource(R.string.settings_external_playback_subtitle),
-        onDismissRequest = onDismiss,
-        widthFraction = 0.52f,
-        content = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                modes.forEach { mode ->
-                    val isSelected = mode == selectedMode ||
-                        (mode == ExternalPlaybackMode.EXTERNAL_PLAYER && selectedMode == ExternalPlaybackMode.ASK_EVERY_TIME)
-                    TvClickableSurface(
-                        onClick = { onModeSelected(mode) },
-                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
-                        colors = ClickableSurfaceDefaults.colors(
-                            containerColor = if (isSelected) Primary.copy(alpha = 0.18f) else SurfaceElevated,
-                            focusedContainerColor = Primary.copy(alpha = 0.28f)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = stringResource(
-                                    when (mode) {
-                                        ExternalPlaybackMode.INTERNAL_PLAYER -> R.string.settings_external_playback_mode_internal
-                                        ExternalPlaybackMode.EXTERNAL_PLAYER -> R.string.settings_external_playback_mode_external
-                                        ExternalPlaybackMode.ASK_EVERY_TIME -> R.string.settings_external_playback_mode_external
-                                    }
-                                ),
-                                style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
-                                color = if (isSelected) Primary else OnBackground
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        footer = {
-            PremiumDialogFooterButton(
-                label = stringResource(R.string.settings_cancel),
-                onClick = onDismiss
-            )
-        }
-    )
-}
+

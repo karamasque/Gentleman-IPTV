@@ -303,23 +303,31 @@ fun PlayerScreen(
         }
     }
     val context = LocalContext.current
+    val externalPlaybackUrl by viewModel.externalPlaybackUrl.collectAsStateWithLifecycle()
+    val launchExternalVlcEvent by viewModel.launchExternalVlcEvent.collectAsStateWithLifecycle()
+    val engineSwitchConfirmation by viewModel.engineSwitchConfirmation.collectAsStateWithLifecycle()
+
     val handleOpenExternalVlc: () -> Unit = remember(context, viewModel, streamUrl, title, playbackTitle) {
         {
             val streamInfo = viewModel.currentResolvedStreamInfo
-            val url = streamInfo?.url?.takeIf { it.isNotBlank() } ?: streamUrl
-            if (url.isNotBlank()) {
+            val rawUrl = streamInfo?.url?.takeIf { it.isNotBlank() }
+                ?: viewModel.currentResolvedPlaybackUrl.takeIf { it.isNotBlank() }
+                ?: viewModel.externalPlaybackUrl.value.takeIf { it.isNotBlank() }
+                ?: streamUrl
+            if (rawUrl.isNotBlank() && (rawUrl.startsWith("http://") || rawUrl.startsWith("https://") || rawUrl.startsWith("rtmp://") || rawUrl.startsWith("rtsp://"))) {
                 coroutineScope.launch {
                     viewModel.persistPlaybackProgress()
                 }
                 val headers = streamInfo?.headers ?: emptyMap()
                 val result = com.kaynanamtv.app.player.external.ExternalPlayerLauncher.launchVlc(
                     context = context,
-                    url = url,
+                    url = rawUrl,
                     title = playbackTitle.ifBlank { title },
                     headers = headers
                 )
                 if (result is com.kaynanamtv.app.player.external.ExternalPlayerLaunchResult.NoHandler) {
                     viewModel.showPlayerNotice(message = "Harici VLC yüklü değil.")
+                    viewModel.fallbackToMedia3Engine()
                 }
             }
         }
@@ -330,8 +338,16 @@ fun PlayerScreen(
     )
     var autoExternalVlcAttempted by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(playerEnginePreference, streamUrl) {
-        if (playerEnginePreference == com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC && !autoExternalVlcAttempted) {
+    LaunchedEffect(launchExternalVlcEvent) {
+        if (launchExternalVlcEvent) {
+            viewModel.onExternalVlcLaunchHandled()
+            handleOpenExternalVlc()
+        }
+    }
+
+    LaunchedEffect(playerEnginePreference, externalPlaybackUrl, streamUrl) {
+        val targetUrl = externalPlaybackUrl.takeIf { it.isNotBlank() } ?: streamUrl
+        if (playerEnginePreference == com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC && targetUrl.isNotBlank() && (targetUrl.startsWith("http://") || targetUrl.startsWith("https://")) && !autoExternalVlcAttempted) {
             autoExternalVlcAttempted = true
             handleOpenExternalVlc()
         }
@@ -498,6 +514,45 @@ fun PlayerScreen(
                 onNavigate?.invoke(Routes.MULTI_VIEW)
             },
             viewModel = multiViewViewModel
+        )
+    }
+
+    // Engine Switch Confirmation dialog
+    if (engineSwitchConfirmation.isVisible) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { viewModel.cancelEngineSwitch() },
+            title = {
+                Text(
+                    text = "Oynatıcıyı Değiştir",
+                    color = com.kaynanamtv.app.ui.theme.TextPrimary,
+                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+                )
+            },
+            text = {
+                Text(
+                    text = "Oynatıcıyı şimdi değiştirmek ister misiniz? Video bulunduğunuz konumdan yeniden başlatılacak.",
+                    color = com.kaynanamtv.app.ui.theme.TextSecondary,
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = { viewModel.confirmEngineSwitch() },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = com.kaynanamtv.app.ui.theme.Primary
+                    )
+                ) {
+                    Text("Evet")
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = { viewModel.cancelEngineSwitch() }
+                ) {
+                    Text("Hayır")
+                }
+            },
+            containerColor = com.kaynanamtv.app.ui.theme.SurfaceElevated
         )
     }
 

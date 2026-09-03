@@ -253,6 +253,15 @@ class PlayerViewModel @Inject constructor(
     val playerPreferencesUiState: StateFlow<PlayerPreferencesUiState> = _playerPreferencesUiState.asStateFlow()
     private val _externalPlaybackUrl = MutableStateFlow("")
     val externalPlaybackUrl: StateFlow<String> = _externalPlaybackUrl.asStateFlow()
+    private val _engineSwitchConfirmation = MutableStateFlow(EngineSwitchConfirmationState())
+    val engineSwitchConfirmation: StateFlow<EngineSwitchConfirmationState> = _engineSwitchConfirmation.asStateFlow()
+    private var activeEnginePreference: com.kaynanamtv.domain.model.PlayerEnginePreference? = null
+    private val _launchExternalVlcEvent = MutableStateFlow(false)
+    val launchExternalVlcEvent: StateFlow<Boolean> = _launchExternalVlcEvent.asStateFlow()
+
+    fun onExternalVlcLaunchHandled() {
+        _launchExternalVlcEvent.value = false
+    }
 
     internal var channelInfoHideJob: Job? = null
     internal var liveOverlayHideJob: Job? = null
@@ -414,6 +423,94 @@ class PlayerViewModel @Inject constructor(
         // handoff path (mainPlayerEngine.setMediaSessionEnabled(false)) for the reverse.
         activePlayerEngineFlow.value.setMediaSessionEnabled(false)
         activePlayerEngineFlow.value = engine
+    }
+
+    internal fun handleEnginePreferenceChange(newPref: com.kaynanamtv.domain.model.PlayerEnginePreference) {
+        val currentPref = activeEnginePreference
+        if (currentPref == null) {
+            activeEnginePreference = newPref
+            val targetType = playerEngineFactory.resolveEngineType(newPref)
+            val currentEngine = activePlayerEngineFlow.value
+            val isCurrentVlc = currentEngine is com.kaynanamtv.player.VlcPlayerEngine
+            val needsVlc = targetType == com.kaynanamtv.player.PlayerEngineType.VLC
+            if (needsVlc != isCurrentVlc) {
+                val newEngine = playerEngineFactory.createEngine(targetType)
+                currentEngine.release()
+                setActivePlayerEngine(newEngine)
+            }
+            return
+        }
+        if (currentPref == newPref) return
+        activeEnginePreference = newPref
+
+        val isSessionActive = playerEngine.playbackState.value != PlaybackState.IDLE && currentResolvedStreamInfo != null
+        if (isSessionActive) {
+            _engineSwitchConfirmation.value = EngineSwitchConfirmationState(
+                isVisible = true,
+                targetPreference = newPref
+            )
+        } else {
+            val targetType = playerEngineFactory.resolveEngineType(newPref)
+            val oldEngine = activePlayerEngineFlow.value
+            val newEngine = playerEngineFactory.createEngine(targetType)
+            oldEngine.release()
+            setActivePlayerEngine(newEngine)
+        }
+    }
+
+    fun confirmEngineSwitch() {
+        val targetPref = _engineSwitchConfirmation.value.targetPreference ?: return
+        _engineSwitchConfirmation.value = EngineSwitchConfirmationState(isVisible = false, targetPreference = null)
+
+        if (targetPref == com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC) {
+            viewModelScope.launch {
+                persistPlaybackProgress()
+            }
+            _launchExternalVlcEvent.value = true
+            return
+        }
+
+        val targetType = playerEngineFactory.resolveEngineType(targetPref)
+        val resumePosMs = playerEngine.currentPosition.value
+        val wasPlaying = playerEngine.isPlaying.value
+        val oldEngine = activePlayerEngineFlow.value
+        val newEngine = playerEngineFactory.createEngine(targetType)
+
+        oldEngine.pause()
+        oldEngine.stop()
+        oldEngine.release()
+
+        setActivePlayerEngine(newEngine)
+
+        currentResolvedStreamInfo?.let { stream ->
+            newEngine.prepare(stream)
+            if (resumePosMs > 0L) {
+                newEngine.seekTo(resumePosMs)
+            }
+            if (wasPlaying) {
+                newEngine.play()
+            }
+        }
+    }
+
+    fun cancelEngineSwitch() {
+        _engineSwitchConfirmation.value = EngineSwitchConfirmationState(isVisible = false, targetPreference = null)
+    }
+
+    fun fallbackToMedia3Engine() {
+        if (activePlayerEngineFlow.value is com.kaynanamtv.player.VlcPlayerEngine) {
+            val oldEngine = activePlayerEngineFlow.value
+            val newEngine = playerEngineFactory.createEngine(com.kaynanamtv.player.PlayerEngineType.MEDIA3)
+            val pos = oldEngine.currentPosition.value
+            val wasPlaying = oldEngine.isPlaying.value
+            oldEngine.release()
+            setActivePlayerEngine(newEngine)
+            currentResolvedStreamInfo?.let { stream ->
+                newEngine.prepare(stream)
+                if (pos > 0L) newEngine.seekTo(pos)
+                if (wasPlaying) newEngine.play()
+            }
+        }
     }
 
     private fun <T> activeEngineState(
@@ -689,6 +786,11 @@ class PlayerViewModel @Inject constructor(
                 _playerPreferencesUiState.value = PlayerPreferencesUiState(
                     externalPlaybackMode = mode
                 )
+            }
+        }
+        viewModelScope.launch {
+            preferencesRepository.playerEnginePreference.collect { pref ->
+                handleEnginePreferenceChange(pref)
             }
         }
         viewModelScope.launch {

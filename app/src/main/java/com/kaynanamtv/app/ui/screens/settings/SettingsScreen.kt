@@ -266,7 +266,7 @@ fun SettingsScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         AppScreenScaffold(
             currentRoute = currentRoute,
-            onNavigate = { if (!uiState.isSyncing) onNavigate(it) },
+            onNavigate = onNavigate,
             title = stringResource(R.string.settings_title),
             subtitle = stringResource(R.string.settings_providers_subtitle),
             navigationChrome = AppNavigationChrome.TopBar,

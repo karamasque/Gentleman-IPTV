@@ -90,9 +90,12 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -128,113 +131,7 @@ import com.kaynanamtv.app.ui.theme.Primary
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface AppShellEntryPoint {
-    fun syncManager(): com.kaynanamtv.data.sync.SyncManager
-    fun providerDao(): com.kaynanamtv.data.local.dao.ProviderDao
     fun communityChatRepository(): com.kaynanamtv.data.repository.CommunityChatRepository
-}
-
-@Composable
-private fun BoxScope.FloatingSyncIndicator(
-    syncManager: com.kaynanamtv.data.sync.SyncManager,
-    providerDao: com.kaynanamtv.data.local.dao.ProviderDao
-) {
-    val context = LocalContext.current
-    val providers by providerDao.getAll().collectAsState(initial = emptyList())
-    val syncStates by syncManager.syncStatesByProvider.collectAsState()
-
-    val syncingInfos = remember(providers, syncStates) {
-        syncStates.entries.mapNotNull { (providerId, state) ->
-            if (state is com.kaynanamtv.domain.model.SyncState.Syncing) {
-                val providerName = providers.firstOrNull { it.id == providerId }?.name ?: "IPTV Hesabı"
-                providerName to state.phase
-            } else {
-                null
-            }
-        }
-    }
-
-    val hasActiveSync = syncingInfos.isNotEmpty()
-    var isDismissed by remember { mutableStateOf(false) }
-
-    LaunchedEffect(hasActiveSync) {
-        if (!hasActiveSync) {
-            isDismissed = false
-        }
-    }
-
-    androidx.compose.animation.AnimatedVisibility(
-        visible = syncingInfos.isNotEmpty() && !isDismissed,
-        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInHorizontally(
-            initialOffsetX = { it }
-        ),
-        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutHorizontally(
-            targetOffsetX = { it }
-        ),
-        modifier = Modifier
-            .align(Alignment.BottomEnd)
-            .padding(bottom = 24.dp, end = 24.dp)
-            .zIndex(100f)
-    ) {
-        androidx.compose.material3.Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = Color(0xCC070A13),
-            border = BorderStroke(
-                width = 1.dp,
-                color = AppColors.Brand.copy(alpha = 0.4f)
-            ),
-            modifier = Modifier.widthIn(max = 300.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    color = AppColors.Brand,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(16.dp)
-                )
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(1.dp)
-                ) {
-                    val activeSync = syncingInfos.firstOrNull()
-                    val providerTitle = activeSync?.first?.let { "$it Güncelleniyor" } ?: "IPTV Güncelleniyor"
-                    val phaseText = activeSync?.second?.takeIf { it.isNotBlank() } ?: "Veriler eşitleniyor..."
-
-                    Text(
-                        text = providerTitle,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                        ),
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = phaseText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AppColors.TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                // Close / Dismiss button (✕)
-                androidx.compose.material3.IconButton(
-                    onClick = { isDismissed = true },
-                    modifier = Modifier.size(22.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Kapat",
-                        tint = Color.Gray,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-            }
-        }
-    }
 }
 
 enum class AppNavigationChrome {
@@ -517,11 +414,6 @@ fun AppScreenScaffold(
             }
         }
 
-        FloatingSyncIndicator(
-            syncManager = entryPoint.syncManager(),
-            providerDao = entryPoint.providerDao()
-        )
-
         if (showExitConfirmDialog) {
             val activity = context.findActivity()
             androidx.compose.material3.AlertDialog(
@@ -686,12 +578,24 @@ private fun TopNavigationBar(
                     modifier = Modifier.size(36.dp)
                 )
                 Text(
-                    text = "KaynanamTV",
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = AppColors.TextPrimary)) {
+                            append("Kaynanam")
+                        }
+                        withStyle(
+                            SpanStyle(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(Color(0xFF9333EA), Color(0xFFE11D48))
+                                )
+                            )
+                        ) {
+                            append("TV")
+                        }
+                    },
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.3.sp
-                    ),
-                    color = AppColors.TextPrimary
+                    )
                 )
             }
 

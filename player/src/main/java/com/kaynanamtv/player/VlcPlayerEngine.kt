@@ -108,6 +108,19 @@ class VlcPlayerEngine(
     private val _audioFocusDenied = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     override val audioFocusDenied: Flow<Unit> = _audioFocusDenied.asSharedFlow()
 
+    private var isSurfaceReady = false
+    private val voutCallback = object : org.videolan.libvlc.interfaces.IVLCVout.Callback {
+        override fun onSurfacesCreated(vlcVout: org.videolan.libvlc.interfaces.IVLCVout?) {
+            Log.i(TAG, "[VLC] onSurfacesCreated: Surface attached and ready for video rendering")
+            isSurfaceReady = true
+        }
+
+        override fun onSurfacesDestroyed(vlcVout: org.videolan.libvlc.interfaces.IVLCVout?) {
+            Log.i(TAG, "[VLC] onSurfacesDestroyed: Surface detached")
+            isSurfaceReady = false
+        }
+    }
+
     private fun getOrCreatePlayer(): MediaPlayer {
         mediaPlayer?.let { return it }
 
@@ -125,6 +138,8 @@ class VlcPlayerEngine(
 
         val vlc = LibVLC(context.applicationContext, options).also { libVlc = it }
         val player = MediaPlayer(vlc).also { mediaPlayer = it }
+
+        player.vlcVout.addCallback(voutCallback)
 
         player.setEventListener { event ->
             if (isDisposed) return@setEventListener
@@ -241,7 +256,8 @@ class VlcPlayerEngine(
                     addOption(":http-header=$key: $value")
                 }
             }
-            setHWDecoderEnabled(true, true)
+            // Auto hardware acceleration with automatic software fallback if codec/surface is incompatible
+            setHWDecoderEnabled(true, false)
         }
 
         player.media = media
@@ -429,7 +445,7 @@ class VlcPlayerEngine(
     }
 
     override fun bindRenderView(renderView: View, resizeMode: PlayerSurfaceResizeMode) {
-        val player = mediaPlayer ?: return
+        val player = mediaPlayer ?: getOrCreatePlayer()
         val vout = player.vlcVout
         if (attachedRenderView === renderView && vout.areViewsAttached()) {
             return
@@ -450,7 +466,9 @@ class VlcPlayerEngine(
 
     override fun clearRenderBinding() {
         attachedRenderView = null
-        mediaPlayer?.vlcVout?.detachViews()
+        runCatching {
+            mediaPlayer?.vlcVout?.detachViews()
+        }
     }
 
     override fun releaseRenderView(renderView: View) {
@@ -466,6 +484,7 @@ class VlcPlayerEngine(
             mediaPlayer?.let { player ->
                 player.setEventListener(null)
                 val vout = player.vlcVout
+                vout?.removeCallback(voutCallback)
                 if (vout?.areViewsAttached() == true) {
                     vout.detachViews()
                 }
@@ -477,6 +496,7 @@ class VlcPlayerEngine(
             libVlc = null
         }
         attachedRenderView = null
+        isSurfaceReady = false
         engineScope.cancel()
         _isPlaying.value = false
         _playbackState.value = PlaybackState.IDLE

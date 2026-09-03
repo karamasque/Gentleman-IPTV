@@ -440,7 +440,15 @@ class PreferencesRepository @Inject constructor(
             "MEDIA3" -> com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
             "VLC" -> com.kaynanamtv.domain.model.PlayerEnginePreference.VLC
             "EXTERNAL_VLC" -> com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC
-            else -> com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO
+            "AUTO" -> com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO
+            else -> {
+                val legacyExternal = preferences[PreferencesKeys.PLAYER_EXTERNAL_PLAYBACK_MODE]
+                if (legacyExternal == "external") {
+                    com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC
+                } else {
+                    com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO
+                }
+            }
         }
     }
 

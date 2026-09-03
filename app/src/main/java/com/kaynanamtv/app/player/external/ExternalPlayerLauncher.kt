@@ -96,7 +96,8 @@ object ExternalPlayerLauncher {
         return Intent(Intent.ACTION_VIEW).apply {
             setPackage(VLC_PACKAGE_NAME)
             setDataAndType(parsed, inferExternalPlayerMimeType(trimmed))
-            addCategory(Intent.CATEGORY_BROWSABLE)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             title?.takeIf { it.isNotBlank() }?.let {
                 putExtra("title", it)
             }

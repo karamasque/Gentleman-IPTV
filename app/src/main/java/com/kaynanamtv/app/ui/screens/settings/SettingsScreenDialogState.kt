@@ -29,7 +29,6 @@ internal class SettingsScreenDialogState(
     private val showVodVariantPreferenceDialogState: MutableState<Boolean>,
     private val showGuideDefaultCategoryDialogState: MutableState<Boolean>,
     private val showPlaybackSpeedDialogState: MutableState<Boolean>,
-    private val showExternalPlaybackModeDialogState: MutableState<Boolean>,
     private val showAudioVideoOffsetDialogState: MutableState<Boolean>,
     private val showAudioDecoderModeDialogState: MutableState<Boolean>,
     private val showVideoDecoderModeDialogState: MutableState<Boolean>,
@@ -96,7 +95,6 @@ internal class SettingsScreenDialogState(
     var showVodVariantPreferenceDialog by showVodVariantPreferenceDialogState
     var showGuideDefaultCategoryDialog by showGuideDefaultCategoryDialogState
     var showPlaybackSpeedDialog by showPlaybackSpeedDialogState
-    var showExternalPlaybackModeDialog by showExternalPlaybackModeDialogState
     var showAudioVideoOffsetDialog by showAudioVideoOffsetDialogState
     var showAudioDecoderModeDialog by showAudioDecoderModeDialogState
     var showVideoDecoderModeDialog by showVideoDecoderModeDialogState
@@ -231,7 +229,6 @@ internal fun rememberSettingsScreenDialogState(): SettingsScreenDialogState {
     val showVodVariantPreferenceDialogState = rememberSaveable { mutableStateOf(false) }
     val showGuideDefaultCategoryDialogState = rememberSaveable { mutableStateOf(false) }
     val showPlaybackSpeedDialogState = rememberSaveable { mutableStateOf(false) }
-    val showExternalPlaybackModeDialogState = rememberSaveable { mutableStateOf(false) }
     val showAudioVideoOffsetDialogState = rememberSaveable { mutableStateOf(false) }
     val showAudioDecoderModeDialogState = rememberSaveable { mutableStateOf(false) }
     val showVideoDecoderModeDialogState = rememberSaveable { mutableStateOf(false) }
@@ -307,7 +304,6 @@ internal fun rememberSettingsScreenDialogState(): SettingsScreenDialogState {
         showVodVariantPreferenceDialogState = showVodVariantPreferenceDialogState,
         showGuideDefaultCategoryDialogState = showGuideDefaultCategoryDialogState,
         showPlaybackSpeedDialogState = showPlaybackSpeedDialogState,
-        showExternalPlaybackModeDialogState = showExternalPlaybackModeDialogState,
         showAudioVideoOffsetDialogState = showAudioVideoOffsetDialogState,
         showAudioDecoderModeDialogState = showAudioDecoderModeDialogState,
         showVideoDecoderModeDialogState = showVideoDecoderModeDialogState,

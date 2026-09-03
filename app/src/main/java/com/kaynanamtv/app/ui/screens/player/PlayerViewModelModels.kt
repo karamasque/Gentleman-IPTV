@@ -44,6 +44,11 @@ data class PlayerPreferencesUiState(
     val externalPlaybackMode: ExternalPlaybackMode = ExternalPlaybackMode.INTERNAL_PLAYER
 )
 
+data class EngineSwitchConfirmationState(
+    val isVisible: Boolean = false,
+    val targetPreference: com.kaynanamtv.domain.model.PlayerEnginePreference? = null
+)
+
 data class PlayerDiagnosticsUiState(
     val providerName: String = "",
     val providerSourceLabel: String = "",

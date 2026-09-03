@@ -1006,9 +1006,10 @@ class ProviderRepositoryImpl @Inject constructor(
                 preferencesRepository.setLastActiveProviderId(providerData.id)
                 preferencesRepository.setActiveLiveSource(com.kaynanamtv.domain.model.ActiveLiveSource.ProviderSource(providerData.id))
                 updateProviderSyncStatus(
-                    providerData.id,
-                    finalStatus,
-                    lastSyncedAt = System.currentTimeMillis()
+                    providerId = providerData.id,
+                    status = finalStatus,
+                    lastSyncedAt = System.currentTimeMillis(),
+                    isActive = true
                 )
                 maybeScheduleBackgroundEpgSync(providerData.id)
                 Result.success(providerData.copy(status = finalStatus, isActive = true))
@@ -1050,28 +1051,28 @@ class ProviderRepositoryImpl @Inject constructor(
             )
         ) {
             is Result.Success -> {
-                val finalStatus = if (syncManager.currentSyncState(providerId) is SyncState.Partial) {
+                val provider = providerDao.getById(providerId)
+                val hasUsableLive = provider != null && hasUsableLiveCatalogForActivation(
+                    providerId,
+                    provider.type,
+                    channelDao,
+                    categoryDao,
+                    syncMetadataRepository
+                )
+                val finalStatus = if (!hasUsableLive || syncManager.currentSyncState(providerId) is SyncState.Partial) {
                     ProviderStatus.PARTIAL
                 } else {
                     ProviderStatus.ACTIVE
                 }
-                val provider = providerDao.getById(providerId)
-                if (provider != null && !hasUsableLiveCatalogForActivation(
-                        providerId,
-                        provider.type,
-                        channelDao,
-                        categoryDao,
-                        syncMetadataRepository
-                    )) {
-                    updateProviderSyncStatus(
-                        providerId,
-                        ProviderStatus.PARTIAL,
-                        lastSyncedAt = System.currentTimeMillis(),
-                        isActive = false
-                    )
+                updateProviderSyncStatus(
+                    providerId = providerId,
+                    status = finalStatus,
+                    lastSyncedAt = System.currentTimeMillis(),
+                    isActive = if (!hasUsableLive && provider?.isActive == false) false else provider?.isActive
+                )
+                if (!hasUsableLive) {
                     syncManager.scheduleProviderSyncResume(providerId)
                 } else {
-                    updateProviderSyncStatus(providerId, finalStatus, System.currentTimeMillis())
                     maybeScheduleBackgroundEpgSync(providerId)
                 }
                 syncResult
