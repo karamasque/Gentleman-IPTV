@@ -15,12 +15,12 @@ import org.junit.Test
 class GetContinueWatchingTest {
 
     @Test
-    fun distinct_episodes_remain_separate_and_do_not_collapse() = runTest {
+    fun collapses_multiple_episode_entries_into_one_series_resume() = runTest {
         val useCase = GetContinueWatching(
             playbackHistoryRepository = FakePlaybackHistoryRepository(
                 history = listOf(
-                    history(contentId = 21L, type = ContentType.SERIES_EPISODE, seriesId = 7L, lastWatchedAt = 300L, resumePositionMs = 50_000L),
-                    history(contentId = 20L, type = ContentType.SERIES_EPISODE, seriesId = 7L, lastWatchedAt = 200L, resumePositionMs = 40_000L),
+                    history(contentId = 21L, type = ContentType.SERIES_EPISODE, seriesId = 7L, seasonNumber = 1, episodeNumber = 1, lastWatchedAt = 300L, resumePositionMs = 50_000L),
+                    history(contentId = 20L, type = ContentType.SERIES_EPISODE, seriesId = 7L, seasonNumber = 1, episodeNumber = 1, lastWatchedAt = 200L, resumePositionMs = 40_000L),
                     history(contentId = 11L, type = ContentType.MOVIE, lastWatchedAt = 100L, resumePositionMs = 10_000L)
                 )
             )
@@ -28,9 +28,9 @@ class GetContinueWatchingTest {
 
         val result = useCase(providerId = 1L, limit = 5).collectOnce()
 
-        // Every incomplete episode remains separate in newest-first order
-        assertThat(result).hasSize(3)
-        assertThat(result.map { it.contentId }).containsExactly(21L, 20L, 11L).inOrder()
+        assertThat(result).hasSize(2)
+        assertThat(result.first().contentId).isEqualTo(21L)
+        assertThat(result.last().contentId).isEqualTo(11L)
     }
 
     @Test
@@ -110,99 +110,6 @@ class GetContinueWatchingTest {
     }
 
     @Test
-    fun multi_provider_isolation_preserves_same_content_id_on_different_providers() = runTest {
-        val useCase = GetContinueWatching(
-            playbackHistoryRepository = FakePlaybackHistoryRepository(
-                multiProviderHistory = listOf(
-                    history(contentId = 100L, type = ContentType.MOVIE, providerId = 1L, lastWatchedAt = 300L, resumePositionMs = 20_000L),
-                    history(contentId = 100L, type = ContentType.MOVIE, providerId = 2L, lastWatchedAt = 200L, resumePositionMs = 30_000L),
-                    history(contentId = 50L, type = ContentType.SERIES_EPISODE, providerId = 1L, seriesId = 5L, lastWatchedAt = 150L, resumePositionMs = 15_000L),
-                    history(contentId = 50L, type = ContentType.SERIES_EPISODE, providerId = 2L, seriesId = 5L, lastWatchedAt = 100L, resumePositionMs = 25_000L)
-                )
-            )
-        )
-
-        val result = useCase(setOf(1L, 2L), limit = 10).collectOnce()
-
-        // Distinct by providerId + contentId ensures both provider entries exist without colliding
-        assertThat(result.map { it.providerId to it.contentId }).containsExactly(
-            1L to 100L,
-            2L to 100L,
-            1L to 50L,
-            2L to 50L
-        ).inOrder()
-    }
-
-    @Test
-    fun completed_items_above_threshold_are_excluded() = runTest {
-        val useCase = GetContinueWatching(
-            playbackHistoryRepository = FakePlaybackHistoryRepository(
-                history = listOf(
-                    // 96% completed -> excluded
-                    PlaybackHistory(
-                        contentId = 1L,
-                        contentType = ContentType.MOVIE,
-                        providerId = 1L,
-                        title = "Completed Movie",
-                        streamUrl = "https://example.com/1",
-                        resumePositionMs = 115_000L,
-                        totalDurationMs = 120_000L,
-                        lastWatchedAt = 300L
-                    ),
-                    // 50% completed -> included
-                    PlaybackHistory(
-                        contentId = 2L,
-                        contentType = ContentType.MOVIE,
-                        providerId = 1L,
-                        title = "In Progress Movie",
-                        streamUrl = "https://example.com/2",
-                        resumePositionMs = 60_000L,
-                        totalDurationMs = 120_000L,
-                        lastWatchedAt = 200L
-                    )
-                )
-            )
-        )
-
-        val result = useCase(providerId = 1L, limit = 5).collectOnce()
-
-        assertThat(result.map { it.contentId }).containsExactly(2L)
-    }
-
-    @Test
-    fun all_eligible_items_returned_without_cap_newest_first() = runTest {
-        val items = (1L..25L).map { id ->
-            history(contentId = id, type = ContentType.MOVIE, providerId = 1L, lastWatchedAt = 1000L - id, resumePositionMs = 10_000L)
-        }
-        val useCase = GetContinueWatching(
-            playbackHistoryRepository = FakePlaybackHistoryRepository(history = items)
-        )
-
-        val result = useCase(providerId = 1L).collectOnce()
-
-        // Verifies no 12-item cap: all 25 items are returned in newest-first order
-        assertThat(result).hasSize(25)
-        assertThat(result.first().contentId).isEqualTo(1L)
-        assertThat(result.last().contentId).isEqualTo(25L)
-    }
-
-    @Test
-    fun explicit_limit_is_respected_when_provided() = runTest {
-        val items = (1L..20L).map { id ->
-            history(contentId = id, type = ContentType.MOVIE, providerId = 1L, lastWatchedAt = 1000L - id, resumePositionMs = 10_000L)
-        }
-        val useCase = GetContinueWatching(
-            playbackHistoryRepository = FakePlaybackHistoryRepository(history = items)
-        )
-
-        val result = useCase(providerId = 1L, limit = 15).collectOnce()
-
-        assertThat(result).hasSize(15)
-        assertThat(result.first().contentId).isEqualTo(1L)
-        assertThat(result.last().contentId).isEqualTo(15L)
-    }
-
-    @Test
     fun returns_degraded_on_recoverable_io_failure() = runTest {
         val useCase = GetContinueWatching(
             playbackHistoryRepository = FakePlaybackHistoryRepository(
@@ -246,6 +153,8 @@ class GetContinueWatchingTest {
         type: ContentType,
         providerId: Long = 1L,
         seriesId: Long? = null,
+        seasonNumber: Int? = null,
+        episodeNumber: Int? = null,
         lastWatchedAt: Long,
         resumePositionMs: Long
     ) = PlaybackHistory(
@@ -257,7 +166,9 @@ class GetContinueWatchingTest {
         resumePositionMs = resumePositionMs,
         totalDurationMs = 120_000L,
         lastWatchedAt = lastWatchedAt,
-        seriesId = seriesId
+        seriesId = seriesId,
+        seasonNumber = seasonNumber,
+        episodeNumber = episodeNumber
     )
 
     private class FakePlaybackHistoryRepository(

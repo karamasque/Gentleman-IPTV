@@ -407,14 +407,14 @@ class MoviesViewModel @Inject constructor(
                         movieRepository.getTopRatedPreview(provider.id, VodBrowseDefaults.PREVIEW_ROW_LIMIT),
                         movieRepository.getFreshPreview(provider.id, VodBrowseDefaults.PREVIEW_ROW_LIMIT)
                     ) { allFavorites, continueResult, topRated, fresh ->
-                        val history = when (continueResult) {
+                        val continueItems = when (continueResult) {
                             is ContinueWatchingResult.Items -> continueResult.items
                             ContinueWatchingResult.Degraded -> emptyList()
                         }
                         MovieLibraryLensDependencies(
                             providerId = provider.id,
                             allFavorites = allFavorites,
-                            history = history,
+                            history = continueItems,
                             topRated = topRated,
                             fresh = fresh
                         )
@@ -436,8 +436,9 @@ class MoviesViewModel @Inject constructor(
                     val continueIds = dependencies.history
                         .asSequence()
                         .filter { it.contentType == ContentType.MOVIE }
+                        .sortedByDescending { it.lastWatchedAt }
+                        .distinctBy { it.contentId }
                         .map { it.contentId }
-                        .distinct()
                         .take(VodBrowseDefaults.PREVIEW_ROW_LIMIT)
                         .toList()
 
@@ -450,7 +451,7 @@ class MoviesViewModel @Inject constructor(
                         emptyList()
                     } else {
                         movieRepository.getMoviesByIds(continueIds).first().orderByIds(continueIds)
-                    }.markMovieFavorites(globalFavoriteIds).distinctBy { it.streamId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
+                    }.markMovieFavorites(globalFavoriteIds)
 
                     _uiState.update {
                         it.copy(
@@ -1032,47 +1033,23 @@ class MoviesViewModel @Inject constructor(
 
         val (selectedItems, totalCount, hasMoreRemote) = when (request.selectedCategory) {
             VodBrowseDefaults.FULL_LIBRARY_CATEGORY -> {
-                if (request.filterType == LibraryFilterType.IN_PROGRESS) {
-                    val continueWatchingList = _uiState.value.continueWatching
-                    val continueIds = continueWatchingList.map { it.contentId }
-                    val items = if (continueIds.isEmpty()) {
-                        emptyList()
-                    } else {
-                        movieRepository.getMoviesByIds(continueIds).first()
-                            .filterNot { movie -> movie.categoryId in request.hiddenCategoryIds }
-                            .orderByIds(continueIds)
-                            .distinctBy { it.streamId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
-                    }
-                    val filteredItems = applyLocalBrowseToMovies(
-                        items,
-                        request.filterType,
-                        request.sortBy,
-                        effectiveQuery
-                    )
-                    Triple(
-                        filteredItems.take(request.loadLimit),
-                        filteredItems.size,
-                        false
-                    )
-                } else {
-                    val result = movieRepository
-                        .browseMovies(
-                            LibraryBrowseQuery(
-                                providerId = request.providerId,
-                                sortBy = request.sortBy,
-                                filterBy = LibraryFilterBy(type = request.filterType),
-                                searchQuery = effectiveQuery,
-                                limit = request.loadLimit,
-                                offset = 0
-                            )
+                val result = movieRepository
+                    .browseMovies(
+                        LibraryBrowseQuery(
+                            providerId = request.providerId,
+                            sortBy = request.sortBy,
+                            filterBy = LibraryFilterBy(type = request.filterType),
+                            searchQuery = effectiveQuery,
+                            limit = request.loadLimit,
+                            offset = 0
                         )
-                        .first()
-                    Triple(
-                        result.items.filterNot { movie -> movie.categoryId in request.hiddenCategoryIds },
-                        result.totalCount,
-                        result.hasMoreRemote
                     )
-                }
+                    .first()
+                Triple(
+                    result.items.filterNot { movie -> movie.categoryId in request.hiddenCategoryIds },
+                    result.totalCount,
+                    result.hasMoreRemote
+                )
             }
             VodBrowseDefaults.FAVORITES_CATEGORY -> {
                 val ids = request.allFavorites
@@ -1215,14 +1192,11 @@ class MoviesViewModel @Inject constructor(
         val filtered = when (filterType) {
             LibraryFilterType.ALL -> searched
             LibraryFilterType.FAVORITES -> searched.filter { it.isFavorite }
-            LibraryFilterType.IN_PROGRESS -> {
-                val continueKeys = _uiState.value.continueWatching.map { it.contentId }.toSet()
-                searched.filter { movie ->
-                    movie.id in continueKeys || (movie.watchProgress > 0L && !isPlaybackComplete(
-                        movie.watchProgress,
-                        movie.durationSeconds.takeIf { it > 0 }?.times(1000L) ?: 0L
-                    ))
-                }.distinctBy { it.streamUrl?.takeIf { s -> s.isNotBlank() } ?: it.streamId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
+            LibraryFilterType.IN_PROGRESS -> searched.filter { movie ->
+                movie.watchProgress > 0L && !isPlaybackComplete(
+                    movie.watchProgress,
+                    movie.durationSeconds.takeIf { it > 0 }?.times(1000L) ?: 0L
+                )
             }
             LibraryFilterType.UNWATCHED -> searched.filter { it.watchProgress <= 0L }
             LibraryFilterType.RECENTLY_UPDATED -> searched.filter { movieAddedScore(it) > 0L }

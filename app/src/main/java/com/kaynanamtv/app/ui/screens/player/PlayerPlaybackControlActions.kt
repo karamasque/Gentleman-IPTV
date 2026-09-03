@@ -140,10 +140,4 @@ fun PlayerViewModel.play() {
 fun PlayerViewModel.pause() {
     notifyUserActivity()
     playerEngine.pause()
-    if (currentContentType != ContentType.LIVE) {
-        viewModelScope.launch {
-            persistPlaybackProgress(forceCloudSync = true)
-            playbackHistoryRepository.flushPendingProgress()
-        }
-    }
 }

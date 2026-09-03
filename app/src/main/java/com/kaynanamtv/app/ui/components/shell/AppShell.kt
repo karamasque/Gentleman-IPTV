@@ -676,8 +676,8 @@ private fun TopNavigationBar(
             // Brand Logo & Name
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(start = 2.dp, end = 12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(start = 2.dp, end = 10.dp)
             ) {
                 androidx.compose.foundation.Image(
                     painter = androidx.compose.ui.res.painterResource(id = R.drawable.kaynanamtv_brand_logo),
@@ -686,7 +686,7 @@ private fun TopNavigationBar(
                     modifier = Modifier.size(36.dp)
                 )
                 Text(
-                    text = stringResource(R.string.app_name),
+                    text = "KaynanamTV",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.3.sp

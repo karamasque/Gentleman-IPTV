@@ -79,6 +79,7 @@ class CloudUserStateSyncManager @Inject constructor(
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lastSyncedProgressTimes = ConcurrentHashMap<String, Long>()
     private val lastSyncedProgressPositions = ConcurrentHashMap<String, Long>()
+    private val lastRepairTimeByProvider = ConcurrentHashMap<Long, Long>()
     private val reconcileMutex = kotlinx.coroutines.sync.Mutex()
     private var lastReconcileTime = 0L
 
@@ -99,17 +100,24 @@ class CloudUserStateSyncManager @Inject constructor(
         }.getOrDefault(raw.filter { it.isLetterOrDigit() }.take(32))
     }
 
-    /**
-     * Sanitizes sensitive identifiers to a deterministic SHA-256 hash prefix for safe cross-device log correlation.
-     */
-    fun sanitizedHash(value: String): String {
-        if (value.isBlank()) return "empty"
+    private fun isNetworkAvailable(): Boolean {
         return runCatching {
-            val md = MessageDigest.getInstance("SHA-256")
-            val bytes = md.digest(value.toByteArray(Charsets.UTF_8))
-            bytes.take(8).joinToString("") { "%02x".format(it) }
-        }.getOrDefault("hash_err")
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return false
+            val activeNetwork = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(activeNetwork) ?: return false
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }.getOrDefault(true)
     }
+
+    data class TargetedWatchProgress(
+        val resumePositionMs: Long,
+        val totalDurationMs: Long,
+        val isCompleted: Boolean,
+        val updatedAt: Long,
+        val revision: Long = 0L,
+        val playbackSessionId: String = "",
+        val checkpointSeq: Long = 0L
+    )
 
     /**
      * Resolves and fetches the targeted watch progress document from Firestore for a specific movie or episode.
@@ -177,16 +185,6 @@ class CloudUserStateSyncManager @Inject constructor(
         }.getOrNull()
     }
 
-    data class TargetedWatchProgress(
-        val resumePositionMs: Long,
-        val totalDurationMs: Long,
-        val isCompleted: Boolean,
-        val updatedAt: Long,
-        val revision: Long = 0L,
-        val playbackSessionId: String = "",
-        val checkpointSeq: Long = 0L
-    )
-
     /**
      * Records watch progress to local Room DB immediately, and asynchronously syncs to Firestore using OCC.
      */
@@ -226,13 +224,17 @@ class CloudUserStateSyncManager @Inject constructor(
             // 1. Local Room DB update (Instant Source of Truth)
             runCatching {
                 playbackHistoryDao.insertOrUpdate(historyEntity)
-            }.onFailure {
-                Log.w(TAG, "Failed to persist local playback history", it)
-            }
+            }.onFailure { Log.w(TAG, "Failed to persist local playback history", it) }
 
-            // 2. Multi-device Cloud Sync (Async, non-blocking OCC transaction with offline queue fallback)
+            // 2. Multi-device Cloud Sync (Async, non-blocking OCC transaction)
             val user = FirebaseAuth.getInstance().currentUser ?: return@launch
             if (user.isAnonymous) return@launch
+
+            // Defer blind offline canonical writes: check network before attempting Firestore transaction
+            if (!isNetworkAvailable()) {
+                Log.d(TAG, "Offline: skipping blind canonical cloud write for contentId $contentId (Room updated)")
+                return@launch
+            }
 
             val provider = runCatching { providerDao.getById(providerId) }.getOrNull() ?: return@launch
             val providerStableKey = computeProviderStableKey(provider)
@@ -301,19 +303,15 @@ class CloudUserStateSyncManager @Inject constructor(
 
             val shouldSync = forceCloudSync || isCompleted || (now - lastSyncedTime >= 25_000L && posDelta >= 15_000L)
 
-            if (!shouldSync) {
-                return@launch
-            }
-
-            lastSyncedProgressTimes[cloudDocId] = now
-            lastSyncedProgressPositions[cloudDocId] = positionMs
-
-            runCatching {
-                val firestore = FirebaseFirestore.getInstance()
-                val docRef = firestore.collection("users").document(user.uid)
-                    .collection("watch_history").document(cloudDocId)
+            if (shouldSync) {
+                lastSyncedProgressTimes[cloudDocId] = now
+                lastSyncedProgressPositions[cloudDocId] = positionMs
 
                 runCatching {
+                    val firestore = FirebaseFirestore.getInstance()
+                    val docRef = firestore.collection("users").document(user.uid)
+                        .collection("watch_history").document(cloudDocId)
+
                     firestore.runTransaction { transaction ->
                         val snapshot = transaction.get(docRef)
                         val cloudExists = snapshot.exists()
@@ -330,6 +328,8 @@ class CloudUserStateSyncManager @Inject constructor(
                                 metadata["playbackSessionId"] = playbackSessionId
                                 metadata["checkpointSeq"] = checkpointSeq
                                 transaction.set(docRef, metadata, SetOptions.merge())
+                            } else {
+                                Log.d(TAG, "CheckpointSeq $checkpointSeq <= cloudSeq $cloudSeq for session $playbackSessionId (ignored)")
                             }
                         } else {
                             if (!cloudExists || cloudRevision == baseRevision || (cloudRevision == 0L && baseRevision == 0L)) {
@@ -338,17 +338,13 @@ class CloudUserStateSyncManager @Inject constructor(
                                 metadata["playbackSessionId"] = playbackSessionId
                                 metadata["checkpointSeq"] = checkpointSeq
                                 transaction.set(docRef, metadata, SetOptions.merge())
+                                Log.d(TAG, "OCC: Claimed canonical session $playbackSessionId, revision $newRevision for $cloudDocId")
+                            } else {
+                                Log.w(TAG, "OCC Conflict for $cloudDocId: cloudRevision=$cloudRevision != baseRevision=$baseRevision. Cloud write rejected.")
                             }
                         }
                     }.await()
-                }.onFailure {
-                    // Fallback to direct merge set to allow Firestore offline persistence queueing
-                    metadata["playbackSessionId"] = playbackSessionId
-                    metadata["checkpointSeq"] = checkpointSeq
-                    docRef.set(metadata, SetOptions.merge()).await()
-                }
-            }.onFailure {
-                Log.w(TAG, "Failed to publish OCC watch progress to Firestore (non-fatal)", it)
+                }.onFailure { Log.w(TAG, "Failed to publish OCC watch progress to Firestore (non-fatal)", it) }
             }
         }
     }
@@ -468,37 +464,38 @@ class CloudUserStateSyncManager @Inject constructor(
     /**
      * Reconciles remote watch history and favorites from Firestore into local Room DB.
      * Uses Smart Sync / Delta Sync: only fetches records changed since the last sync cursor.
-     * Guarded by mutex and 5-second debounce to eliminate duplicate queries while allowing rapid updates.
+     * Guarded by mutex and 60-second cooldown to eliminate duplicate queries and read spikes.
      */
     fun reconcileFromCloud(force: Boolean = false) {
         val user = FirebaseAuth.getInstance().currentUser ?: return
         if (user.isAnonymous) return
         val now = System.currentTimeMillis()
         if (!force && (now - lastReconcileTime < RECONCILE_MIN_INTERVAL_MS)) {
+            Log.d(TAG, "reconcileFromCloud: throttled by cooldown")
             return
         }
         syncScope.launch {
             if (!reconcileMutex.tryLock()) {
+                Log.d(TAG, "reconcileFromCloud: already in progress (coalesced)")
                 return@launch
             }
             try {
                 lastReconcileTime = System.currentTimeMillis()
                 val token = runCatching { user.getIdToken(true).await() }.getOrNull()
                 if (token == null || token.token.isNullOrBlank()) {
+                    Log.d(TAG, "Skipping cloud user state reconcile: active server auth session is not valid")
                     return@launch
                 }
 
                 val localProviders = runCatching { providerDao.getAllSync() }.getOrDefault(emptyList())
-                if (localProviders.isEmpty()) {
-                    return@launch
-                }
+                if (localProviders.isEmpty()) return@launch
 
                 val providersByStableKey = localProviders.associateBy { computeProviderStableKey(it) }
                 val syncStartTime = System.currentTimeMillis()
 
                 // 1. Reconcile Watch History (Delta Sync with Safety Window and Partial Cursor Protection)
                 runCatching {
-                    val lastCursor = if (force) 0L else getWatchHistorySyncCursor(user.uid)
+                    val lastCursor = getWatchHistorySyncCursor(user.uid)
                     val firestore = FirebaseFirestore.getInstance()
                     val collectionRef = firestore.collection("users").document(user.uid).collection("watch_history")
 
@@ -515,9 +512,7 @@ class CloudUserStateSyncManager @Inject constructor(
                     for (doc in historySnapshot.documents) {
                         val data = doc.data ?: continue
                         val providerStableKey = (data["providerStableKey"] as? String) ?: ""
-                        val legacyProviderId = (data["providerId"] as? Long) ?: 0L
-                        val localProvider = providersByStableKey[providerStableKey]
-                            ?: localProviders.firstOrNull { it.id == legacyProviderId }
+                        val localProvider = if (providerStableKey.isNotBlank()) providersByStableKey[providerStableKey] else null
 
                         val contentTypeStr = (data["contentType"] as? String) ?: continue
                         val contentType = runCatching { ContentType.valueOf(contentTypeStr) }.getOrNull() ?: continue
@@ -527,7 +522,6 @@ class CloudUserStateSyncManager @Inject constructor(
                         val updatedAt = (data["updatedAt"] as? Long) ?: 0L
                         val isCompleted = (data["isCompleted"] as? Boolean)
                             ?: (totalDurationMs > 0L && resumePositionMs >= totalDurationMs * 0.95)
-                        val cloudRevision = (data["revision"] as? Long) ?: 0L
 
                         if (localProvider == null) {
                             minUnresolvedWatchHistoryTime = minOf(minUnresolvedWatchHistoryTime ?: updatedAt, updatedAt)
@@ -542,16 +536,11 @@ class CloudUserStateSyncManager @Inject constructor(
 
                                 if (localMovie != null) {
                                     val local = playbackHistoryDao.get(localMovie.id, ContentType.MOVIE.name, localProvider.id)
-                                    if (local == null || cloudRevision > 0L || updatedAt > local.lastWatchedAt) {
-                                        val title = (data["title"] as? String)?.takeIf { it.isNotBlank() }
-                                            ?: localMovie.name.takeIf { it.isNotBlank() }
-                                            ?: local?.title
-                                            ?: ""
-                                        val posterUrl = localMovie.posterUrl?.takeIf { it.isNotBlank() }
-                                            ?: local?.posterUrl
-                                        val streamUrl = localMovie.streamUrl.takeIf { it.isNotBlank() }
-                                            ?: local?.streamUrl
-                                            ?: ""
+                                    val shouldUpdate = local == null || (updatedAt > local.lastWatchedAt && (local.watchedStatus != "COMPLETED" || isCompleted))
+                                    if (shouldUpdate) {
+                                        val title = (data["title"] as? String)?.takeIf { it.isNotBlank() } ?: localMovie.name
+                                        val posterUrl = localMovie.posterUrl
+                                        val streamUrl = localMovie.streamUrl.takeIf { it.isNotBlank() } ?: ""
                                         playbackHistoryDao.insertOrUpdate(
                                             PlaybackHistoryEntity(
                                                 providerId = localProvider.id,
@@ -596,19 +585,14 @@ class CloudUserStateSyncManager @Inject constructor(
 
                                 if (localEpisode != null) {
                                     val local = playbackHistoryDao.get(localEpisode.id, ContentType.SERIES_EPISODE.name, localProvider.id)
-                                    if (local == null || cloudRevision > 0L || updatedAt > local.lastWatchedAt) {
+                                    val shouldUpdate = local == null || (updatedAt > local.lastWatchedAt && (local.watchedStatus != "COMPLETED" || isCompleted))
+                                    if (shouldUpdate) {
                                         val title = (data["title"] as? String)?.takeIf { it.isNotBlank() }
-                                            ?: localEpisode.title.takeIf { it.isNotBlank() }
-                                            ?: localSeries?.name
-                                            ?: local?.title
-                                            ?: ""
+                                            ?: localEpisode.title.ifBlank { localSeries?.name ?: "" }
                                         val posterUrl = localEpisode.coverUrl?.takeIf { it.isNotBlank() }
                                             ?: localSeries?.posterUrl?.takeIf { it.isNotBlank() }
                                             ?: localSeries?.backdropUrl?.takeIf { it.isNotBlank() }
-                                            ?: local?.posterUrl
-                                        val streamUrl = localEpisode.streamUrl.takeIf { it.isNotBlank() }
-                                            ?: local?.streamUrl
-                                            ?: ""
+                                        val streamUrl = localEpisode.streamUrl.takeIf { it.isNotBlank() } ?: ""
                                         playbackHistoryDao.insertOrUpdate(
                                             PlaybackHistoryEntity(
                                                 providerId = localProvider.id,
@@ -641,12 +625,11 @@ class CloudUserStateSyncManager @Inject constructor(
                     if (minUnresolvedWatchHistoryTime != null) {
                         val safeCursor = (minUnresolvedWatchHistoryTime - 1000L).coerceAtLeast(0L)
                         setWatchHistorySyncCursor(user.uid, safeCursor)
+                        Log.d(TAG, "Watch history cursor partially advanced to $safeCursor due to unresolved items")
                     } else {
                         setWatchHistorySyncCursor(user.uid, syncStartTime)
                     }
-                }.onFailure {
-                    Log.w(TAG, "Failed to reconcile watch history from cloud", it)
-                }
+                }.onFailure { Log.w(TAG, "Failed to reconcile watch history from cloud", it) }
 
                 // 2. Reconcile Favorites (Delta Sync with Safety Window)
                 runCatching {
@@ -667,9 +650,7 @@ class CloudUserStateSyncManager @Inject constructor(
                         val data = doc.data ?: continue
                         val isFavorite = (data["isFavorite"] as? Boolean) ?: false
                         val providerStableKey = (data["providerStableKey"] as? String) ?: ""
-                        val legacyProviderId = (data["providerId"] as? Long) ?: 0L
-                        val localProvider = providersByStableKey[providerStableKey]
-                            ?: localProviders.firstOrNull { it.id == legacyProviderId }
+                        val localProvider = (if (providerStableKey.isNotBlank()) providersByStableKey[providerStableKey] else null)
                             ?: continue
 
                         val contentTypeStr = (data["contentType"] as? String) ?: continue
@@ -721,11 +702,6 @@ class CloudUserStateSyncManager @Inject constructor(
                     // Favorites cursor updated after processing
                     setFavoritesSyncCursor(user.uid, syncStartTime)
                 }.onFailure { Log.w(TAG, "Failed to reconcile favorites from cloud", it) }
-
-                // 3. Perform idempotent local-history-to-cloud backfill for any unsynced historical records
-                runCatching {
-                    backfillLocalHistoryToCloud()
-                }
             } finally {
                 reconcileMutex.unlock()
             }
@@ -733,123 +709,135 @@ class CloudUserStateSyncManager @Inject constructor(
     }
 
     /**
-     * Bounded, idempotent local-history-to-cloud backfill.
-     * Ensures all pre-existing local Room playback progress entries become available in Firestore,
-     * using canonical cloud document keys and OCC timestamp/revision checks so newer cloud data is never overwritten.
+     * Performs a bounded, idempotent provider-identity repair pass for the specified active provider.
+     * Queries up to 500 incomplete cloud watch-history documents belonging to the active providerStableKey,
+     * resolves them to the local provider ID, and upserts valid local playback_history records.
      */
-    suspend fun backfillLocalHistoryToCloud(batchLimit: Int = 50): Int {
-        val user = FirebaseAuth.getInstance().currentUser ?: return 0
-        if (user.isAnonymous) return 0
+    fun repairActiveProviderHistory(activeProviderId: Long, force: Boolean = false) {
+        if (activeProviderId <= 0L) return
+        val user = FirebaseAuth.getInstance().currentUser ?: return
+        if (user.isAnonymous) return
+        val now = System.currentTimeMillis()
+        val lastRepair = lastRepairTimeByProvider[activeProviderId] ?: 0L
+        if (!force && (now - lastRepair < RECONCILE_MIN_INTERVAL_MS)) {
+            return
+        }
+        syncScope.launch {
+            runCatching {
+                lastRepairTimeByProvider[activeProviderId] = System.currentTimeMillis()
+                val localProvider = providerDao.getById(activeProviderId) ?: return@launch
+                val activeProviderStableKey = computeProviderStableKey(localProvider)
+                if (activeProviderStableKey.isBlank()) return@launch
 
-        return runCatching {
-            val localHistory = playbackHistoryDao.getAllSync()
-                .filter { it.contentType != ContentType.LIVE && it.resumePositionMs > 0L }
-                .take(batchLimit)
+                val firestore = FirebaseFirestore.getInstance()
+                val snapshot = firestore.collection("users").document(user.uid)
+                    .collection("watch_history")
+                    .whereEqualTo("providerStableKey", activeProviderStableKey)
+                    .limit(500)
+                    .get()
+                    .await()
 
-            if (localHistory.isEmpty()) return 0
-
-            val localProviders = providerDao.getAllSync()
-            if (localProviders.isEmpty()) return 0
-            val providersById = localProviders.associateBy { it.id }
-
-            val firestore = FirebaseFirestore.getInstance()
-            val watchHistoryColl = firestore.collection("users").document(user.uid).collection("watch_history")
-            var backfilledCount = 0
-
-            for (record in localHistory) {
-                val provider = providersById[record.providerId] ?: continue
-                val providerStableKey = computeProviderStableKey(provider)
-
-                val (cloudDocId, metadata) = when (record.contentType) {
-                    ContentType.MOVIE -> {
-                        val movie = movieDao.getById(record.contentId)
-                        val streamId = movie?.streamId ?: record.contentId
-                        val tmdbId = movie?.tmdbId
-                        val title = movie?.name ?: record.title
-                        val docId = "MOVIE_${providerStableKey}_$streamId"
-                        val isCompleted = record.totalDurationMs > 0L && record.resumePositionMs >= (record.totalDurationMs * 0.95)
-                        val map = hashMapOf<String, Any>(
-                            "providerStableKey" to providerStableKey,
-                            "contentKey" to docId,
-                            "contentType" to ContentType.MOVIE.name,
-                            "streamId" to streamId,
-                            "tmdbId" to (tmdbId ?: 0L),
-                            "title" to title,
-                            "seriesRemoteId" to 0L,
-                            "seasonNumber" to 0,
-                            "episodeNumber" to 0,
-                            "resumePositionMs" to record.resumePositionMs,
-                            "totalDurationMs" to record.totalDurationMs,
-                            "progressPercent" to if (record.totalDurationMs > 0) (record.resumePositionMs.toFloat() / record.totalDurationMs.toFloat() * 100f).coerceIn(0f, 100f) else 0f,
-                            "isCompleted" to isCompleted,
-                            "updatedAt" to record.lastWatchedAt
-                        )
-                        docId to map
+                for (doc in snapshot.documents) {
+                    val data = doc.data ?: continue
+                    val isCompleted = (data["isCompleted"] as? Boolean) ?: false
+                    val totalDurationMs = (data["totalDurationMs"] as? Long) ?: 0L
+                    val resumePositionMs = (data["resumePositionMs"] as? Long) ?: 0L
+                    if (isCompleted || (totalDurationMs > 0L && resumePositionMs >= totalDurationMs * 0.95)) {
+                        continue
                     }
-                    ContentType.SERIES_EPISODE -> {
-                        val episode = episodeDao.getById(record.contentId)
-                        val resolvedSeriesId = record.seriesId ?: episode?.seriesId ?: 0L
-                        val series = if (resolvedSeriesId > 0L) seriesDao.getById(resolvedSeriesId) else null
-                        val seriesRemoteId = series?.seriesId ?: resolvedSeriesId
-                        val seasonNum = record.seasonNumber ?: episode?.seasonNumber ?: 0
-                        val episodeNum = record.episodeNumber ?: episode?.episodeNumber ?: 0
-                        val streamId = episode?.episodeId ?: 0L
-                        val tmdbId = series?.tmdbId
-                        val title = episode?.title ?: record.title.ifBlank { series?.name ?: "" }
-                        val docId = "EPISODE_${providerStableKey}_${seriesRemoteId}_S${seasonNum}E${episodeNum}"
-                        val isCompleted = record.totalDurationMs > 0L && record.resumePositionMs >= (record.totalDurationMs * 0.95)
-                        val map = hashMapOf<String, Any>(
-                            "providerStableKey" to providerStableKey,
-                            "contentKey" to docId,
-                            "contentType" to ContentType.SERIES_EPISODE.name,
-                            "streamId" to streamId,
-                            "tmdbId" to (tmdbId ?: 0L),
-                            "title" to title,
-                            "seriesRemoteId" to seriesRemoteId,
-                            "seasonNumber" to seasonNum,
-                            "episodeNumber" to episodeNum,
-                            "resumePositionMs" to record.resumePositionMs,
-                            "totalDurationMs" to record.totalDurationMs,
-                            "progressPercent" to if (record.totalDurationMs > 0) (record.resumePositionMs.toFloat() / record.totalDurationMs.toFloat() * 100f).coerceIn(0f, 100f) else 0f,
-                            "isCompleted" to isCompleted,
-                            "updatedAt" to record.lastWatchedAt
-                        )
-                        docId to map
-                    }
-                    else -> continue
-                }
+                    val contentTypeStr = (data["contentType"] as? String) ?: continue
+                    val contentType = runCatching { ContentType.valueOf(contentTypeStr) }.getOrNull() ?: continue
+                    val streamId = (data["streamId"] as? Long) ?: (data["contentId"] as? Long) ?: 0L
+                    val updatedAt = (data["updatedAt"] as? Long) ?: 0L
 
-                val docRef = watchHistoryColl.document(cloudDocId)
-                runCatching {
-                    firestore.runTransaction { transaction ->
-                        val snapshot = transaction.get(docRef)
-                        if (snapshot.exists()) {
-                            val cloudData = snapshot.data
-                            val cloudUpdatedAt = (cloudData?.get("updatedAt") as? Long) ?: 0L
-                            val cloudIsCompleted = (cloudData?.get("isCompleted") as? Boolean) ?: false
+                    when (contentType) {
+                        ContentType.MOVIE -> {
+                            val localMovie = if (streamId > 0L) {
+                                movieDao.getByStreamId(localProvider.id, streamId)
+                            } else null
 
-                            // Guard: Never overwrite a newer cloud update or a cloud completed state with older local progress
-                            if (cloudUpdatedAt >= record.lastWatchedAt || (cloudIsCompleted && !(metadata["isCompleted"] as Boolean))) {
-                                return@runTransaction
+                            if (localMovie != null) {
+                                val local = playbackHistoryDao.get(localMovie.id, ContentType.MOVIE.name, localProvider.id)
+                                if (local?.watchedStatus == "COMPLETED") continue
+                                if (local != null && local.lastWatchedAt >= updatedAt) continue
+
+                                val title = (data["title"] as? String)?.takeIf { it.isNotBlank() } ?: localMovie.name
+                                val posterUrl = localMovie.posterUrl
+                                val streamUrl = localMovie.streamUrl.takeIf { it.isNotBlank() } ?: ""
+                                playbackHistoryDao.insertOrUpdate(
+                                    PlaybackHistoryEntity(
+                                        providerId = localProvider.id,
+                                        contentId = localMovie.id,
+                                        contentType = ContentType.MOVIE,
+                                        title = title,
+                                        posterUrl = posterUrl,
+                                        streamUrl = streamUrl,
+                                        resumePositionMs = resumePositionMs,
+                                        totalDurationMs = totalDurationMs,
+                                        lastWatchedAt = updatedAt,
+                                        seriesId = null,
+                                        seasonNumber = null,
+                                        episodeNumber = null,
+                                        watchedStatus = "IN_PROGRESS"
+                                    )
+                                )
+                                movieDao.syncWatchProgressFromHistory(localMovie.id, localProvider.id)
                             }
-                            val cloudRevision = (cloudData?.get("revision") as? Long) ?: 0L
-                            metadata["revision"] = cloudRevision + 1L
-                        } else {
-                            metadata["revision"] = 1L
                         }
-                        transaction.set(docRef, metadata, SetOptions.merge())
-                    }.await()
-                    backfilledCount++
-                }.onFailure {
-                    // Fallback to merge set if transaction contention or offline queue
-                    runCatching {
-                        metadata["revision"] = 1L
-                        docRef.set(metadata, SetOptions.merge()).await()
-                        backfilledCount++
+                        ContentType.SERIES_EPISODE -> {
+                            val seriesRemoteId = (data["seriesRemoteId"] as? Long) ?: 0L
+                            val seasonNumber = (data["seasonNumber"] as? Long)?.toInt() ?: 0
+                            val episodeNumber = (data["episodeNumber"] as? Long)?.toInt() ?: 0
+
+                            val localSeries = if (seriesRemoteId > 0L) {
+                                seriesDao.getBySeriesId(localProvider.id, seriesRemoteId)
+                            } else null
+
+                            val localEpisode = when {
+                                localSeries != null && seasonNumber > 0 && episodeNumber > 0 -> {
+                                    episodeDao.getByCoordinates(localProvider.id, localSeries.id, seasonNumber, episodeNumber)
+                                }
+                                streamId > 0L -> {
+                                    episodeDao.getByEpisodeId(localProvider.id, streamId)
+                                }
+                                else -> null
+                            }
+
+                            if (localEpisode != null) {
+                                val local = playbackHistoryDao.get(localEpisode.id, ContentType.SERIES_EPISODE.name, localProvider.id)
+                                if (local?.watchedStatus == "COMPLETED") continue
+                                if (local != null && local.lastWatchedAt >= updatedAt) continue
+
+                                val title = (data["title"] as? String)?.takeIf { it.isNotBlank() }
+                                    ?: localEpisode.title.ifBlank { localSeries?.name ?: "" }
+                                val posterUrl = localEpisode.coverUrl?.takeIf { it.isNotBlank() }
+                                    ?: localSeries?.posterUrl?.takeIf { it.isNotBlank() }
+                                    ?: localSeries?.backdropUrl?.takeIf { it.isNotBlank() }
+                                val streamUrl = localEpisode.streamUrl.takeIf { it.isNotBlank() } ?: ""
+                                playbackHistoryDao.insertOrUpdate(
+                                    PlaybackHistoryEntity(
+                                        providerId = localProvider.id,
+                                        contentId = localEpisode.id,
+                                        contentType = ContentType.SERIES_EPISODE,
+                                        title = title,
+                                        posterUrl = posterUrl,
+                                        streamUrl = streamUrl,
+                                        resumePositionMs = resumePositionMs,
+                                        totalDurationMs = totalDurationMs,
+                                        lastWatchedAt = updatedAt,
+                                        seriesId = localSeries?.id ?: localEpisode.seriesId,
+                                        seasonNumber = seasonNumber,
+                                        episodeNumber = episodeNumber,
+                                        watchedStatus = "IN_PROGRESS"
+                                    )
+                                )
+                                episodeDao.syncWatchProgressFromHistory(localEpisode.id, localProvider.id)
+                            }
+                        }
+                        else -> { /* No-op */ }
                     }
                 }
-            }
-            backfilledCount
-        }.getOrDefault(0)
+            }.onFailure { Log.w(TAG, "Failed to repair active provider history", it) }
+        }
     }
 }

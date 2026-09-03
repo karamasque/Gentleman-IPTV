@@ -101,39 +101,36 @@ class GetContinueWatching @Inject constructor(
         ContinueWatchingScope.SERIES -> contentType == ContentType.SERIES || contentType == ContentType.SERIES_EPISODE
     }
 
-    private fun continueWatchingKey(entry: PlaybackHistory): String = when (entry.contentType) {
+    fun continueWatchingKey(entry: PlaybackHistory): String = when (entry.contentType) {
         ContentType.MOVIE -> {
-            val streamId = entry.streamId?.takeIf { it > 0L }
-            if (streamId != null) {
-                "movie:${entry.providerId}:$streamId"
-            } else {
-                val streamKey = sanitizeStreamUrl(entry.streamUrl).takeIf { it.isNotBlank() } ?: entry.contentId.toString()
-                "movie:${entry.providerId}:$streamKey"
-            }
+            val streamKey = parseStreamIdOrUrl(entry.streamUrl) ?: entry.contentId.toString()
+            "movie:${entry.providerId}:$streamKey"
         }
-        ContentType.SERIES -> "series:${entry.providerId}:${entry.seriesId?.takeIf { it > 0L } ?: entry.contentId}"
+        ContentType.SERIES -> {
+            val seriesKey = entry.seriesId?.takeIf { it > 0L } ?: entry.contentId
+            "series:${entry.providerId}:$seriesKey"
+        }
         ContentType.SERIES_EPISODE -> {
-            val seriesRemoteId = entry.seriesId?.takeIf { it > 0L } ?: 0L
-            val seasonNum = entry.seasonNumber ?: 0
-            val episodeNum = entry.episodeNumber ?: 0
-            if (seriesRemoteId > 0L && seasonNum > 0 && episodeNum > 0) {
-                "episode:${entry.providerId}:${seriesRemoteId}:S${seasonNum}:E${episodeNum}"
+            val seriesRemoteId = entry.seriesId?.takeIf { it > 0L }
+            val seasonNum = entry.seasonNumber
+            val episodeNum = entry.episodeNumber
+            if (seriesRemoteId != null && seasonNum != null && episodeNum != null && seasonNum >= 0 && episodeNum >= 0) {
+                "episode:${entry.providerId}:$seriesRemoteId:S${seasonNum}:E${episodeNum}"
             } else {
-                val streamId = entry.streamId?.takeIf { it > 0L }
-                if (streamId != null) {
-                    "episode:${entry.providerId}:$streamId"
-                } else {
-                    val streamKey = sanitizeStreamUrl(entry.streamUrl).takeIf { it.isNotBlank() } ?: entry.contentId.toString()
-                    "episode:${entry.providerId}:$streamKey"
-                }
+                val streamKey = parseStreamIdOrUrl(entry.streamUrl) ?: entry.contentId.toString()
+                "episode:${entry.providerId}:$streamKey"
             }
         }
         ContentType.LIVE -> "live:${entry.providerId}:${entry.contentId}"
     }
 
-    private fun sanitizeStreamUrl(url: String): String {
-        if (url.isBlank()) return ""
-        return url.substringAfterLast('/')
+    private fun parseStreamIdOrUrl(url: String): String? {
+        if (url.isBlank()) return null
+        val match = Regex("""/(\d+)\.[a-zA-Z0-9]+(?:\?|$)""").find(url)
+        if (match != null) {
+            return match.groupValues[1]
+        }
+        return url.trim()
     }
 
     private fun PlaybackHistory.isResumeEligible(): Boolean = when (contentType) {

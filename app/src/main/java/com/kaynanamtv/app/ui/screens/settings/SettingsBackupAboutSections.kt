@@ -281,7 +281,6 @@ internal fun LazyListScope.settingsAboutSection(
             subtitle = stringResource(R.string.settings_updates_subtitle)
         )
         SettingsRow(label = stringResource(R.string.settings_app_version), value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-        SettingsRow(label = "Continue Watching Pipeline", value = "CW-V6")
         SwitchSettingsRow(
             label = stringResource(R.string.settings_update_auto_check),
             value = stringResource(
@@ -395,3 +394,4 @@ internal fun LazyListScope.settingsAboutSection(
         SettingsRow(label = stringResource(R.string.settings_build_verification), value = buildVerificationLabel)
     }
 }
+

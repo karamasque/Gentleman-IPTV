@@ -5,9 +5,9 @@ import com.kaynanamtv.data.local.dao.EpisodeDao
 import com.kaynanamtv.data.local.dao.MovieDao
 import com.kaynanamtv.data.local.dao.PlaybackHistoryDao
 import com.kaynanamtv.data.local.dao.SeriesDao
+import com.kaynanamtv.data.local.entity.PlaybackHistoryEntity
 import com.kaynanamtv.data.mapper.toDomain
 import com.kaynanamtv.data.mapper.toEntity
-import com.kaynanamtv.data.local.entity.PlaybackHistoryEntity
 import com.kaynanamtv.domain.model.ContentType
 import com.kaynanamtv.domain.model.PlaybackHistory
 import com.kaynanamtv.domain.model.PlaybackWatchedStatus
@@ -56,6 +56,76 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
                 flushPendingResumeUpdates()
             }
         }
+        repositoryScope.launch(Dispatchers.IO) {
+            try {
+                reconcileLocalCatalogWatchProgress()
+            } catch (e: Exception) {
+                // Non-blocking background catalog progress reconciliation
+            }
+        }
+    }
+
+    private suspend fun reconcileLocalCatalogWatchProgress() {
+        val moviesWithProgress = movieDao.getMoviesWithWatchProgress(limit = 100)
+        for (movie in moviesWithProgress) {
+            if (movie.watchProgress <= 0L) continue
+            val existing = dao.get(movie.id, ContentType.MOVIE.name, movie.providerId)
+            if (existing == null) {
+                dao.insertOrUpdate(
+                    PlaybackHistoryEntity(
+                        contentId = movie.id,
+                        contentType = ContentType.MOVIE,
+                        providerId = movie.providerId,
+                        title = movie.name,
+                        posterUrl = movie.posterUrl ?: movie.backdropUrl,
+                        streamUrl = movie.streamUrl,
+                        resumePositionMs = movie.watchProgress,
+                        totalDurationMs = movie.durationSeconds * 1000L,
+                        lastWatchedAt = movie.lastWatchedAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        watchedStatus = "IN_PROGRESS"
+                    )
+                )
+            } else if (movie.watchProgress > existing.resumePositionMs && movie.lastWatchedAt >= existing.lastWatchedAt) {
+                dao.insertOrUpdate(
+                    existing.copy(
+                        resumePositionMs = movie.watchProgress,
+                        lastWatchedAt = movie.lastWatchedAt.takeIf { it > 0L } ?: existing.lastWatchedAt
+                    )
+                )
+            }
+        }
+
+        val episodesWithProgress = episodeDao.getEpisodesWithWatchProgress(limit = 100)
+        for (ep in episodesWithProgress) {
+            if (ep.watchProgress <= 0L) continue
+            val existing = dao.get(ep.id, ContentType.SERIES_EPISODE.name, ep.providerId)
+            if (existing == null) {
+                dao.insertOrUpdate(
+                    PlaybackHistoryEntity(
+                        contentId = ep.id,
+                        contentType = ContentType.SERIES_EPISODE,
+                        providerId = ep.providerId,
+                        seriesId = ep.seriesId.takeIf { it > 0L },
+                        seasonNumber = ep.seasonNumber.takeIf { it >= 0 },
+                        episodeNumber = ep.episodeNumber.takeIf { it >= 0 },
+                        title = ep.title,
+                        posterUrl = ep.coverUrl,
+                        streamUrl = ep.streamUrl,
+                        resumePositionMs = ep.watchProgress,
+                        totalDurationMs = ep.durationSeconds * 1000L,
+                        lastWatchedAt = ep.lastWatchedAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        watchedStatus = "IN_PROGRESS"
+                    )
+                )
+            } else if (ep.watchProgress > existing.resumePositionMs && ep.lastWatchedAt >= existing.lastWatchedAt) {
+                dao.insertOrUpdate(
+                    existing.copy(
+                        resumePositionMs = ep.watchProgress,
+                        lastWatchedAt = ep.lastWatchedAt.takeIf { it > 0L } ?: existing.lastWatchedAt
+                    )
+                )
+            }
+        }
     }
 
     override fun getRecentlyWatched(limit: Int): Flow<List<PlaybackHistory>> {
@@ -83,17 +153,58 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
     }
 
     override fun getContinueWatchingCandidatesByProvider(providerId: Long, limit: Int): Flow<List<PlaybackHistory>> {
-        repositoryScope.launch {
-            reconcileCatalogWatchProgress(providerId)
-        }
-        return mergedRecentHistory(
-            persisted = dao.getContinueWatchingCandidatesByProvider(providerId, limit).map { list -> list.map { it.toDomain() } },
-            limit = limit
-        ) { history ->
-            history.providerId == providerId &&
-                history.contentType != ContentType.LIVE &&
-                history.resumePositionMs > 0L &&
-                !com.kaynanamtv.domain.util.isPlaybackComplete(history.resumePositionMs, history.totalDurationMs)
+        return combine(
+            dao.getContinueWatchingCandidatesByProvider(providerId, limit),
+            movieDao.observeMoviesWithWatchProgressByProvider(providerId, limit),
+            episodeDao.observeEpisodesWithWatchProgressByProvider(providerId, limit),
+            pendingResumeUpdatesState
+        ) { persistedEntities, movieEntities, episodeEntities, pendingUpdates ->
+            val persistedItems = persistedEntities.map { it.toDomain() }
+            val movieItems = movieEntities.map { movie ->
+                PlaybackHistory(
+                    contentId = movie.id,
+                    contentType = ContentType.MOVIE,
+                    providerId = movie.providerId,
+                    title = movie.name,
+                    posterUrl = movie.posterUrl ?: movie.backdropUrl,
+                    streamUrl = movie.streamUrl,
+                    resumePositionMs = movie.watchProgress,
+                    totalDurationMs = movie.durationSeconds * 1000L,
+                    lastWatchedAt = movie.lastWatchedAt.takeIf { it > 0L } ?: movie.addedAt.takeIf { it > 0L } ?: 0L,
+                    watchedStatus = PlaybackWatchedStatus.IN_PROGRESS
+                )
+            }
+            val episodeItems = episodeEntities.map { ep ->
+                PlaybackHistory(
+                    contentId = ep.id,
+                    contentType = ContentType.SERIES_EPISODE,
+                    providerId = ep.providerId,
+                    seriesId = ep.seriesId.takeIf { it > 0L },
+                    seasonNumber = ep.seasonNumber.takeIf { it >= 0 },
+                    episodeNumber = ep.episodeNumber.takeIf { it >= 0 },
+                    title = ep.title,
+                    posterUrl = ep.coverUrl,
+                    streamUrl = ep.streamUrl,
+                    resumePositionMs = ep.watchProgress,
+                    totalDurationMs = ep.durationSeconds * 1000L,
+                    lastWatchedAt = ep.lastWatchedAt.takeIf { it > 0L } ?: 0L,
+                    watchedStatus = PlaybackWatchedStatus.IN_PROGRESS
+                )
+            }
+            val pendingEligible = pendingUpdates.values.filter {
+                it.providerId == providerId &&
+                    it.contentType != ContentType.LIVE &&
+                    it.resumePositionMs > 0L &&
+                    !com.kaynanamtv.domain.util.isPlaybackComplete(it.resumePositionMs, it.totalDurationMs)
+            }
+
+            mergeAndDeduplicateCandidates(
+                persisted = persistedItems,
+                movies = movieItems,
+                episodes = episodeItems,
+                pending = pendingEligible,
+                limit = limit
+            )
         }
     }
 
@@ -101,19 +212,155 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
         if (providerIds.isEmpty()) {
             return kotlinx.coroutines.flow.flowOf(emptyList())
         }
-        repositoryScope.launch {
-            providerIds.forEach { reconcileCatalogWatchProgress(it) }
-        }
-        return mergedRecentHistory(
-            persisted = dao.getContinueWatchingCandidatesByProviders(providerIds, limit).map { list -> list.map { it.toDomain() } },
-            limit = limit
-        ) { history ->
-            history.providerId in providerIds &&
-                history.contentType != ContentType.LIVE &&
-                history.resumePositionMs > 0L &&
-                !com.kaynanamtv.domain.util.isPlaybackComplete(history.resumePositionMs, history.totalDurationMs)
+        return combine(
+            dao.getContinueWatchingCandidatesByProviders(providerIds, limit),
+            movieDao.observeMoviesWithWatchProgressByProviders(providerIds, limit),
+            episodeDao.observeEpisodesWithWatchProgressByProviders(providerIds, limit),
+            pendingResumeUpdatesState
+        ) { persistedEntities, movieEntities, episodeEntities, pendingUpdates ->
+            val persistedItems = persistedEntities.map { it.toDomain() }
+            val movieItems = movieEntities.map { movie ->
+                PlaybackHistory(
+                    contentId = movie.id,
+                    contentType = ContentType.MOVIE,
+                    providerId = movie.providerId,
+                    title = movie.name,
+                    posterUrl = movie.posterUrl ?: movie.backdropUrl,
+                    streamUrl = movie.streamUrl,
+                    resumePositionMs = movie.watchProgress,
+                    totalDurationMs = movie.durationSeconds * 1000L,
+                    lastWatchedAt = movie.lastWatchedAt.takeIf { it > 0L } ?: movie.addedAt.takeIf { it > 0L } ?: 0L,
+                    watchedStatus = PlaybackWatchedStatus.IN_PROGRESS
+                )
+            }
+            val episodeItems = episodeEntities.map { ep ->
+                PlaybackHistory(
+                    contentId = ep.id,
+                    contentType = ContentType.SERIES_EPISODE,
+                    providerId = ep.providerId,
+                    seriesId = ep.seriesId.takeIf { it > 0L },
+                    seasonNumber = ep.seasonNumber.takeIf { it >= 0 },
+                    episodeNumber = ep.episodeNumber.takeIf { it >= 0 },
+                    title = ep.title,
+                    posterUrl = ep.coverUrl,
+                    streamUrl = ep.streamUrl,
+                    resumePositionMs = ep.watchProgress,
+                    totalDurationMs = ep.durationSeconds * 1000L,
+                    lastWatchedAt = ep.lastWatchedAt.takeIf { it > 0L } ?: 0L,
+                    watchedStatus = PlaybackWatchedStatus.IN_PROGRESS
+                )
+            }
+            val pendingEligible = pendingUpdates.values.filter {
+                it.providerId in providerIds &&
+                    it.contentType != ContentType.LIVE &&
+                    it.resumePositionMs > 0L &&
+                    !com.kaynanamtv.domain.util.isPlaybackComplete(it.resumePositionMs, it.totalDurationMs)
+            }
+
+            mergeAndDeduplicateCandidates(
+                persisted = persistedItems,
+                movies = movieItems,
+                episodes = episodeItems,
+                pending = pendingEligible,
+                limit = limit
+            )
         }
     }
+
+    private fun parseStreamIdOrUrl(url: String): String? {
+        if (url.isBlank()) return null
+        val match = Regex("""/(\d+)\.[a-zA-Z0-9]+(?:\?|$)""").find(url)
+        if (match != null) {
+            return match.groupValues[1]
+        }
+        return url.trim()
+    }
+
+    private fun canonicalContinueWatchingKey(item: PlaybackHistory): String = when (item.contentType) {
+        ContentType.MOVIE -> {
+            val streamKey = parseStreamIdOrUrl(item.streamUrl) ?: item.contentId.toString()
+            "movie:${item.providerId}:$streamKey"
+        }
+        ContentType.SERIES -> {
+            val seriesKey = item.seriesId?.takeIf { it > 0L } ?: item.contentId
+            "series:${item.providerId}:$seriesKey"
+        }
+        ContentType.SERIES_EPISODE -> {
+            val seriesRemoteId = item.seriesId?.takeIf { it > 0L }
+            val seasonNum = item.seasonNumber
+            val episodeNum = item.episodeNumber
+            if (seriesRemoteId != null && seasonNum != null && episodeNum != null && seasonNum >= 0 && episodeNum >= 0) {
+                "episode:${item.providerId}:$seriesRemoteId:S${seasonNum}:E${episodeNum}"
+            } else {
+                val streamKey = parseStreamIdOrUrl(item.streamUrl) ?: item.contentId.toString()
+                "episode:${item.providerId}:$streamKey"
+            }
+        }
+        ContentType.LIVE -> "live:${item.providerId}:${item.contentId}"
+    }
+
+    private fun mergeAndDeduplicateCandidates(
+        persisted: List<PlaybackHistory>,
+        movies: List<PlaybackHistory>,
+        episodes: List<PlaybackHistory>,
+        pending: List<PlaybackHistory>,
+        limit: Int
+    ): List<PlaybackHistory> {
+        val mergedByKey = LinkedHashMap<String, PlaybackHistory>()
+
+        fun consider(candidate: PlaybackHistory) {
+            if (candidate.resumePositionMs <= 0L) return
+            if (candidate.watchedStatus == PlaybackWatchedStatus.COMPLETED_AUTO || candidate.watchedStatus == PlaybackWatchedStatus.COMPLETED_MANUAL) return
+            if (com.kaynanamtv.domain.util.isPlaybackComplete(candidate.resumePositionMs, candidate.totalDurationMs)) return
+
+            val key = canonicalContinueWatchingKey(candidate)
+            val existing = mergedByKey[key]
+            if (existing == null) {
+                mergedByKey[key] = candidate
+            } else {
+                val newest = if (candidate.lastWatchedAt >= existing.lastWatchedAt) candidate else existing
+                val older = if (candidate.lastWatchedAt >= existing.lastWatchedAt) existing else candidate
+
+                val effectiveResume = when {
+                    candidate.lastWatchedAt > existing.lastWatchedAt -> candidate.resumePositionMs
+                    existing.lastWatchedAt > candidate.lastWatchedAt -> existing.resumePositionMs
+                    else -> maxOf(candidate.resumePositionMs, existing.resumePositionMs)
+                }
+                val effectiveDuration = if (newest.totalDurationMs > 0L) newest.totalDurationMs else older.totalDurationMs
+                val effectiveTitle = newest.title.takeIf { it.isNotBlank() } ?: older.title
+                val effectivePoster = newest.posterUrl?.takeIf { it.isNotBlank() } ?: older.posterUrl
+                val effectiveStreamUrl = newest.streamUrl.takeIf { it.isNotBlank() } ?: older.streamUrl
+                val effectiveSeriesId = newest.seriesId ?: older.seriesId
+                val effectiveSeason = newest.seasonNumber ?: older.seasonNumber
+                val effectiveEpisode = newest.episodeNumber ?: older.episodeNumber
+
+                mergedByKey[key] = newest.copy(
+                    title = effectiveTitle,
+                    posterUrl = effectivePoster,
+                    streamUrl = effectiveStreamUrl,
+                    resumePositionMs = effectiveResume,
+                    totalDurationMs = effectiveDuration,
+                    seriesId = effectiveSeriesId,
+                    seasonNumber = effectiveSeason,
+                    episodeNumber = effectiveEpisode
+                )
+            }
+        }
+
+        // Add catalog first so metadata is base, then persisted playback history, then in-memory pending updates
+        movies.forEach { consider(it) }
+        episodes.forEach { consider(it) }
+        persisted.forEach { consider(it) }
+        pending.forEach { consider(it) }
+
+        val sorted = mergedByKey.values.sortedByDescending { it.lastWatchedAt }
+        return if (limit > 0 && limit < Int.MAX_VALUE) {
+            sorted.take(limit)
+        } else {
+            sorted
+        }
+    }
+
 
     override fun getRecentLiveHistoryByProvider(providerId: Long, limit: Int): Flow<List<PlaybackHistory>> {
         return mergedRecentHistory(
@@ -376,13 +623,9 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
                     val resolvedPoster = history.posterUrl?.takeIf { it.isNotBlank() }
                         ?: movie?.posterUrl?.takeIf { it.isNotBlank() }
                         ?: movie?.backdropUrl?.takeIf { it.isNotBlank() }
-                    val resolvedStreamUrl = history.streamUrl.ifBlank { movie?.streamUrl ?: "" }
-                    val resolvedStreamId = movie?.streamId?.takeIf { it > 0L } ?: history.streamId
                     history.copy(
                         title = history.title.ifBlank { movie?.name ?: "" },
-                        posterUrl = resolvedPoster,
-                        streamUrl = resolvedStreamUrl,
-                        streamId = resolvedStreamId
+                        posterUrl = resolvedPoster
                     )
                 }
                 ContentType.SERIES_EPISODE -> {
@@ -393,13 +636,9 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
                         ?: episode?.coverUrl?.takeIf { it.isNotBlank() }
                         ?: series?.posterUrl?.takeIf { it.isNotBlank() }
                         ?: series?.backdropUrl?.takeIf { it.isNotBlank() }
-                    val resolvedStreamUrl = history.streamUrl.ifBlank { episode?.streamUrl ?: "" }
-                    val resolvedStreamId = episode?.episodeId?.takeIf { it > 0L } ?: history.streamId
                     history.copy(
                         title = history.title.ifBlank { episode?.title ?: series?.name ?: "" },
-                        posterUrl = resolvedPoster,
-                        streamUrl = resolvedStreamUrl,
-                        streamId = resolvedStreamId
+                        posterUrl = resolvedPoster
                     )
                 }
                 ContentType.SERIES -> {
@@ -407,85 +646,14 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
                     val resolvedPoster = history.posterUrl?.takeIf { it.isNotBlank() }
                         ?: series?.posterUrl?.takeIf { it.isNotBlank() }
                         ?: series?.backdropUrl?.takeIf { it.isNotBlank() }
-                    val resolvedStreamUrl = history.streamUrl.ifBlank { series?.backdropUrl ?: "" }
                     history.copy(
                         title = history.title.ifBlank { series?.name ?: "" },
-                        posterUrl = resolvedPoster,
-                        streamUrl = resolvedStreamUrl
+                        posterUrl = resolvedPoster
                     )
                 }
                 ContentType.LIVE -> history
             }
         }.getOrDefault(history)
-    }
-
-    override suspend fun reconcileCatalogWatchProgress(providerId: Long): Result<Unit> {
-        return try {
-            val moviesWithProgress = movieDao.getMoviesWithWatchProgress(providerId)
-            for (movie in moviesWithProgress) {
-                val existing = dao.get(movie.id, ContentType.MOVIE.name, providerId)
-                val durationMs = (movie.durationSeconds * 1000L).coerceAtLeast(0L)
-                val isCompleted = durationMs > 0L && movie.watchProgress >= (durationMs * 0.95)
-                if (existing == null) {
-                    val entity = PlaybackHistoryEntity(
-                        providerId = providerId,
-                        contentId = movie.id,
-                        contentType = ContentType.MOVIE,
-                        title = movie.name,
-                        posterUrl = movie.posterUrl ?: movie.backdropUrl,
-                        streamUrl = movie.streamUrl,
-                        resumePositionMs = movie.watchProgress,
-                        totalDurationMs = durationMs,
-                        lastWatchedAt = movie.lastWatchedAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
-                        watchedStatus = if (isCompleted) "COMPLETED" else "IN_PROGRESS"
-                    )
-                    dao.insertOrUpdate(entity)
-                } else if (movie.watchProgress > existing.resumePositionMs || (movie.lastWatchedAt > existing.lastWatchedAt)) {
-                    val updated = existing.copy(
-                        resumePositionMs = maxOf(existing.resumePositionMs, movie.watchProgress),
-                        lastWatchedAt = maxOf(existing.lastWatchedAt, movie.lastWatchedAt),
-                        watchedStatus = if (isCompleted) "COMPLETED" else existing.watchedStatus
-                    )
-                    dao.insertOrUpdate(updated)
-                }
-            }
-
-            val episodesWithProgress = episodeDao.getEpisodesWithWatchProgress(providerId)
-            for (episode in episodesWithProgress) {
-                val existing = dao.get(episode.id, ContentType.SERIES_EPISODE.name, providerId)
-                val durationMs = (episode.durationSeconds * 1000L).coerceAtLeast(0L)
-                val isCompleted = durationMs > 0L && episode.watchProgress >= (durationMs * 0.95)
-                if (existing == null) {
-                    val series = if (episode.seriesId > 0L) seriesDao.getById(episode.seriesId) else null
-                    val entity = PlaybackHistoryEntity(
-                        providerId = providerId,
-                        contentId = episode.id,
-                        contentType = ContentType.SERIES_EPISODE,
-                        title = episode.title.ifBlank { series?.name ?: "" },
-                        posterUrl = episode.coverUrl ?: series?.posterUrl ?: series?.backdropUrl,
-                        streamUrl = episode.streamUrl,
-                        resumePositionMs = episode.watchProgress,
-                        totalDurationMs = durationMs,
-                        lastWatchedAt = episode.lastWatchedAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
-                        seriesId = episode.seriesId,
-                        seasonNumber = episode.seasonNumber,
-                        episodeNumber = episode.episodeNumber,
-                        watchedStatus = if (isCompleted) "COMPLETED" else "IN_PROGRESS"
-                    )
-                    dao.insertOrUpdate(entity)
-                } else if (episode.watchProgress > existing.resumePositionMs || (episode.lastWatchedAt > existing.lastWatchedAt)) {
-                    val updated = existing.copy(
-                        resumePositionMs = maxOf(existing.resumePositionMs, episode.watchProgress),
-                        lastWatchedAt = maxOf(existing.lastWatchedAt, episode.lastWatchedAt),
-                        watchedStatus = if (isCompleted) "COMPLETED" else existing.watchedStatus
-                    )
-                    dao.insertOrUpdate(updated)
-                }
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.error("Failed to reconcile catalog watch progress", e)
-        }
     }
 
     private suspend fun syncDenormalizedProgress(contentId: Long, contentType: ContentType, providerId: Long) {

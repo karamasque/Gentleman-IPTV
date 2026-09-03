@@ -14,9 +14,9 @@ class PlaybackBufferPoliciesTest {
 
         assertThat(policy.label).isEqualTo("stable-live")
         assertThat(policy.minBufferMs).isEqualTo(8_000)
-        assertThat(policy.maxBufferMs).isEqualTo(20_000)
-        assertThat(policy.playbackBufferMs).isEqualTo(800)
-        assertThat(policy.rebufferMs).isEqualTo(1_500)
+        assertThat(policy.maxBufferMs).isEqualTo(25_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(750)
+        assertThat(policy.rebufferMs).isEqualTo(3_000)
         assertThat(policy.targetBufferBytes).isEqualTo(-1)
         assertThat(policy.prioritizeTimeOverSizeThresholds).isTrue()
     }
@@ -32,9 +32,9 @@ class PlaybackBufferPoliciesTest {
 
         assertThat(policy.label).isEqualTo("stable-live")
         assertThat(policy.minBufferMs).isEqualTo(8_000)
-        assertThat(policy.maxBufferMs).isEqualTo(20_000)
-        assertThat(policy.playbackBufferMs).isEqualTo(800)
-        assertThat(policy.rebufferMs).isEqualTo(1_500)
+        assertThat(policy.maxBufferMs).isEqualTo(25_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(750)
+        assertThat(policy.rebufferMs).isEqualTo(3_000)
         assertThat(policy.targetBufferBytes).isEqualTo(-1)
     }
 
@@ -49,9 +49,9 @@ class PlaybackBufferPoliciesTest {
 
         assertThat(policy.label).isEqualTo("medium-live")
         assertThat(policy.minBufferMs).isEqualTo(8_000)
-        assertThat(policy.maxBufferMs).isEqualTo(20_000)
-        assertThat(policy.playbackBufferMs).isEqualTo(1_000)
-        assertThat(policy.rebufferMs).isEqualTo(2_000)
+        assertThat(policy.maxBufferMs).isEqualTo(25_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(750)
+        assertThat(policy.rebufferMs).isEqualTo(3_000)
         assertThat(policy.targetBufferBytes).isEqualTo(24 * 1024 * 1024)
         assertThat(policy.qualityReason).isEqualTo("user-medium")
     }
@@ -67,9 +67,9 @@ class PlaybackBufferPoliciesTest {
 
         assertThat(policy.label).isEqualTo("large-live")
         assertThat(policy.minBufferMs).isEqualTo(8_000)
-        assertThat(policy.maxBufferMs).isEqualTo(20_000)
-        assertThat(policy.playbackBufferMs).isEqualTo(1_000)
-        assertThat(policy.rebufferMs).isEqualTo(2_000)
+        assertThat(policy.maxBufferMs).isEqualTo(25_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(750)
+        assertThat(policy.rebufferMs).isEqualTo(3_000)
         assertThat(policy.targetBufferBytes).isEqualTo(32 * 1024 * 1024)
         assertThat(policy.qualityReason).isEqualTo("user-large")
     }
@@ -157,9 +157,9 @@ class PlaybackBufferPoliciesTest {
 
         assertThat(policy.label).isEqualTo("auto-uhd-live-capped")
         assertThat(policy.minBufferMs).isEqualTo(8_000)
-        assertThat(policy.maxBufferMs).isEqualTo(20_000)
-        assertThat(policy.playbackBufferMs).isEqualTo(1_000)
-        assertThat(policy.rebufferMs).isEqualTo(2_000)
+        assertThat(policy.maxBufferMs).isEqualTo(25_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(750)
+        assertThat(policy.rebufferMs).isEqualTo(3_000)
         assertThat(policy.targetBufferBytes).isEqualTo(24 * 1024 * 1024)
         assertThat(policy.lowMemoryCapped).isTrue()
         assertThat(policy.qualityReason).isEqualTo("metadata-uhd")
@@ -171,9 +171,9 @@ class PlaybackBufferPoliciesTest {
 
         assertThat(policy.label).isEqualTo("compat-live")
         assertThat(policy.minBufferMs).isEqualTo(8_000)
-        assertThat(policy.maxBufferMs).isEqualTo(20_000)
-        assertThat(policy.playbackBufferMs).isEqualTo(800)
-        assertThat(policy.rebufferMs).isEqualTo(1_500)
+        assertThat(policy.maxBufferMs).isEqualTo(25_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(750)
+        assertThat(policy.rebufferMs).isEqualTo(3_000)
         assertThat(policy.targetBufferBytes).isEqualTo(-1)
         assertThat(policy.prioritizeTimeOverSizeThresholds).isTrue()
     }
@@ -202,9 +202,9 @@ class PlaybackBufferPoliciesTest {
 
         assertThat(policy.label).isEqualTo("mpeg-ts-live")
         assertThat(policy.minBufferMs).isEqualTo(8_000)
-        assertThat(policy.maxBufferMs).isEqualTo(20_000)
-        assertThat(policy.playbackBufferMs).isEqualTo(800)
-        assertThat(policy.rebufferMs).isEqualTo(1_500)
+        assertThat(policy.maxBufferMs).isEqualTo(25_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(750)
+        assertThat(policy.rebufferMs).isEqualTo(3_000)
         assertThat(policy.targetBufferBytes).isEqualTo(16 * 1024 * 1024)
         assertThat(policy.prioritizeTimeOverSizeThresholds).isTrue()
     }
@@ -236,7 +236,7 @@ class PlaybackBufferPoliciesTest {
 
         assertThat(policy.label).isEqualTo("medium-live")
         assertThat(policy.minBufferMs).isEqualTo(8_000)
-        assertThat(policy.maxBufferMs).isEqualTo(20_000)
+        assertThat(policy.maxBufferMs).isEqualTo(25_000)
         assertThat(policy.targetBufferBytes).isEqualTo(24 * 1024 * 1024)
     }
 
@@ -247,7 +247,7 @@ class PlaybackBufferPoliciesTest {
         assertThat(policy.label).isEqualTo("stable-vod")
         assertThat(policy.minBufferMs).isEqualTo(10_000)
         assertThat(policy.maxBufferMs).isEqualTo(25_000)
-        assertThat(policy.playbackBufferMs).isEqualTo(1_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(750)
         assertThat(policy.rebufferMs).isEqualTo(2_000)
         assertThat(policy.targetBufferBytes).isEqualTo(-1)
         assertThat(policy.prioritizeTimeOverSizeThresholds).isTrue()

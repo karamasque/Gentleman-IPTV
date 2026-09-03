@@ -411,14 +411,14 @@ class SeriesViewModel @Inject constructor(
                         seriesRepository.getTopRatedPreview(provider.id, VodBrowseDefaults.PREVIEW_ROW_LIMIT),
                         seriesRepository.getFreshPreview(provider.id, VodBrowseDefaults.PREVIEW_ROW_LIMIT)
                     ) { allFavorites, continueResult, topRated, fresh ->
-                        val history = when (continueResult) {
+                        val continueItems = when (continueResult) {
                             is ContinueWatchingResult.Items -> continueResult.items
                             ContinueWatchingResult.Degraded -> emptyList()
                         }
                         SeriesLibraryLensDependencies(
                             providerId = provider.id,
                             allFavorites = allFavorites,
-                            history = history,
+                            history = continueItems,
                             topRated = topRated,
                             fresh = fresh
                         )
@@ -442,8 +442,9 @@ class SeriesViewModel @Inject constructor(
                         .filter {
                             it.contentType == ContentType.SERIES || it.contentType == ContentType.SERIES_EPISODE
                         }
-                        .mapNotNull { it.seriesId ?: it.contentId }
-                        .distinct()
+                        .sortedByDescending { it.lastWatchedAt }
+                        .distinctBy { it.seriesId ?: it.contentId }
+                        .map { it.seriesId ?: it.contentId }
                         .take(VodBrowseDefaults.PREVIEW_ROW_LIMIT)
                         .toList()
 
@@ -456,7 +457,7 @@ class SeriesViewModel @Inject constructor(
                         emptyList()
                     } else {
                         seriesRepository.getSeriesByIds(continueIds).first().orderByIds(continueIds)
-                    }.markSeriesFavorites(globalFavoriteIds).distinctBy { it.seriesId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
+                    }.markSeriesFavorites(globalFavoriteIds)
 
                     _uiState.update {
                         it.copy(
@@ -1038,48 +1039,23 @@ class SeriesViewModel @Inject constructor(
 
         val (selectedItems, totalCount, hasMoreRemote) = when (request.selectedCategory) {
             VodBrowseDefaults.FULL_LIBRARY_CATEGORY -> {
-                if (request.filterType == LibraryFilterType.IN_PROGRESS) {
-                    val continueWatchingList = _uiState.value.continueWatching
-                    val continueSeriesIds = continueWatchingList.mapNotNull { it.seriesId ?: it.contentId }.distinct()
-                    val items = if (continueSeriesIds.isEmpty()) {
-                        emptyList()
-                    } else {
-                        seriesRepository.getSeriesByIds(continueSeriesIds).first()
-                            .filterNot { item -> item.categoryId in request.hiddenCategoryIds }
-                            .orderByIds(continueSeriesIds)
-                            .distinctBy { it.seriesId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
-                    }
-                    val filteredItems = applyLocalBrowseToSeries(
-                        items = items,
-                        history = continueWatchingList,
-                        filterType = request.filterType,
-                        sortBy = request.sortBy,
-                        query = effectiveQuery
-                    )
-                    Triple(
-                        filteredItems.take(request.loadLimit),
-                        filteredItems.size,
-                        false
-                    )
-                } else {
-                    val result = seriesRepository
-                        .browseSeries(
-                            LibraryBrowseQuery(
-                                providerId = request.providerId,
-                                sortBy = request.sortBy,
-                                filterBy = LibraryFilterBy(type = request.filterType),
-                                searchQuery = effectiveQuery,
-                                limit = request.loadLimit,
-                                offset = 0
-                            )
+                val result = seriesRepository
+                    .browseSeries(
+                        LibraryBrowseQuery(
+                            providerId = request.providerId,
+                            sortBy = request.sortBy,
+                            filterBy = LibraryFilterBy(type = request.filterType),
+                            searchQuery = effectiveQuery,
+                            limit = request.loadLimit,
+                            offset = 0
                         )
-                        .first()
-                    Triple(
-                        result.items.filterNot { item -> item.categoryId in request.hiddenCategoryIds },
-                        result.totalCount,
-                        result.hasMoreRemote
                     )
-                }
+                    .first()
+                Triple(
+                    result.items.filterNot { item -> item.categoryId in request.hiddenCategoryIds },
+                    result.totalCount,
+                    result.hasMoreRemote
+                )
             }
             VodBrowseDefaults.FAVORITES_CATEGORY -> {
                 val ids = request.allFavorites
@@ -1231,12 +1207,10 @@ class SeriesViewModel @Inject constructor(
                     (series.genre?.contains(normalizedQuery, ignoreCase = true) == true)
             }
         }
-        val continueSeriesIds = _uiState.value.continueWatching.mapNotNull { it.seriesId ?: it.contentId }.toSet()
         val filtered = when (filterType) {
             LibraryFilterType.ALL -> searched
             LibraryFilterType.FAVORITES -> searched.filter { it.isFavorite }
-            LibraryFilterType.IN_PROGRESS -> searched.filter { it.id in historyKeys || it.id in continueSeriesIds }
-                .distinctBy { it.seriesId.takeIf { id -> id > 0L }?.toString() ?: it.id.toString() }
+            LibraryFilterType.IN_PROGRESS -> searched.filter { it.id in historyKeys }
             LibraryFilterType.UNWATCHED -> searched.filter { it.id !in completedSeriesIds }
             LibraryFilterType.RECENTLY_UPDATED -> searched.filter { seriesUpdatedScore(it) > 0L }
             LibraryFilterType.TOP_RATED -> searched.filter { it.rating > 0f }

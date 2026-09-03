@@ -41,6 +41,10 @@ class HomeHistoryShelfSqlScopeTest {
     @Before
     fun setUp() {
         whenever(preferencesRepository.isIncognitoMode).thenReturn(flowOf(false))
+        whenever(movieDao.observeMoviesWithWatchProgressByProvider(any(), any())).thenReturn(flowOf(emptyList()))
+        whenever(movieDao.observeMoviesWithWatchProgressByProviders(any(), any())).thenReturn(flowOf(emptyList()))
+        whenever(episodeDao.observeEpisodesWithWatchProgressByProvider(any(), any())).thenReturn(flowOf(emptyList()))
+        whenever(episodeDao.observeEpisodesWithWatchProgressByProviders(any(), any())).thenReturn(flowOf(emptyList()))
         repository = PlaybackHistoryRepositoryImpl(
             dao = historyDao,
             preferencesRepository = preferencesRepository,
@@ -185,7 +189,7 @@ class HomeHistoryShelfSqlScopeTest {
     }
 
     @Test
-    fun `TEST E - distinct episodes of same series remain separate in newest-first order`() = runTest {
+    fun `TEST E - series deduplication keeps only latest episode of same series`() = runTest {
         val vodEntities = listOf(
             PlaybackHistoryLiteEntity(
                 contentId = 402L,
@@ -204,7 +208,7 @@ class HomeHistoryShelfSqlScopeTest {
                 providerId = 1L,
                 seriesId = 70L,
                 seasonNumber = 1,
-                episodeNumber = 1,
+                episodeNumber = 2,
                 resumePositionMs = 20_000L,
                 totalDurationMs = 60_000L,
                 lastWatchedAt = 8000L
@@ -223,8 +227,8 @@ class HomeHistoryShelfSqlScopeTest {
 
         val continueWatching = (getContinueWatching(providerId = 1L, limit = 12).first() as ContinueWatchingResult.Items).items
 
-        // Keeps both episodes (402, 401) and movie (403) in newest-first order
-        assertThat(continueWatching.map { it.contentId }).containsExactly(402L, 401L, 403L).inOrder()
+        // Should keep episode 402 (newest) and movie 403, collapsing older episode 401
+        assertThat(continueWatching.map { it.contentId }).containsExactly(402L, 403L).inOrder()
     }
 
     @Test

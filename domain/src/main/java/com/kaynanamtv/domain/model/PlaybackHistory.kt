@@ -15,8 +15,7 @@ data class PlaybackHistory(
     val watchedStatus: PlaybackWatchedStatus = PlaybackWatchedStatus.IN_PROGRESS,
     val seriesId: Long? = null,
     val seasonNumber: Int? = null,
-    val episodeNumber: Int? = null,
-    val streamId: Long? = null
+    val episodeNumber: Int? = null
 ) {
     init {
         require(resumePositionMs >= 0) { "resumePositionMs must be non-negative" }
