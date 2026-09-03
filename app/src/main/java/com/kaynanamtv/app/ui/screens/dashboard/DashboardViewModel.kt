@@ -145,7 +145,7 @@ class DashboardViewModel @Inject constructor(
 
                         when (activeSource) {
                             is ActiveLiveSource.ProviderSource -> {
-                                var provider = activeProvider?.takeIf { it.id == activeSource.providerId }
+                                var provider = activeProvider
                                     ?: providerRepository.getProvider(activeSource.providerId)
                                 if (provider == null && allProviders.isNotEmpty()) {
                                     val fallback = allProviders.first()
@@ -157,7 +157,7 @@ class DashboardViewModel @Inject constructor(
                                     emit(DashboardUiState(isLoading = false, provider = null))
                                     return@flow
                                 }
-                                emitAll(observeDashboard(provider, listOf(provider.id), combinedProfileId = null))
+                                emitAll(observeDashboard(provider, listOf(activeSource.providerId), combinedProfileId = null))
                             }
 
                             is ActiveLiveSource.CombinedM3uSource -> {
@@ -167,7 +167,7 @@ class DashboardViewModel @Inject constructor(
                                     .filter { it.enabled }
                                     .map { it.providerId }
                                     .distinct()
-                                var provider = activeProvider?.takeIf { it.id in liveProviderIds }
+                                var provider = activeProvider
                                     ?: liveProviderIds.firstOrNull()?.let { providerRepository.getProvider(it) }
                                 if (provider == null && allProviders.isNotEmpty()) {
                                     provider = allProviders.first()
@@ -181,7 +181,7 @@ class DashboardViewModel @Inject constructor(
 
                             null -> {
                                 if (allProviders.isNotEmpty()) {
-                                    val fallback = allProviders.first()
+                                    val fallback = activeProvider ?: allProviders.first()
                                     combinedM3uRepository.setActiveLiveSource(ActiveLiveSource.ProviderSource(fallback.id))
                                     providerRepository.setActiveProvider(fallback.id)
                                     emitAll(observeDashboard(fallback, listOf(fallback.id), combinedProfileId = null))
