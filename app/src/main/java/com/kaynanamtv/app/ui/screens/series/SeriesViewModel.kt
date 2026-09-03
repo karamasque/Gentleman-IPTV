@@ -500,6 +500,7 @@ class SeriesViewModel @Inject constructor(
     }
 
     fun selectCategory(categoryName: String?, resetFilterOnCategoryChange: Boolean = true) {
+        if (_uiState.value.selectedCategory == categoryName) return
         _previewBatchSize.value = INITIAL_PREVIEW_BATCH_SIZE
         activeProviderId?.let { providerId ->
             parentalControlManager.retainUnlockedCategory(

@@ -156,4 +156,89 @@ class VodCategoryFilterResetTest {
         assertThat(uiState.value.selectedFilterType).isEqualTo(LibraryFilterType.RECENTLY_UPDATED)
         assertThat(selectedLibraryFilterType.value).isEqualTo(LibraryFilterType.RECENTLY_UPDATED)
     }
+
+    @Test
+    fun `TEST 6 - same category re-selection does not set loading or clear list`() {
+        val selectedCategoryLoadLimit = MutableStateFlow(50)
+        val selectedLibraryFilterType = MutableStateFlow(LibraryFilterType.ALL)
+        val selectedLibrarySortBy = MutableStateFlow(LibrarySortBy.LIBRARY)
+        val uiState = MutableStateFlow(
+            DummyVodState(
+                selectedCategory = "Bilim Kurgu",
+                isLoading = false
+            )
+        )
+
+        var updateStateInvoked = false
+        selectVodCategory(
+            categoryName = "Bilim Kurgu",
+            selectedCategoryLoadLimit = selectedCategoryLoadLimit,
+            selectedLibraryFilterType = selectedLibraryFilterType,
+            selectedLibrarySortBy = selectedLibrarySortBy,
+            uiState = uiState,
+            resetFilterOnCategoryChange = true,
+            getSelectedCategory = { it.selectedCategory }
+        ) { category, filter, sort, loading ->
+            updateStateInvoked = true
+            copy(selectedCategory = category, selectedFilterType = filter, selectedSortBy = sort, isLoading = loading)
+        }
+
+        assertThat(updateStateInvoked).isFalse()
+        assertThat(uiState.value.isLoading).isFalse()
+        assertThat(uiState.value.selectedCategory).isEqualTo("Bilim Kurgu")
+        assertThat(selectedCategoryLoadLimit.value).isEqualTo(50)
+    }
+
+    @Test
+    fun `TEST 7 - selecting null when already null is a no-op`() {
+        val selectedCategoryLoadLimit = MutableStateFlow(50)
+        val selectedLibraryFilterType = MutableStateFlow(LibraryFilterType.ALL)
+        val selectedLibrarySortBy = MutableStateFlow(LibrarySortBy.LIBRARY)
+        val uiState = MutableStateFlow(DummyVodState(selectedCategory = null, isLoading = false))
+
+        var updateStateInvoked = false
+        selectVodCategory(
+            categoryName = null,
+            selectedCategoryLoadLimit = selectedCategoryLoadLimit,
+            selectedLibraryFilterType = selectedLibraryFilterType,
+            selectedLibrarySortBy = selectedLibrarySortBy,
+            uiState = uiState,
+            resetFilterOnCategoryChange = true,
+            getSelectedCategory = { it.selectedCategory }
+        ) { category, filter, sort, loading ->
+            updateStateInvoked = true
+            copy(selectedCategory = category, selectedFilterType = filter, selectedSortBy = sort, isLoading = loading)
+        }
+
+        assertThat(updateStateInvoked).isFalse()
+        assertThat(uiState.value.selectedCategory).isNull()
+        assertThat(uiState.value.isLoading).isFalse()
+    }
+
+    @Test
+    fun `TEST 8 - selecting null when category active transitions to null overview`() {
+        val selectedCategoryLoadLimit = MutableStateFlow(50)
+        val selectedLibraryFilterType = MutableStateFlow(LibraryFilterType.ALL)
+        val selectedLibrarySortBy = MutableStateFlow(LibrarySortBy.LIBRARY)
+        val uiState = MutableStateFlow(DummyVodState(selectedCategory = "Dram", isLoading = false))
+
+        var updateStateInvoked = false
+        selectVodCategory(
+            categoryName = null,
+            selectedCategoryLoadLimit = selectedCategoryLoadLimit,
+            selectedLibraryFilterType = selectedLibraryFilterType,
+            selectedLibrarySortBy = selectedLibrarySortBy,
+            uiState = uiState,
+            resetFilterOnCategoryChange = true,
+            getSelectedCategory = { it.selectedCategory }
+        ) { category, filter, sort, loading ->
+            updateStateInvoked = true
+            copy(selectedCategory = category, selectedFilterType = filter, selectedSortBy = sort, isLoading = loading)
+        }
+
+        assertThat(updateStateInvoked).isTrue()
+        assertThat(uiState.value.selectedCategory).isNull()
+        assertThat(uiState.value.isLoading).isFalse()
+    }
 }
+

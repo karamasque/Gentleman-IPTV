@@ -22,6 +22,9 @@ inline fun <State> selectVodCategory(
     ) -> State
 ) {
     val previousCategory = getSelectedCategory(uiState.value)
+    if (previousCategory == categoryName) {
+        return
+    }
     if (resetFilterOnCategoryChange && previousCategory != categoryName) {
         selectedLibraryFilterType.value = LibraryFilterType.ALL
         selectedLibrarySortBy.value = LibrarySortBy.LIBRARY
