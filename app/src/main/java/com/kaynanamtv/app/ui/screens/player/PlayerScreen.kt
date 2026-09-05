@@ -404,7 +404,7 @@ fun PlayerScreen(
         }
     }
 
-    DisposableEffect(mainActivity) {
+    DisposableEffect(Unit) {
         mainActivity?.onPictureInPictureDismissed = {
             viewModel.onPictureInPictureDismissed()
         }

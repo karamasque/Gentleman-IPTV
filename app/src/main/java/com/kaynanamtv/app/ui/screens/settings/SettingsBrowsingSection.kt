@@ -85,7 +85,7 @@ internal fun LazyListScope.settingsBrowsingSection(
         com.kaynanamtv.domain.model.VisualEffectsMode.OFF -> "Kapalı"
     }
 
-    item {
+    item(key = "settings_browsing_main_card") {
         // ── Renk Teması Seçici ────────────────────────────────────────────
         ThemeColorPickerRow(
             currentTheme = uiState.appColorTheme,
@@ -357,7 +357,7 @@ internal fun LazyListScope.settingsBrowsingSection(
             }
         }
     }
-    item {
+    item(key = "settings_browsing_remote_card") {
         RemoteShortcutSettingsPanel(
             uiState = uiState,
             context = context,

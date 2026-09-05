@@ -14,6 +14,8 @@ inline fun <State> selectVodCategory(
     uiState: MutableStateFlow<State>,
     resetFilterOnCategoryChange: Boolean = true,
     crossinline getSelectedCategory: (State) -> String?,
+    crossinline getSelectedFilterType: (State) -> LibraryFilterType,
+    crossinline getSelectedSortBy: (State) -> LibrarySortBy,
     crossinline updateState: State.(
         selectedCategory: String?,
         filterType: LibraryFilterType,
@@ -22,20 +24,25 @@ inline fun <State> selectVodCategory(
     ) -> State
 ) {
     val previousCategory = getSelectedCategory(uiState.value)
-    if (previousCategory == categoryName) {
-        return
-    }
-    if (resetFilterOnCategoryChange && previousCategory != categoryName) {
+    val previousFilter = getSelectedFilterType(uiState.value)
+    val previousSort = getSelectedSortBy(uiState.value)
+    if (resetFilterOnCategoryChange) {
         selectedLibraryFilterType.value = LibraryFilterType.ALL
         selectedLibrarySortBy.value = LibrarySortBy.LIBRARY
     }
+    val targetFilter = selectedLibraryFilterType.value
+    val targetSort = selectedLibrarySortBy.value
+    if (previousCategory == categoryName && previousFilter == targetFilter && previousSort == targetSort) {
+        return
+    }
     selectedCategoryLoadLimit.value = VodBrowseDefaults.SELECTED_CATEGORY_PAGE_SIZE
+    val isChangingCategory = previousCategory != categoryName
     uiState.update { state ->
         state.updateState(
             categoryName,
-            selectedLibraryFilterType.value,
-            selectedLibrarySortBy.value,
-            categoryName != null
+            targetFilter,
+            targetSort,
+            if (isChangingCategory) categoryName != null else false
         )
     }
 }

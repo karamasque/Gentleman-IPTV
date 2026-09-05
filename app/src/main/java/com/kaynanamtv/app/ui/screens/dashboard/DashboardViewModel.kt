@@ -433,27 +433,55 @@ class DashboardViewModel @Inject constructor(
                         .map { history -> history.seriesId ?: history.contentId }
                         .distinct()
                         .toList()
-                    if (seriesIds.isEmpty()) {
-                        flowOf(ContinueWatchingShelf(items = result.items))
-                    } else {
-                        seriesRepository.getSeriesByIds(seriesIds).map { series ->
-                            val seriesById = series.associateBy { it.id }
-                            val enrichedItems = result.items.map { history ->
-                                if (history.posterUrl.isNullOrBlank() && (history.contentType == ContentType.SERIES || history.contentType == ContentType.SERIES_EPISODE)) {
-                                    val parent = seriesById[history.seriesId ?: history.contentId]
-                                    val artwork = parent?.posterUrl?.takeIf { it.isNotBlank() } ?: parent?.backdropUrl?.takeIf { it.isNotBlank() }
-                                    if (artwork != null) history.copy(posterUrl = artwork) else history
-                                } else {
-                                    history
+                    val movieIds = result.items
+                        .asSequence()
+                        .filter { history -> history.contentType == ContentType.MOVIE && (history.posterUrl.isNullOrBlank() || history.title.isBlank()) }
+                        .map { it.contentId }
+                        .distinct()
+                        .toList()
+
+                    val seriesFlow = if (seriesIds.isEmpty()) flowOf(emptyList<Series>()) else seriesRepository.getSeriesByIds(seriesIds)
+                    val movieFlow = if (movieIds.isEmpty()) flowOf(emptyList<Movie>()) else movieRepository.getMoviesByIds(movieIds)
+
+                    combine(seriesFlow, movieFlow) { series, movies ->
+                        val seriesById = series.associateBy { it.id }
+                        val movieById = movies.associateBy { it.id }
+                        val enrichedItems = result.items.map { history ->
+                            when (history.contentType) {
+                                ContentType.SERIES,
+                                ContentType.SERIES_EPISODE -> {
+                                    if (history.posterUrl.isNullOrBlank()) {
+                                        val parent = seriesById[history.seriesId ?: history.contentId]
+                                        val artwork = parent?.posterUrl?.takeIf { it.isNotBlank() } ?: parent?.backdropUrl?.takeIf { it.isNotBlank() }
+                                        if (artwork != null) history.copy(posterUrl = artwork) else history
+                                    } else {
+                                        history
+                                    }
                                 }
+                                ContentType.MOVIE -> {
+                                    if (history.posterUrl.isNullOrBlank() || history.title.isBlank()) {
+                                        val movie = movieById[history.contentId]
+                                        if (movie != null) {
+                                            history.copy(
+                                                title = history.title.ifBlank { movie.name },
+                                                posterUrl = history.posterUrl?.takeIf { it.isNotBlank() } ?: movie.posterUrl
+                                            )
+                                        } else {
+                                            history
+                                        }
+                                    } else {
+                                        history
+                                    }
+                                }
+                                else -> history
                             }
-                            ContinueWatchingShelf(
-                                items = enrichedItems,
-                                series = series.orderedByRequestedSeriesIds(seriesIds)
-                            )
-                        }.onStart {
-                            emit(ContinueWatchingShelf(items = result.items))
                         }
+                        ContinueWatchingShelf(
+                            items = enrichedItems,
+                            series = series.orderedByRequestedSeriesIds(seriesIds)
+                        )
+                    }.onStart {
+                        emit(ContinueWatchingShelf(items = result.items))
                     }
                 }
                 ContinueWatchingResult.Degraded -> flowOf(ContinueWatchingShelf(isDegraded = true))

@@ -17,7 +17,7 @@ internal fun LazyListScope.settingsRecordingSection(
     onShowRecordingPaddingDialogChange: (Boolean) -> Unit,
     onShowRecordingBrowserDialogChange: (Boolean) -> Unit
 ) {
-    item {
+    item(key = "settings_recording_info_card") {
         RecordingInfoCard(
             treeLabel = uiState.recordingStorageState.displayName,
             outputDirectory = uiState.recordingStorageState.outputDirectory,
@@ -32,7 +32,7 @@ internal fun LazyListScope.settingsRecordingSection(
             paddingAfterMinutes = uiState.recordingPaddingAfterMinutes
         )
     }
-    item {
+    item(key = "settings_recording_actions_card") {
         RecordingActionsCard(
             wifiOnlyRecording = uiState.wifiOnlyRecording,
             onWifiOnlyRecordingChange = { viewModel.setRecordingWifiOnly(it) },

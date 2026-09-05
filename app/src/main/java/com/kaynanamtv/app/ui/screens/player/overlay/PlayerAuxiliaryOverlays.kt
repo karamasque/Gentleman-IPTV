@@ -282,7 +282,7 @@ fun ChannelListOverlay(
                                 }
                             }
                         }
-                        items(channels.size, key = { index -> channels.getOrNull(index)?.id ?: index }) { index ->
+                        items(channels.size, key = { index -> val ch = channels.getOrNull(index); "aux_ch_${ch?.providerId}_${ch?.id}_${ch?.streamId}_${index}" }) { index ->
                             val channel = channels[index]
                             val isSelected = channel.id == currentChannelId
                             val shouldRequestFocus = isSelected
@@ -707,7 +707,7 @@ fun EpgOverlay(
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                        items(displayPrograms.size, key = { index -> displayPrograms.getOrNull(index)?.id ?: index }) { index ->
+                        items(displayPrograms.size, key = { index -> val p = displayPrograms.getOrNull(index); "aux_prog_${p?.id}_${p?.startTime}_${index}" }) { index ->
                             val program = displayPrograms[index]
                             val isNext = index == 0 && nextProgram != null
 
@@ -1087,7 +1087,7 @@ fun CategoryListOverlay(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)
                             )
                         }
-                        items(categories.size, key = { index -> categories.getOrNull(index)?.id ?: index }) { index ->
+                        items(categories.size, key = { index -> val c = categories.getOrNull(index); "aux_cat_${c?.id}_${c?.name}_${c?.type}_${index}" }) { index ->
                             val category = categories[index]
                             val isSelected = category.id == currentCategoryId
                             val isLocked = isCategoryLocked(category)

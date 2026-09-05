@@ -43,7 +43,7 @@ internal fun LazyListScope.providerSection(
     providerState: SettingsProviderSectionState
 ) {
     if (uiState.providers.isEmpty()) {
-        item {
+        item(key = "settings_no_providers_state") {
             TvEmptyState(
                 title = stringResource(R.string.settings_no_providers),
                 subtitle = stringResource(R.string.settings_no_providers_subtitle),
@@ -53,7 +53,7 @@ internal fun LazyListScope.providerSection(
             )
         }
     } else {
-        item {
+        item(key = "settings_providers_main_card") {
             var selectedProviderId by rememberSaveable(uiState.activeProviderId) {
                 mutableStateOf(uiState.activeProviderId ?: uiState.providers.firstOrNull()?.id ?: 0L)
             }
@@ -79,7 +79,7 @@ internal fun LazyListScope.providerSection(
                 contentPadding = PaddingValues(vertical = 4.dp),
                 modifier = Modifier.padding(bottom = 14.dp)
             ) {
-                items(uiState.providers, key = { it.id }) { provider ->
+                items(uiState.providers, key = { "prov_${it.id}_${it.name}_${it.type}" }) { provider ->
                     ProviderSelectorTab(
                         provider = provider,
                         isSelected = provider.id == selectedProvider?.id,
@@ -128,7 +128,7 @@ internal fun LazyListScope.providerSection(
         }
     }
 
-    item {
+    item(key = "settings_providers_add_action") {
         TvClickableSurface(
             onClick = onAddProvider,
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),

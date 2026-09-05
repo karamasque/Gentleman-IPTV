@@ -147,7 +147,7 @@ fun PlayerViewModel.onPlayerScreenDisposed() {
         activeEngine.release()
         setActivePlayerEngine(mainPlayerEngine)
     } else {
-        mainPlayerEngine.resetForReuse()
+        mainPlayerEngine.stop()
     }
     if (currentContentType != ContentType.LIVE) {
         viewModelScope.launch {

@@ -832,9 +832,11 @@
                     onBack = {
                         val returnRoute = safePlayerRequest.returnRoute
                         if (returnRoute != null) {
-                            navController.navigate(returnRoute) {
-                                popUpTo(returnRoute) { inclusive = true }
-                                launchSingleTop = true
+                            val popped = navController.popBackStack(returnRoute, inclusive = false)
+                            if (!popped) {
+                                navController.navigate(returnRoute) {
+                                    launchSingleTop = true
+                                }
                             }
                         } else {
                             navController.popBackStack()
@@ -859,9 +861,11 @@
                 },
                 onBack = {
                     if (returnRoute != null) {
-                        navController.navigate(returnRoute) {
-                            popUpTo(returnRoute) { inclusive = true }
-                            launchSingleTop = true
+                        val popped = navController.popBackStack(returnRoute, inclusive = false)
+                        if (!popped) {
+                            navController.navigate(returnRoute) {
+                                launchSingleTop = true
+                            }
                         }
                     } else {
                         navController.popBackStack()
@@ -888,9 +892,11 @@
                 },
                 onBack = {
                     if (returnRoute != null) {
-                        navController.navigate(returnRoute) {
-                            popUpTo(returnRoute) { inclusive = true }
-                            launchSingleTop = true
+                        val popped = navController.popBackStack(returnRoute, inclusive = false)
+                        if (!popped) {
+                            navController.navigate(returnRoute) {
+                                launchSingleTop = true
+                            }
                         }
                     } else {
                         navController.popBackStack()

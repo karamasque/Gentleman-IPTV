@@ -48,15 +48,15 @@ internal fun LazyListScope.epgSourcesSection(
     val epgSources = uiState.epgSources
     val providers = uiState.providers
 
-    item {
+    item(key = "settings_epg_sync_card") {
         BackgroundSyncSettingsCard(viewModel = viewModel)
     }
 
-    item {
+    item(key = "settings_epg_storage_cleaner_card") {
         StorageCleanerCard(viewModel = viewModel)
     }
 
-    item {
+    item(key = "settings_epg_sources_header") {
         Text(
             text = "EPG Sources",
             style = MaterialTheme.typography.titleMedium,
@@ -71,12 +71,12 @@ internal fun LazyListScope.epgSourcesSection(
         )
     }
 
-    item {
+    item(key = "settings_epg_add_source_card") {
         AddEpgSourceCard(viewModel = viewModel)
     }
 
     if (epgSources.isEmpty()) {
-        item {
+        item(key = "settings_epg_sources_empty") {
             Text(
                 text = "Henüz harici EPG kaynağı yapılandırılmadı. Başlamak için yukarıdan bir kaynak ekleyin.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -101,7 +101,7 @@ internal fun LazyListScope.epgSourcesSection(
     }
 
     if (providers.isNotEmpty() && epgSources.isNotEmpty()) {
-        item {
+        item(key = "settings_epg_assignments_header") {
             Text(
                 text = "Provider Assignments",
                 style = MaterialTheme.typography.titleMedium,
@@ -148,7 +148,7 @@ internal fun LazyListScope.epgSourcesSection(
     }
 
     if (providers.isNotEmpty()) {
-        item {
+        item(key = "settings_epg_shift_header") {
             Text(
                 text = "EPG Time Shift",
                 style = MaterialTheme.typography.titleMedium,

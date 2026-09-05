@@ -32,7 +32,9 @@ class VodCategoryFilterResetTest {
             selectedLibrarySortBy = selectedLibrarySortBy,
             uiState = uiState,
             resetFilterOnCategoryChange = false,
-            getSelectedCategory = { it.selectedCategory }
+            getSelectedCategory = { it.selectedCategory },
+            getSelectedFilterType = { it.selectedFilterType },
+            getSelectedSortBy = { it.selectedSortBy }
         ) { category, filter, sort, loading ->
             copy(selectedCategory = category, selectedFilterType = filter, selectedSortBy = sort, isLoading = loading)
         }
@@ -62,7 +64,9 @@ class VodCategoryFilterResetTest {
             selectedLibrarySortBy = selectedLibrarySortBy,
             uiState = uiState,
             resetFilterOnCategoryChange = true,
-            getSelectedCategory = { it.selectedCategory }
+            getSelectedCategory = { it.selectedCategory },
+            getSelectedFilterType = { it.selectedFilterType },
+            getSelectedSortBy = { it.selectedSortBy }
         ) { category, filter, sort, loading ->
             copy(selectedCategory = category, selectedFilterType = filter, selectedSortBy = sort, isLoading = loading)
         }
@@ -114,7 +118,9 @@ class VodCategoryFilterResetTest {
             selectedLibrarySortBy = selectedLibrarySortBy,
             uiState = uiState,
             resetFilterOnCategoryChange = true,
-            getSelectedCategory = { it.selectedCategory }
+            getSelectedCategory = { it.selectedCategory },
+            getSelectedFilterType = { it.selectedFilterType },
+            getSelectedSortBy = { it.selectedSortBy }
         ) { category, filter, sort, loading ->
             copy(selectedCategory = category, selectedFilterType = filter, selectedSortBy = sort, isLoading = loading)
         }
@@ -126,7 +132,7 @@ class VodCategoryFilterResetTest {
     }
 
     @Test
-    fun `TEST 5 - manually selected filter inside same category is preserved across re-clicks`() {
+    fun `TEST 5 - same category re-selection with non-ALL filter resets filter to ALL without loading spinner`() {
         val selectedCategoryLoadLimit = MutableStateFlow(20)
         val selectedLibraryFilterType = MutableStateFlow(LibraryFilterType.RECENTLY_UPDATED)
         val selectedLibrarySortBy = MutableStateFlow(LibrarySortBy.RELEASE)
@@ -134,11 +140,13 @@ class VodCategoryFilterResetTest {
             DummyVodState(
                 selectedCategory = "Aksiyon",
                 selectedFilterType = LibraryFilterType.RECENTLY_UPDATED,
-                selectedSortBy = LibrarySortBy.RELEASE
+                selectedSortBy = LibrarySortBy.RELEASE,
+                isLoading = false
             )
         )
 
-        // User re-selects "Aksiyon" (same category)
+        var updateStateInvoked = false
+        // User re-selects "Aksiyon" (or "Tümü" category) with resetFilterOnCategoryChange = true
         selectVodCategory(
             categoryName = "Aksiyon",
             selectedCategoryLoadLimit = selectedCategoryLoadLimit,
@@ -146,15 +154,22 @@ class VodCategoryFilterResetTest {
             selectedLibrarySortBy = selectedLibrarySortBy,
             uiState = uiState,
             resetFilterOnCategoryChange = true,
-            getSelectedCategory = { it.selectedCategory }
+            getSelectedCategory = { it.selectedCategory },
+            getSelectedFilterType = { it.selectedFilterType },
+            getSelectedSortBy = { it.selectedSortBy }
         ) { category, filter, sort, loading ->
+            updateStateInvoked = true
             copy(selectedCategory = category, selectedFilterType = filter, selectedSortBy = sort, isLoading = loading)
         }
 
-        // Must NOT reset because category did not change
+        // Filter MUST reset to ALL and sort to LIBRARY, while isLoading remains false
+        assertThat(updateStateInvoked).isTrue()
         assertThat(uiState.value.selectedCategory).isEqualTo("Aksiyon")
-        assertThat(uiState.value.selectedFilterType).isEqualTo(LibraryFilterType.RECENTLY_UPDATED)
-        assertThat(selectedLibraryFilterType.value).isEqualTo(LibraryFilterType.RECENTLY_UPDATED)
+        assertThat(uiState.value.selectedFilterType).isEqualTo(LibraryFilterType.ALL)
+        assertThat(uiState.value.selectedSortBy).isEqualTo(LibrarySortBy.LIBRARY)
+        assertThat(uiState.value.isLoading).isFalse()
+        assertThat(selectedLibraryFilterType.value).isEqualTo(LibraryFilterType.ALL)
+        assertThat(selectedLibrarySortBy.value).isEqualTo(LibrarySortBy.LIBRARY)
     }
 
     @Test
@@ -177,7 +192,9 @@ class VodCategoryFilterResetTest {
             selectedLibrarySortBy = selectedLibrarySortBy,
             uiState = uiState,
             resetFilterOnCategoryChange = true,
-            getSelectedCategory = { it.selectedCategory }
+            getSelectedCategory = { it.selectedCategory },
+            getSelectedFilterType = { it.selectedFilterType },
+            getSelectedSortBy = { it.selectedSortBy }
         ) { category, filter, sort, loading ->
             updateStateInvoked = true
             copy(selectedCategory = category, selectedFilterType = filter, selectedSortBy = sort, isLoading = loading)
@@ -204,7 +221,9 @@ class VodCategoryFilterResetTest {
             selectedLibrarySortBy = selectedLibrarySortBy,
             uiState = uiState,
             resetFilterOnCategoryChange = true,
-            getSelectedCategory = { it.selectedCategory }
+            getSelectedCategory = { it.selectedCategory },
+            getSelectedFilterType = { it.selectedFilterType },
+            getSelectedSortBy = { it.selectedSortBy }
         ) { category, filter, sort, loading ->
             updateStateInvoked = true
             copy(selectedCategory = category, selectedFilterType = filter, selectedSortBy = sort, isLoading = loading)
@@ -230,7 +249,9 @@ class VodCategoryFilterResetTest {
             selectedLibrarySortBy = selectedLibrarySortBy,
             uiState = uiState,
             resetFilterOnCategoryChange = true,
-            getSelectedCategory = { it.selectedCategory }
+            getSelectedCategory = { it.selectedCategory },
+            getSelectedFilterType = { it.selectedFilterType },
+            getSelectedSortBy = { it.selectedSortBy }
         ) { category, filter, sort, loading ->
             updateStateInvoked = true
             copy(selectedCategory = category, selectedFilterType = filter, selectedSortBy = sort, isLoading = loading)

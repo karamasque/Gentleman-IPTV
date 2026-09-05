@@ -72,10 +72,14 @@ fun ContinueWatchingRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(
-                items = items,
-                key = { it.id },
-                contentType = { it.contentType }
-            ) { history ->
+                count = items.size,
+                key = { index ->
+                    val history = items.getOrNull(index)
+                    "cw_${history?.contentType}_${history?.contentId}_${history?.id}_${index}"
+                },
+                contentType = { index -> items.getOrNull(index)?.contentType }
+            ) { index ->
+                val history = items.getOrNull(index) ?: return@items
                 ContinueWatchingTile(history = history, onClick = { onItemClick(history) })
             }
         }

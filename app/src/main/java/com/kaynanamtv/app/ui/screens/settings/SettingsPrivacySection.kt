@@ -34,7 +34,7 @@ internal fun LazyListScope.settingsPrivacySection(
     onShowLevelDialogChange: (Boolean) -> Unit,
     onShowClearHistoryDialogChange: (Boolean) -> Unit
 ) {
-    item {
+    item(key = "settings_privacy_parental_card") {
         ParentalControlCard(
             level = uiState.parentalControlLevel,
             hasParentalPin = uiState.hasParentalPin,
@@ -61,7 +61,7 @@ internal fun LazyListScope.settingsPrivacySection(
             }
         )
     }
-    item {
+    item(key = "settings_privacy_controls_card") {
         HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
         TvClickableSurface(
             onClick = { viewModel.toggleIncognitoMode() },

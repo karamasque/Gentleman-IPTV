@@ -257,6 +257,9 @@ class SeriesViewModel @Inject constructor(
                         val providerCategoryNames = snapshot.providerCategories.mapTo(linkedSetOf()) { it.name }
                         preserveSelectedCategory ||
                             selected == _uiState.value.fullLibraryCategoryName ||
+                            selected == _uiState.value.favoriteCategoryName ||
+                            selected == VodBrowseDefaults.FAVORITES_CATEGORY ||
+                            snapshot.providerCategories.isEmpty() ||
                             selected in snapshot.categoryNames ||
                             selected in providerCategoryNames ||
                             selected in customCategoryNames
@@ -500,7 +503,14 @@ class SeriesViewModel @Inject constructor(
     }
 
     fun selectCategory(categoryName: String?, resetFilterOnCategoryChange: Boolean = true) {
-        if (_uiState.value.selectedCategory == categoryName) return
+        val previousCategory = _uiState.value.selectedCategory
+        val previousFilter = _uiState.value.selectedLibraryFilterType
+        val previousSort = _uiState.value.selectedLibrarySortBy
+        val targetFilter = if (resetFilterOnCategoryChange) LibraryFilterType.ALL else _selectedLibraryFilterType.value
+        val targetSort = if (resetFilterOnCategoryChange) LibrarySortBy.LIBRARY else _selectedLibrarySortBy.value
+        if (previousCategory == categoryName && previousFilter == targetFilter && previousSort == targetSort) {
+            return
+        }
         _previewBatchSize.value = INITIAL_PREVIEW_BATCH_SIZE
         activeProviderId?.let { providerId ->
             parentalControlManager.retainUnlockedCategory(
@@ -508,6 +518,7 @@ class SeriesViewModel @Inject constructor(
                 categoryId = resolveProviderCategoryId(categoryName)
             )
         }
+        val isChangingCategory = previousCategory != categoryName
         selectVodCategory(
             categoryName = categoryName,
             selectedCategoryLoadLimit = _selectedCategoryLoadLimit,
@@ -515,16 +526,18 @@ class SeriesViewModel @Inject constructor(
             selectedLibrarySortBy = _selectedLibrarySortBy,
             uiState = _uiState,
             resetFilterOnCategoryChange = resetFilterOnCategoryChange,
-            getSelectedCategory = { it.selectedCategory }
+            getSelectedCategory = { it.selectedCategory },
+            getSelectedFilterType = { it.selectedLibraryFilterType },
+            getSelectedSortBy = { it.selectedLibrarySortBy }
         ) { selectedCategory, filterType, sortBy, isLoadingSelectedCategory ->
             copy(
                 selectedCategory = selectedCategory,
                 selectedLibraryFilterType = filterType,
                 selectedLibrarySortBy = sortBy,
-                selectedCategoryItems = emptyList(),
-                selectedCategoryLoadedCount = 0,
-                selectedCategoryTotalCount = 0,
-                canLoadMoreSelectedCategory = false,
+                selectedCategoryItems = if (isChangingCategory) emptyList() else selectedCategoryItems,
+                selectedCategoryLoadedCount = if (isChangingCategory) 0 else selectedCategoryLoadedCount,
+                selectedCategoryTotalCount = if (isChangingCategory) 0 else selectedCategoryTotalCount,
+                canLoadMoreSelectedCategory = if (isChangingCategory) false else canLoadMoreSelectedCategory,
                 isLoadingSelectedCategory = isLoadingSelectedCategory
             )
         }
@@ -549,9 +562,7 @@ class SeriesViewModel @Inject constructor(
     }
 
     fun selectFullLibraryBrowse() {
-        _selectedLibraryFilterType.value = LibraryFilterType.ALL
-        _selectedLibrarySortBy.value = LibrarySortBy.LIBRARY
-        selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY, resetFilterOnCategoryChange = false)
+        selectCategory(VodBrowseDefaults.FULL_LIBRARY_CATEGORY, resetFilterOnCategoryChange = true)
     }
 
     fun loadMoreSelectedCategory() {

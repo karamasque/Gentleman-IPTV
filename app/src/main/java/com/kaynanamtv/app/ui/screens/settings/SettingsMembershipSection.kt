@@ -162,7 +162,7 @@ class MembershipViewModel @Inject constructor(
 internal fun LazyListScope.settingsMembershipSection(
     onLogout: () -> Unit
 ) {
-    item {
+    item(key = "settings_membership_section_content") {
         MembershipSectionContent(onLogout = onLogout)
     }
 }

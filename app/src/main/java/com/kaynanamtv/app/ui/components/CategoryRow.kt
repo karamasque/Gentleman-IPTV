@@ -101,10 +101,18 @@ fun <T : Any> CategoryRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(
-                items = items,
-                key = keySelector,  // null = index-based keys (safe default)
-                contentType = resolvedContentTypeSelector
-            ) { item ->
+                count = items.size,
+                key = { index ->
+                    val item = items.getOrNull(index)
+                    if (item != null && keySelector != null) {
+                        "cat_row_${title}_${keySelector(item)}_${index}"
+                    } else {
+                        "cat_row_${title}_${index}"
+                    }
+                },
+                contentType = { index -> items.getOrNull(index)?.let(resolvedContentTypeSelector) }
+            ) { index ->
+                val item = items.getOrNull(index) ?: return@items
                 itemContent(item)
             }
         }

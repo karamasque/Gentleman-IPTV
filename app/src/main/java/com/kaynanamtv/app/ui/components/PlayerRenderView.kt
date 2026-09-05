@@ -80,7 +80,7 @@ fun PlayerRenderView(
         }
     }
 
-    key(playerEngine, surfaceType) {
+    key(playerEngine) {
         AndroidView(
             factory = { context ->
                 playerEngine.createRenderView(context, resizeMode, surfaceType).apply {
@@ -88,6 +88,7 @@ fun PlayerRenderView(
                     isFocusableInTouchMode = false
                     renderViewRef = this
                     configureView?.invoke(this)
+                    playerEngine.bindRenderView(this, resizeMode)
                 }
             },
             update = { renderView ->

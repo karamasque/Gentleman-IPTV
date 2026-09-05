@@ -36,7 +36,7 @@ internal fun LazyListScope.settingsBackupSection(
     onCreateBackupUsb: (() -> Unit)? = null,
     onRestoreBackupUsb: (() -> Unit)? = null
 ) {
-    item {
+    item(key = "settings_backup_action_cards") {
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxWidth()
@@ -266,7 +266,7 @@ internal fun LazyListScope.settingsAboutSection(
     onShareCrashReport: () -> Unit,
     onDeleteCrashReport: () -> Unit
 ) {
-    item {
+    item(key = "settings_about_updates_card") {
         val downloadStatus = uiState.appUpdate.downloadStatus
         LaunchedEffect(downloadStatus) {
             if (downloadStatus == com.kaynanamtv.app.update.AppUpdateDownloadStatus.Downloading) {
@@ -352,7 +352,7 @@ internal fun LazyListScope.settingsAboutSection(
         }
     }
 
-    item {
+    item(key = "settings_about_crash_card") {
         SettingsSectionHeader(
             title = stringResource(R.string.settings_crash_reports_title),
             subtitle = stringResource(R.string.settings_crash_reports_subtitle)
@@ -389,7 +389,7 @@ internal fun LazyListScope.settingsAboutSection(
         }
     }
 
-    item {
+    item(key = "settings_about_build_card") {
         SettingsRow(label = stringResource(R.string.settings_build), value = stringResource(R.string.settings_build_desc))
         SettingsRow(label = stringResource(R.string.settings_build_verification), value = buildVerificationLabel)
     }

@@ -87,7 +87,7 @@ internal fun LazyListScope.settingsPlaybackSection(
     onShowWifiQualityDialogChange: (Boolean) -> Unit,
     onShowEthernetQualityDialogChange: (Boolean) -> Unit
 ) {
-    item {
+    item(key = "settings_playback_section_content") {
         val liveStreamFormatMode by viewModel.playerLiveStreamFormatMode.collectAsStateWithLifecycle()
         var showLiveStreamFormatDialog by rememberSaveable { mutableStateOf(false) }
         var showPlayerEngineDialog by rememberSaveable { mutableStateOf(false) }

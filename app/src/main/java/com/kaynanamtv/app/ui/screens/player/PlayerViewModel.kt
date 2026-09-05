@@ -426,35 +426,72 @@ class PlayerViewModel @Inject constructor(
     }
 
     internal fun handleEnginePreferenceChange(newPref: com.kaynanamtv.domain.model.PlayerEnginePreference) {
-        val currentPref = activeEnginePreference
-        if (currentPref == null) {
-            activeEnginePreference = newPref
-            val targetType = playerEngineFactory.resolveEngineType(newPref)
-            val currentEngine = activePlayerEngineFlow.value
-            val isCurrentVlc = currentEngine is com.kaynanamtv.player.VlcPlayerEngine
-            val needsVlc = targetType == com.kaynanamtv.player.PlayerEngineType.VLC
-            if (needsVlc != isCurrentVlc) {
+        runCatching {
+            val currentPref = activeEnginePreference
+            if (currentPref == null) {
+                activeEnginePreference = newPref
+                val targetType = playerEngineFactory.resolveEngineType(newPref)
+                val currentEngine = activePlayerEngineFlow.value
+                val isCurrentVlc = currentEngine is com.kaynanamtv.player.VlcPlayerEngine
+                val needsVlc = targetType == com.kaynanamtv.player.PlayerEngineType.VLC
+                if (needsVlc == isCurrentVlc) {
+                    return
+                }
+                val streamInfo = currentResolvedStreamInfo
+                val resumePosMs = currentEngine.currentPosition.value
+                val wasPlaying = currentEngine.isPlaying.value
                 val newEngine = playerEngineFactory.createEngine(targetType)
+                currentEngine.stop()
                 currentEngine.release()
                 setActivePlayerEngine(newEngine)
+                if (streamInfo != null) {
+                    newEngine.prepare(streamInfo)
+                    if (resumePosMs > 0L) {
+                        newEngine.seekTo(resumePosMs)
+                    }
+                    if (wasPlaying) {
+                        newEngine.play()
+                    }
+                }
+                return
             }
-            return
-        }
-        if (currentPref == newPref) return
-        activeEnginePreference = newPref
+            if (currentPref == newPref) return
+            activeEnginePreference = newPref
 
-        val isSessionActive = playerEngine.playbackState.value != PlaybackState.IDLE && currentResolvedStreamInfo != null
-        if (isSessionActive) {
-            _engineSwitchConfirmation.value = EngineSwitchConfirmationState(
-                isVisible = true,
-                targetPreference = newPref
-            )
-        } else {
-            val targetType = playerEngineFactory.resolveEngineType(newPref)
-            val oldEngine = activePlayerEngineFlow.value
-            val newEngine = playerEngineFactory.createEngine(targetType)
-            oldEngine.release()
-            setActivePlayerEngine(newEngine)
+            val isSessionActive = playerEngine.playbackState.value != PlaybackState.IDLE && currentResolvedStreamInfo != null
+            if (isSessionActive) {
+                _engineSwitchConfirmation.value = EngineSwitchConfirmationState(
+                    isVisible = true,
+                    targetPreference = newPref
+                )
+            } else {
+                val targetType = playerEngineFactory.resolveEngineType(newPref)
+                val oldEngine = activePlayerEngineFlow.value
+                val isOldVlc = oldEngine is com.kaynanamtv.player.VlcPlayerEngine
+                val needsVlc = targetType == com.kaynanamtv.player.PlayerEngineType.VLC
+                if (needsVlc == isOldVlc) return
+
+                val streamInfo = currentResolvedStreamInfo
+                val resumePosMs = oldEngine.currentPosition.value
+                val wasPlaying = oldEngine.isPlaying.value
+                val newEngine = playerEngineFactory.createEngine(targetType)
+                oldEngine.stop()
+                oldEngine.release()
+                setActivePlayerEngine(newEngine)
+                if (streamInfo != null) {
+                    newEngine.prepare(streamInfo)
+                    if (resumePosMs > 0L) {
+                        newEngine.seekTo(resumePosMs)
+                    }
+                    if (wasPlaying) {
+                        newEngine.play()
+                    }
+                }
+            }
+        }.onFailure { error ->
+            android.util.Log.e("PlayerViewModel", "Failed to handle engine preference change: ${error.message}", error)
+            showPlayerNotice(message = "Dahili VLC başlatılamadı.")
+            fallbackToMedia3Engine()
         }
     }
 
@@ -470,26 +507,32 @@ class PlayerViewModel @Inject constructor(
             return
         }
 
-        val targetType = playerEngineFactory.resolveEngineType(targetPref)
-        val resumePosMs = playerEngine.currentPosition.value
-        val wasPlaying = playerEngine.isPlaying.value
-        val oldEngine = activePlayerEngineFlow.value
-        val newEngine = playerEngineFactory.createEngine(targetType)
+        runCatching {
+            val targetType = playerEngineFactory.resolveEngineType(targetPref)
+            val resumePosMs = playerEngine.currentPosition.value
+            val wasPlaying = playerEngine.isPlaying.value
+            val oldEngine = activePlayerEngineFlow.value
+            val newEngine = playerEngineFactory.createEngine(targetType)
 
-        oldEngine.pause()
-        oldEngine.stop()
-        oldEngine.release()
+            oldEngine.pause()
+            oldEngine.stop()
+            oldEngine.release()
 
-        setActivePlayerEngine(newEngine)
+            setActivePlayerEngine(newEngine)
 
-        currentResolvedStreamInfo?.let { stream ->
-            newEngine.prepare(stream)
-            if (resumePosMs > 0L) {
-                newEngine.seekTo(resumePosMs)
+            currentResolvedStreamInfo?.let { stream ->
+                newEngine.prepare(stream)
+                if (resumePosMs > 0L) {
+                    newEngine.seekTo(resumePosMs)
+                }
+                if (wasPlaying) {
+                    newEngine.play()
+                }
             }
-            if (wasPlaying) {
-                newEngine.play()
-            }
+        }.onFailure { error ->
+            android.util.Log.e("PlayerViewModel", "Failed to switch player engine: ${error.message}", error)
+            showPlayerNotice(message = "Dahili VLC başlatılamadı.")
+            fallbackToMedia3Engine()
         }
     }
 
@@ -1561,7 +1604,7 @@ class PlayerViewModel @Inject constructor(
                     activeEngine.release()
                     setActivePlayerEngine(mainPlayerEngine)
                 } else {
-                    mainPlayerEngine.resetForReuse()
+                    mainPlayerEngine.stop()
                 }
                 var playbackLogicalUrl = streamUrl
                 var playbackContentId = internalChannelId

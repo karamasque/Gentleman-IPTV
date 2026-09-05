@@ -452,7 +452,7 @@ internal fun ReorderSidePanel(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                itemsIndexed(channels, key = { _, channel -> channel.id }) { index, channel ->
+                itemsIndexed(channels, key = { index, channel -> "reorder_ch_${channel.providerId}_${channel.id}_${channel.streamId}_${index}" }) { index, channel ->
                     var isFocused by remember { mutableStateOf(false) }
                     val isDraggingThis = draggingChannel == channel
 

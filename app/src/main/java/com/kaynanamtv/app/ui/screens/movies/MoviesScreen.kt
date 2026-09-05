@@ -747,7 +747,7 @@ private fun MoviesVodContent(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
+        item(key = "movies_grid_header", span = { GridItemSpan(maxLineSpan) }) {
             VodSectionHeader(
                 title = when (uiState.selectedCategory) {
                     uiState.fullLibraryCategoryName -> stringResource(R.string.library_full_browse_title_movies)
@@ -757,7 +757,7 @@ private fun MoviesVodContent(
         }
 
         if (!uiState.isReorderMode) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            item(key = "movies_grid_action_chips", span = { GridItemSpan(maxLineSpan) }) {
                 val browseOptionsDetail = vodActiveFilterSortDetail(selectedFilterType, selectedSortBy)
                 val hasActiveFilterSort = selectedFilterType != LibraryFilterType.ALL || selectedSortBy != LibrarySortBy.LIBRARY
                 VodActionChipRow(
@@ -809,7 +809,7 @@ private fun MoviesVodContent(
             }
 
             if (showSearchBar) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item(key = "movies_grid_search_bar", span = { GridItemSpan(maxLineSpan) }) {
                     SearchInput(
                         value = searchQuery,
                         onValueChange = onSearchQueryChange,
@@ -823,7 +823,7 @@ private fun MoviesVodContent(
         }
 
         if (uiState.isLoadingSelectedCategory) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            item(key = "movies_grid_loading_state", span = { GridItemSpan(maxLineSpan) }) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -843,7 +843,7 @@ private fun MoviesVodContent(
                 }
             }
         } else if (filteredGridMovies.isEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            item(key = "movies_grid_empty_state", span = { GridItemSpan(maxLineSpan) }) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -865,7 +865,7 @@ private fun MoviesVodContent(
                 }
             }
         } else {
-            gridItems(filteredGridMovies, key = { it.id }) { movie ->
+            gridItems(filteredGridMovies, key = { "grid_mov_${it.providerId}_${it.id}_${it.streamId}_${it.name}" }) { movie ->
                 val isLocked = isMovieLocked(movie)
                 val isDraggingThis = draggingMovie == movie
                 MovieCard(
@@ -1180,7 +1180,7 @@ private fun MoviesVodClassicContent(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 if (uiState.isLoadingSelectedCategory) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item(key = "movies_all_loading_state", span = { GridItemSpan(maxLineSpan) }) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1191,14 +1191,14 @@ private fun MoviesVodClassicContent(
                         }
                     }
                 } else if (filteredGridMovies.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item(key = "movies_all_empty_state", span = { GridItemSpan(maxLineSpan) }) {
                         AppMessageState(
                             title = stringResource(R.string.movies_no_found),
                             subtitle = stringResource(R.string.vod_classic_empty_category)
                         )
                     }
                 } else {
-                    gridItems(filteredGridMovies, key = { it.id }) { movie ->
+                    gridItems(filteredGridMovies, key = { "grid_mov_all_${it.providerId}_${it.id}_${it.streamId}_${it.name}" }) { movie ->
                         val isLocked = isMovieLocked(movie)
                         val isDraggingThis = draggingMovie == movie
                         MovieCard(

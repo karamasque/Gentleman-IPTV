@@ -3534,6 +3534,60 @@ interface PlaybackHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(history: PlaybackHistoryEntity)
 
+    @Query(
+        """
+        UPDATE playback_history 
+        SET resume_position_ms = :resumePositionMs,
+            total_duration_ms = :totalDurationMs,
+            last_watched_at = :lastWatchedAt,
+            watched_status = :watchedStatus,
+            series_id = COALESCE(:seriesId, series_id),
+            season_number = COALESCE(:seasonNumber, season_number),
+            episode_number = COALESCE(:episodeNumber, episode_number)
+        WHERE content_id = :contentId 
+          AND content_type = :contentType 
+          AND provider_id = :providerId
+        """
+    )
+    suspend fun updateProgressOnly(
+        contentId: Long,
+        contentType: String,
+        providerId: Long,
+        resumePositionMs: Long,
+        totalDurationMs: Long,
+        lastWatchedAt: Long,
+        watchedStatus: String,
+        seriesId: Long? = null,
+        seasonNumber: Int? = null,
+        episodeNumber: Int? = null
+    ): Int
+
+    @Query(
+        """
+        UPDATE playback_history 
+        SET title = :title,
+            poster_url = :posterUrl,
+            stream_url = :streamUrl
+        WHERE id = :id
+        """
+    )
+    suspend fun updateMetadataOnly(
+        id: Long,
+        title: String,
+        posterUrl: String?,
+        streamUrl: String
+    ): Int
+
+    @Query(
+        """
+        SELECT * FROM playback_history 
+        WHERE (title = '' OR poster_url IS NULL OR poster_url = '')
+          AND watched_status != 'COMPLETED'
+        LIMIT 200
+        """
+    )
+    suspend fun getCorruptedMetadataEntries(): List<PlaybackHistoryEntity>
+
     @Query("DELETE FROM playback_history WHERE content_id = :contentId AND content_type = :contentType AND provider_id = :providerId")
     suspend fun delete(contentId: Long, contentType: String, providerId: Long)
 

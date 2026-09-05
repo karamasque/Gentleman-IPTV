@@ -92,10 +92,11 @@ fun ChipRowSection(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(
-                items = chips,
-                key = { it.key },
+                count = chips.size,
+                key = { index -> "chip_${title ?: "row"}_${chips.getOrNull(index)?.key}_${index}" },
                 contentType = { "selection_chip" }
-            ) { chip ->
+            ) { index ->
+                val chip = chips.getOrNull(index) ?: return@items
                 val isSelected = chip.key == selectedKey
                 var wasFocused by remember(chip.key) { mutableStateOf(false) }
                 val focusRequester = remember(chip.key) { FocusRequester() }

@@ -934,9 +934,13 @@ fun HomeScreen(
                         ) {
 
                         items(
-                            items = visibleCategories,
-                            key = { it.id }
-                        ) { category ->
+                            count = visibleCategories.size,
+                            key = { index ->
+                                val category = visibleCategories.getOrNull(index)
+                                "home_cat_${category?.id}_${category?.name}_${category?.type}_${index}"
+                            }
+                        ) { index ->
+                            val category = visibleCategories.getOrNull(index) ?: return@items
                             val isLocked = isCategoryLocked(category)
                             val categoryFocusRequester = categoryFocusRequesters.getOrPut(category.id) { FocusRequester() }
 
@@ -1274,9 +1278,13 @@ fun HomeScreen(
                                 verticalArrangement = Arrangement.spacedBy(channelListSpacing)
                             ) {
                                 items(
-                                    items = uiState.filteredChannels,
-                                    key = { it.id }
-                                ) { channel ->
+                                    count = uiState.filteredChannels.size,
+                                    key = { index ->
+                                        val channel = uiState.filteredChannels.getOrNull(index)
+                                        "home_ch_${channel?.providerId}_${channel?.id}_${channel?.streamId}_${channel?.name}_${index}"
+                                    }
+                                ) { index ->
+                                    val channel = uiState.filteredChannels.getOrNull(index) ?: return@items
                                     val isLocked = isChannelLocked(channel)
                                     val isDraggingThis = draggingChannel == channel
                                     val channelFocusRequester = channelFocusRequesters.getOrPut(channel.id) { FocusRequester() }

@@ -120,9 +120,11 @@ class HomeViewModelTest {
 
     @After
     fun tearDown() {
-        createdViewModels.asReversed().forEach(::clearViewModel)
-        createdViewModels.clear()
-        testDispatcher.scheduler.advanceUntilIdle()
+        runCatching {
+            createdViewModels.asReversed().forEach(::clearViewModel)
+            createdViewModels.clear()
+            testDispatcher.scheduler.advanceUntilIdle()
+        }
         Dispatchers.resetMain()
     }
 

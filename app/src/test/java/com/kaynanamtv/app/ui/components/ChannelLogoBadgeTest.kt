@@ -12,22 +12,38 @@ import org.robolectric.RuntimeEnvironment
 class ChannelLogoBadgeTest {
 
     @Test
-    fun `channel initials helper extracts two characters from single or multi word name`() {
+    fun `channel clean name helper extracts readable channel name stripping numbers, tags and quality`() {
         val initialsMethod = Class.forName("com.kaynanamtv.app.ui.components.ChannelLogoKt")
-            .getDeclaredMethod("channelInitials", String::class.java)
+            .getDeclaredMethod("extractCleanChannelName", String::class.java)
         initialsMethod.isAccessible = true
 
-        val atvInitials = initialsMethod.invoke(null, "ATV HD") as String
-        assertThat(atvInitials).isEqualTo("AH")
+        val showTv = initialsMethod.invoke(null, "12 TR: SHOW TV FHD") as String
+        assertThat(showTv).isEqualTo("SHOW TV")
 
-        val singleWordInitials = initialsMethod.invoke(null, "CNN") as String
-        assertThat(singleWordInitials).isEqualTo("CN")
+        val trt1 = initialsMethod.invoke(null, "03 TR: TRT 1 FHD") as String
+        assertThat(trt1).isEqualTo("TRT 1")
 
-        val emptyInitials = initialsMethod.invoke(null, "   ") as String
-        assertThat(emptyInitials).isEqualTo("--")
+        val atv = initialsMethod.invoke(null, "ATV HD") as String
+        assertThat(atv).isEqualTo("ATV")
 
-        val oneLetterInitials = initialsMethod.invoke(null, "N") as String
-        assertThat(oneLetterInitials).isEqualTo("N")
+        val singleWord = initialsMethod.invoke(null, "CNN") as String
+        assertThat(singleWord).isEqualTo("CNN")
+
+        val empty = initialsMethod.invoke(null, "   ") as String
+        assertThat(empty).isEqualTo("TV")
+
+        val oneLetter = initialsMethod.invoke(null, "N") as String
+        assertThat(oneLetter).isEqualTo("N")
+
+        // Test decorative emojis and country prefix stripping
+        val ulusal = initialsMethod.invoke(null, "⚜️⚜️ ULUSAL ⚜️⚜️") as String
+        assertThat(ulusal).isEqualTo("ULUSAL")
+
+        val polis = initialsMethod.invoke(null, "TR: POLİS KAMERASI HD") as String
+        assertThat(polis).isEqualTo("POLİS KAMERASI")
+
+        val tgrt = initialsMethod.invoke(null, "TR: TGRT EU HD") as String
+        assertThat(tgrt).isEqualTo("TGRT EU")
     }
 
     @Test

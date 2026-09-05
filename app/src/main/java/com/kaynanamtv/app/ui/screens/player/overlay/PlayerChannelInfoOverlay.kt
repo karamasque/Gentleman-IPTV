@@ -301,13 +301,12 @@ fun ChannelInfoOverlay(
                                 }
                             }
 
-                            // Channel Logo (if available)
-                            if (currentChannel != null && !currentChannel.logoUrl.isNullOrBlank()) {
+                            // Channel Logo (or initials badge fallback)
+                            if (currentChannel != null) {
                                 Box(
                                     modifier = Modifier
                                         .size(38.dp)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.White.copy(alpha = 0.06f))
                                 ) {
                                     ChannelLogoBadge(
                                         channelName = currentChannel.name,

@@ -830,7 +830,14 @@ private fun FavoriteChannelsRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(channels, key = { it.id }) { channel ->
+            items(
+                count = channels.size,
+                key = { index ->
+                    val ch = channels.getOrNull(index)
+                    "dash_fav_ch_${ch?.providerId}_${ch?.id}_${ch?.streamId}_${index}"
+                }
+            ) { index ->
+                val channel = channels.getOrNull(index) ?: return@items
                 FavoriteChannelLogoCard(
                     channel = channel,
                     onClick = { onChannelClick(channel) }

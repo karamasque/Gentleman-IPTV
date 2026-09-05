@@ -207,23 +207,61 @@ class CloudUserStateSyncManager @Inject constructor(
         syncScope.launch {
             val now = System.currentTimeMillis()
             val isCompleted = durationMs > 0L && positionMs >= (durationMs * 0.95) // 95% completion threshold
+            val watchedStatus = if (isCompleted) "COMPLETED" else "IN_PROGRESS"
 
-            val historyEntity = PlaybackHistoryEntity(
-                providerId = providerId,
-                contentId = contentId,
-                contentType = contentType,
-                resumePositionMs = positionMs,
-                totalDurationMs = durationMs,
-                lastWatchedAt = now,
-                seriesId = seriesId,
-                seasonNumber = seasonNumber,
-                episodeNumber = episodeNumber,
-                watchedStatus = if (isCompleted) "COMPLETED" else "IN_PROGRESS"
-            )
-
-            // 1. Local Room DB update (Instant Source of Truth)
+            // 1. Local Room DB update (Non-destructive update first)
             runCatching {
-                playbackHistoryDao.insertOrUpdate(historyEntity)
+                val updatedRows = playbackHistoryDao.updateProgressOnly(
+                    contentId = contentId,
+                    contentType = contentType.name,
+                    providerId = providerId,
+                    resumePositionMs = positionMs,
+                    totalDurationMs = durationMs,
+                    lastWatchedAt = now,
+                    watchedStatus = watchedStatus,
+                    seriesId = seriesId,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber
+                )
+                if (updatedRows == 0) {
+                    val (title, posterUrl, streamUrl) = when (contentType) {
+                        ContentType.MOVIE -> {
+                            val movie = runCatching { movieDao.getById(contentId) }.getOrNull()
+                            Triple(
+                                movie?.name.orEmpty(),
+                                movie?.posterUrl,
+                                movie?.streamUrl.orEmpty()
+                            )
+                        }
+                        ContentType.SERIES_EPISODE -> {
+                            val episode = runCatching { episodeDao.getById(contentId) }.getOrNull()
+                            val resolvedSeriesId = seriesId ?: episode?.seriesId ?: 0L
+                            val series = if (resolvedSeriesId > 0L) runCatching { seriesDao.getById(resolvedSeriesId) }.getOrNull() else null
+                            Triple(
+                                episode?.title?.ifBlank { series?.name.orEmpty() }.orEmpty().ifBlank { series?.name.orEmpty() },
+                                episode?.coverUrl?.takeIf { it.isNotBlank() } ?: series?.posterUrl ?: series?.backdropUrl,
+                                episode?.streamUrl.orEmpty()
+                            )
+                        }
+                        else -> Triple("", null, "")
+                    }
+                    val historyEntity = PlaybackHistoryEntity(
+                        providerId = providerId,
+                        contentId = contentId,
+                        contentType = contentType,
+                        title = title,
+                        posterUrl = posterUrl,
+                        streamUrl = streamUrl,
+                        resumePositionMs = positionMs,
+                        totalDurationMs = durationMs,
+                        lastWatchedAt = now,
+                        seriesId = seriesId,
+                        seasonNumber = seasonNumber,
+                        episodeNumber = episodeNumber,
+                        watchedStatus = watchedStatus
+                    )
+                    playbackHistoryDao.insertOrUpdate(historyEntity)
+                }
             }.onFailure { Log.w(TAG, "Failed to persist local playback history", it) }
 
             // 2. Multi-device Cloud Sync (Async, non-blocking OCC transaction)
@@ -837,7 +875,59 @@ class CloudUserStateSyncManager @Inject constructor(
                         else -> { /* No-op */ }
                     }
                 }
+                // Perform idempotent local metadata repair for corrupted records
+                repairCorruptedLocalHistory()
             }.onFailure { Log.w(TAG, "Failed to repair active provider history", it) }
         }
+    }
+
+    /**
+     * Performs a one-time/idempotent local repair pass on playback_history records
+     * that have empty titles or missing poster URLs, resolving them from local movie/episode catalogs.
+     */
+    suspend fun repairCorruptedLocalHistory() {
+        runCatching {
+            val corruptedList = playbackHistoryDao.getCorruptedMetadataEntries()
+            if (corruptedList.isEmpty()) return
+            for (entry in corruptedList) {
+                when (entry.contentType) {
+                    ContentType.MOVIE -> {
+                        val movie = runCatching { movieDao.getById(entry.contentId) }.getOrNull()
+                        if (movie != null) {
+                            val repairedTitle = entry.title.ifBlank { movie.name }
+                            val repairedPoster = entry.posterUrl?.takeIf { it.isNotBlank() } ?: movie.posterUrl
+                            val repairedStream = entry.streamUrl.ifBlank { movie.streamUrl.orEmpty() }
+                            playbackHistoryDao.updateMetadataOnly(
+                                id = entry.id,
+                                title = repairedTitle,
+                                posterUrl = repairedPoster,
+                                streamUrl = repairedStream
+                            )
+                        }
+                    }
+                    ContentType.SERIES_EPISODE -> {
+                        val episode = runCatching { episodeDao.getById(entry.contentId) }.getOrNull()
+                        if (episode != null) {
+                            val series = (entry.seriesId ?: episode.seriesId).let { sId ->
+                                if (sId > 0L) runCatching { seriesDao.getById(sId) }.getOrNull() else null
+                            }
+                            val repairedTitle = entry.title.ifBlank { episode.title.ifBlank { series?.name.orEmpty() } }
+                            val repairedPoster = entry.posterUrl?.takeIf { it.isNotBlank() }
+                                ?: episode.coverUrl?.takeIf { it.isNotBlank() }
+                                ?: series?.posterUrl
+                                ?: series?.backdropUrl
+                            val repairedStream = entry.streamUrl.ifBlank { episode.streamUrl.orEmpty() }
+                            playbackHistoryDao.updateMetadataOnly(
+                                id = entry.id,
+                                title = repairedTitle,
+                                posterUrl = repairedPoster,
+                                streamUrl = repairedStream
+                            )
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+        }.onFailure { Log.w(TAG, "Failed to repair corrupted local history", it) }
     }
 }

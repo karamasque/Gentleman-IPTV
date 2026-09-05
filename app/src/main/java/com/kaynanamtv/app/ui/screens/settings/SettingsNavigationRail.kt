@@ -85,7 +85,7 @@ internal fun SettingsNavigationRail(
         contentPadding = PaddingValues(top = 76.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        itemsIndexed(entries) { index, entry ->
+        itemsIndexed(entries, key = { index, entry -> "settings_nav_${entry.label}_${index}" }) { index, entry ->
             SettingsNavItem(
                 label = entry.label,
                 badgeChar = entry.icon,

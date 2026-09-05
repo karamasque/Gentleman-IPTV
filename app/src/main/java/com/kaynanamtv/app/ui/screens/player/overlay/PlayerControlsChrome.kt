@@ -1030,13 +1030,12 @@ private fun PlayerLiveInfo(
                             }
                         }
 
-                        // Channel Logo (if available)
-                        if (currentChannel != null && !currentChannel.logoUrl.isNullOrBlank()) {
+                        // Channel Logo (or initials badge fallback)
+                        if (currentChannel != null) {
                             Box(
                                 modifier = Modifier
                                     .size(38.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White.copy(alpha = 0.06f))
                             ) {
                                 ChannelLogoBadge(
                                     channelName = currentChannel.name,
@@ -2570,7 +2569,7 @@ private fun PlayerQuickActionRows(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(end = 4.dp)
         ) {
-            itemsIndexed(actions) { actionIndex, action ->
+            itemsIndexed(actions, key = { index, action -> "quick_act_${action.label}_${index}" }) { actionIndex, action ->
                 PlayerQuickSettingsButton(
                     text = action.label,
                     onClick = action.onClick,
