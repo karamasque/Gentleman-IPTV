@@ -119,10 +119,10 @@ internal fun PlayerViewModel.applyPrepareSessionState(
         recentChannelsFlow.value = emptyList()
         lastVisitedCategoryJob?.cancel()
         _lastVisitedCategory.value = null
-        lastRecordedLivePlaybackKey = null
         livePreviewHandoffManager.stopAndClearAll()
         playerEngine.stopLiveTimeshift()
     }
+    lastRecordedLivePlaybackKey = null
 
     hasRetriedWithSoftwareDecoder = false
     hasRetriedWithAvcMovieVariant = false

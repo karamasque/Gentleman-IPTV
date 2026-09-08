@@ -39,7 +39,7 @@ class PlayerEngineFactoryTest {
     }
 
     @Test
-    fun autoMode_onTvDevice_resolvesToMedia3() {
+    fun autoMode_resolvesToMedia3() {
         whenever(mockPackageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)).thenReturn(true)
 
         val resolved = factory.resolveEngineType(PlayerEnginePreference.AUTO)
@@ -48,28 +48,16 @@ class PlayerEngineFactoryTest {
     }
 
     @Test
-    fun autoMode_onMobileDevice_resolvesToMedia3() {
-        whenever(mockPackageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)).thenReturn(false)
-        whenever(mockPackageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)).thenReturn(true)
-
-        val resolved = factory.resolveEngineType(PlayerEnginePreference.AUTO)
-
-        assertThat(resolved).isEqualTo(PlayerEngineType.MEDIA3)
-    }
-
-    @Test
-    fun manualMode_media3_resolvesToMedia3_regardlessOfDevice() {
-        whenever(mockPackageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)).thenReturn(true)
-
+    fun manualMode_media3_resolvesToMedia3() {
         val resolved = factory.resolveEngineType(PlayerEnginePreference.MEDIA3)
 
         assertThat(resolved).isEqualTo(PlayerEngineType.MEDIA3)
     }
 
     @Test
-    fun manualMode_vlcPreference_resolvesToVlc() {
+    fun manualMode_legacyVlcPreference_resolvesToMedia3() {
         val resolved = factory.resolveEngineType(PlayerEnginePreference.VLC)
-        assertThat(resolved).isEqualTo(PlayerEngineType.VLC)
+        assertThat(resolved).isEqualTo(PlayerEngineType.MEDIA3)
     }
 
     @Test

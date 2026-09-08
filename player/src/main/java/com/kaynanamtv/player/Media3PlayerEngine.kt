@@ -202,7 +202,8 @@ class Media3PlayerEngine @Inject constructor(
     // collectors. Terminal release() never recreates the scope.
     private var scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
         private set
-    private var isDisposed = false
+    override var isDisposed = false
+        private set
     private var exoPlayer: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
     private var requestedAudioDecoderMode: DecoderMode = DecoderMode.AUTO
@@ -1109,7 +1110,12 @@ class Media3PlayerEngine @Inject constructor(
             observedVideoFormat = _videoFormat.value,
             qualityReasonOverride = promotedLiveHlsBufferReasonsByMediaId[mediaId]
         )
-        val needsRecreate = (exoPlayer == null)
+        val needsRecreate = (exoPlayer != null && (
+            mediaChanged ||
+            previousAudioDecoderPolicy != nextAudioDecoderPolicy ||
+            previousVideoDecoderPolicy != nextVideoDecoderPolicy ||
+            currentBufferIsLive != isLiveBuffer
+        ))
         activeAudioDecoderMode = preferredAudioDecoderMode
         activeVideoDecoderMode = preferredVideoDecoderMode
         activeAudioDecoderPolicy = nextAudioDecoderPolicy
@@ -2533,26 +2539,38 @@ class Media3PlayerEngine @Inject constructor(
         }
 
         if (category == PlaybackErrorCategory.DECODER || category == PlaybackErrorCategory.FORMAT_UNSUPPORTED) {
-            val audioFallbackMode = audioDecoderPreferencePolicy.onDecoderInitFailure(
-                requestedAudioDecoderMode,
-                mediaId
-            )
-            val videoFallbackMode = videoDecoderPreferencePolicy.onDecoderInitFailure(
-                requestedVideoDecoderMode,
-                mediaId
-            )
-            val fallbackMode = if (forceAmbiguousDecoderSoftwareFallback(audioFallbackMode, videoFallbackMode)) {
-                DecoderMode.SOFTWARE
-            } else {
-                null
-            }
-            if (fallbackMode != null) {
+            val isUhdOrHdr = _videoFormat.value.height >= 1440 || _videoFormat.value.width >= 2560 || _videoFormat.value.isHdr ||
+                error.message?.contains("3840", ignoreCase = true) == true ||
+                error.message?.contains("2160", ignoreCase = true) == true
+            if (isUhdOrHdr) {
+                // 4K/HDR content cannot be decoded in software on TV hardware.
+                // Log diagnostic and proceed to clean hardware retry/recovery.
                 Log.w(
                     TAG,
-                    "decoder-preference fallback=$fallbackMode mediaId=$mediaId target=${PlaybackLogSanitizer.sanitizeUrl(streamInfo.url)}"
+                    "decoder-error for 4K/HDR mediaId=$mediaId target=${PlaybackLogSanitizer.sanitizeUrl(streamInfo.url)}"
                 )
-                prepareInternal(streamInfo, preserveRetryState = true, seekPositionMs = exoPlayer?.currentPosition, autoPlay = true)
-                return
+            } else {
+                val audioFallbackMode = audioDecoderPreferencePolicy.onDecoderInitFailure(
+                    requestedAudioDecoderMode,
+                    mediaId
+                )
+                val videoFallbackMode = videoDecoderPreferencePolicy.onDecoderInitFailure(
+                    requestedVideoDecoderMode,
+                    mediaId
+                )
+                val fallbackMode = if (forceAmbiguousDecoderSoftwareFallback(audioFallbackMode, videoFallbackMode)) {
+                    DecoderMode.SOFTWARE
+                } else {
+                    null
+                }
+                if (fallbackMode != null) {
+                    Log.w(
+                        TAG,
+                        "decoder-preference fallback=$fallbackMode mediaId=$mediaId target=${PlaybackLogSanitizer.sanitizeUrl(streamInfo.url)}"
+                    )
+                    prepareInternal(streamInfo, preserveRetryState = true, seekPositionMs = exoPlayer?.currentPosition, autoPlay = true)
+                    return
+                }
             }
         }
 

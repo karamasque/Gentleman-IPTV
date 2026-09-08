@@ -886,20 +886,12 @@ class MovieRepositoryImpl @Inject constructor(
                     flow {
                         ensureXtreamCategoryLoaded(query.providerId, categoryId, fetchIfMissing = true, refreshStaleInBackground = true, requiredCount = fetchLimit)
                         emitAll(
-                            combine(
-                                movieDao.getInProgressByCategoryPage(query.providerId, categoryId, fetchLimit, 0),
-                                preferencesRepository.parentalControlLevel
-                            ) { entities, level ->
-                                if (level >= 3) entities.filter { !it.isUserProtected } else entities
-                            }.map { entities -> entities.map { it.toDomain() } }
+                            movieDao.getInProgressByCategoryPage(query.providerId, categoryId, fetchLimit, 0)
+                                .map { entities -> entities.map { it.toDomain() } }
                         )
                     }
-                } ?: combine(
-                    movieDao.getInProgressByProviderPage(query.providerId, fetchLimit, 0),
-                    preferencesRepository.parentalControlLevel
-                ) { entities, level ->
-                    if (level >= 3) entities.filter { !it.isUserProtected } else entities
-                }.map { entities -> entities.map { it.toDomain() } }
+                } ?: movieDao.getInProgressByProviderPage(query.providerId, fetchLimit, 0)
+                    .map { entities -> entities.map { it.toDomain() } }
             }
             normalizedSearch.isBlank() &&
                 query.filterBy.type == LibraryFilterType.UNWATCHED &&
@@ -1360,7 +1352,7 @@ class MovieRepositoryImpl @Inject constructor(
             LibrarySortBy.RELEASE -> filtered.sortedByDescending(::movieReleaseScore)
             LibrarySortBy.UPDATED -> filtered.sortedByDescending(::movieAddedScore)
             LibrarySortBy.RATING -> filtered.sortedByDescending { it.rating }
-            LibrarySortBy.WATCH_COUNT -> filtered.sortedByDescending { watchCounts[it.id] ?: 0 }
+            LibrarySortBy.WATCH_COUNT -> filtered.sortedByDescending { watchCounts[it.streamId] ?: watchCounts[it.id] ?: 0 }
         }
 
         return if (query.searchQuery.isBlank() || query.sortBy != LibrarySortBy.LIBRARY) {
@@ -1377,8 +1369,8 @@ class MovieRepositoryImpl @Inject constructor(
     private fun movieMatchesFilter(movie: Movie, filterType: LibraryFilterType, inProgressIds: Set<Long>): Boolean = when (filterType) {
         LibraryFilterType.ALL -> true
         LibraryFilterType.FAVORITES -> movie.isFavorite
-        LibraryFilterType.IN_PROGRESS -> movie.id in inProgressIds || movieIsInProgress(movie)
-        LibraryFilterType.UNWATCHED -> movie.id !in inProgressIds && movie.watchProgress <= 0L
+        LibraryFilterType.IN_PROGRESS -> movie.id in inProgressIds || movie.streamId in inProgressIds || movieIsInProgress(movie)
+        LibraryFilterType.UNWATCHED -> movie.id !in inProgressIds && movie.streamId !in inProgressIds && movie.watchProgress <= 0L
         LibraryFilterType.TOP_RATED -> movie.rating > 0f
         LibraryFilterType.RECENTLY_UPDATED -> movieAddedScore(movie) > 0L
     }

@@ -853,20 +853,12 @@ class SeriesRepositoryImpl @Inject constructor(
                     flow {
                         ensureXtreamCategoryLoaded(query.providerId, categoryId, fetchLimit)
                         emitAll(
-                            combine(
-                                seriesDao.getInProgressByCategoryPage(query.providerId, categoryId, fetchLimit, 0),
-                                preferencesRepository.parentalControlLevel
-                            ) { entities, level ->
-                                if (level >= 3) entities.filter { !it.isUserProtected } else entities
-                            }.map { entities -> entities.map { it.toDomain() } }
+                            seriesDao.getInProgressByCategoryPage(query.providerId, categoryId, fetchLimit, 0)
+                                .map { entities -> entities.map { it.toDomain() } }
                         )
                     }
-                } ?: combine(
-                    seriesDao.getInProgressByProviderPage(query.providerId, fetchLimit, 0),
-                    preferencesRepository.parentalControlLevel
-                ) { entities, level ->
-                    if (level >= 3) entities.filter { !it.isUserProtected } else entities
-                }.map { entities -> entities.map { it.toDomain() } }
+                } ?: seriesDao.getInProgressByProviderPage(query.providerId, fetchLimit, 0)
+                    .map { entities -> entities.map { it.toDomain() } }
             }
             normalizedSearch.isBlank() &&
                 query.filterBy.type == LibraryFilterType.UNWATCHED &&
@@ -1351,7 +1343,7 @@ class SeriesRepositoryImpl @Inject constructor(
             LibrarySortBy.RELEASE -> filtered.sortedByDescending(::seriesReleaseScore)
             LibrarySortBy.UPDATED -> filtered.sortedByDescending(::seriesUpdatedScore)
             LibrarySortBy.RATING -> filtered.sortedByDescending { it.rating }
-            LibrarySortBy.WATCH_COUNT -> filtered.sortedByDescending { watchCounts[it.id] ?: 0 }
+            LibrarySortBy.WATCH_COUNT -> filtered.sortedByDescending { watchCounts[it.seriesId] ?: watchCounts[it.id] ?: 0 }
         }
 
         return if (query.searchQuery.isBlank() || query.sortBy != LibrarySortBy.LIBRARY) {
@@ -1373,8 +1365,8 @@ class SeriesRepositoryImpl @Inject constructor(
     ): Boolean = when (filterType) {
         LibraryFilterType.ALL -> true
         LibraryFilterType.FAVORITES -> series.isFavorite
-        LibraryFilterType.IN_PROGRESS -> series.id in inProgressIds
-        LibraryFilterType.UNWATCHED -> series.id !in completedSeriesIds
+        LibraryFilterType.IN_PROGRESS -> series.id in inProgressIds || series.seriesId in inProgressIds
+        LibraryFilterType.UNWATCHED -> series.id !in completedSeriesIds && series.seriesId !in completedSeriesIds
         LibraryFilterType.TOP_RATED -> series.rating > 0f
         LibraryFilterType.RECENTLY_UPDATED -> seriesUpdatedScore(series) > 0L
     }

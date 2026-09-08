@@ -77,8 +77,8 @@ class PlayerViewBinder(
         val playerView = renderView as? PlayerView ?: return
         if (boundPlayerView === playerView) {
             boundPlayerView = null
+            playerView.player = null
         }
-        playerView.player = null
     }
 
     fun clear() {

@@ -103,6 +103,8 @@ interface PlayerEngine {
     fun clearInjectedSubtitleCues()
     fun setLiveAudioTap(tap: LiveAudioTap?)
     fun clearLiveAudioTap() = setLiveAudioTap(null)
+    val isDisposed: Boolean
+        get() = false
     fun release()
     fun resetForReuse() = release()
 
@@ -328,7 +330,23 @@ sealed class PlayerError(val message: String) {
             if (isRecentSeek || hasRenderedFramesBefore) {
                 return "Konum geçişi sırasında kod çözücü yanıt vermedi."
             }
-            return e.message ?: "Unsupported media format."
+            val rawMsg = e.message
+            if (rawMsg != null && rawMsg.contains("MediaCodecVideoRenderer error", ignoreCase = true)) {
+                val isHevc = rawMsg.contains("video/hevc", ignoreCase = true) || rawMsg.contains("hvc1", ignoreCase = true)
+                val is4k = rawMsg.contains("3840, 2160") || rawMsg.contains("3840 x 2160")
+                val isHdr = rawMsg.contains("BT2020", ignoreCase = true) || rawMsg.contains("ST2084", ignoreCase = true) || rawMsg.contains("HLG", ignoreCase = true)
+                val formatDetails = buildList {
+                    if (is4k) add("4K")
+                    if (isHevc) add("HEVC")
+                    if (isHdr) add("HDR")
+                }.joinToString(" ")
+                return if (formatDetails.isNotBlank()) {
+                    "Donanım video kod çözücü ($formatDetails) video akışını işleyemedi."
+                } else {
+                    "Video donanım kod çözücü hatası."
+                }
+            }
+            return rawMsg ?: "Unsupported media format."
         }
 
         private fun buildNetworkErrorMessage(chain: List<Throwable>): String = when {

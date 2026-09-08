@@ -315,9 +315,7 @@ fun PlayerScreen(
                 ?: viewModel.externalPlaybackUrl.value.takeIf { it.isNotBlank() }
                 ?: streamUrl
             if (rawUrl.isNotBlank() && (rawUrl.startsWith("http://") || rawUrl.startsWith("https://") || rawUrl.startsWith("rtmp://") || rawUrl.startsWith("rtsp://"))) {
-                coroutineScope.launch {
-                    viewModel.persistPlaybackProgress()
-                }
+                viewModel.prepareForExternalPlayback()
                 val headers = streamInfo?.headers ?: emptyMap()
                 val result = com.kaynanamtv.app.player.external.ExternalPlayerLauncher.launchVlc(
                     context = context,

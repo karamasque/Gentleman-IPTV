@@ -111,6 +111,9 @@ internal fun PlayerViewModel.finalizePreparedPlaybackContext(
             currentChannelFlow.value = channel
             refreshCurrentChannelRecording()
             if (channel != null) {
+                if (currentProviderId <= 0L) {
+                    currentProviderId = channel.providerId
+                }
                 currentTitle = channel.name.ifBlank { currentTitle }
                 playbackTitleFlow.value = currentTitle
                 currentStreamUrl = if (isCatchUpPlayback()) currentStreamUrl else channel.streamUrl
@@ -131,6 +134,7 @@ internal fun PlayerViewModel.finalizePreparedPlaybackContext(
                     )
                 }
                 updateChannelDiagnostics(channel)
+                recordActiveLivePlayback(channel)
             }
         }
     }

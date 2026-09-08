@@ -287,7 +287,9 @@ class ChannelRepositoryImpl @Inject constructor(
             val entityPoolFlow = if (logicalGroupIds.isEmpty()) {
                 flowOf(requestedEntities)
             } else {
-                channelDao.getByLogicalGroupIds(logicalGroupIds)
+                channelDao.getByLogicalGroupIds(logicalGroupIds).map { pool ->
+                    (pool + requestedEntities).distinctBy { it.id }
+                }
             }
             combine(
                 flowOf(requestedEntities),

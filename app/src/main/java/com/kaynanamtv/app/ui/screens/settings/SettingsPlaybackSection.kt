@@ -101,14 +101,17 @@ internal fun LazyListScope.settingsPlaybackSection(
         }
         val playerEngineOptions = remember {
             listOf(
-                com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO to "Otomatik",
-                com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3 to "Media3",
-                com.kaynanamtv.domain.model.PlayerEnginePreference.VLC to "Dahili VLC",
+                com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3 to "Media3 (Dahili)",
                 com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC to "Harici VLC"
             )
         }
 
         if (showPlayerEngineDialog) {
+            val currentEffectivePref = if (uiState.playerEnginePreference == com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC) {
+                com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC
+            } else {
+                com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
+            }
             PremiumSelectionDialog(
                 title = "Oynatıcı",
                 onDismiss = { showPlayerEngineDialog = false }
@@ -117,7 +120,7 @@ internal fun LazyListScope.settingsPlaybackSection(
                     LevelOption(
                         level = index,
                         text = label,
-                        currentLevel = if (uiState.playerEnginePreference == pref) index else -1,
+                        currentLevel = if (currentEffectivePref == pref) index else -1,
                         onSelect = {
                             viewModel.setPlayerEnginePreference(pref)
                             showPlayerEngineDialog = false

@@ -1063,8 +1063,13 @@ class SeriesViewModel @Inject constructor(
                         )
                     )
                     .first()
+                val filteredItems = if (request.filterType == LibraryFilterType.IN_PROGRESS) {
+                    result.items
+                } else {
+                    result.items.filterNot { item -> item.categoryId in request.hiddenCategoryIds }
+                }
                 Triple(
-                    result.items.filterNot { item -> item.categoryId in request.hiddenCategoryIds },
+                    filteredItems,
                     result.totalCount,
                     result.hasMoreRemote
                 )
@@ -1180,8 +1185,9 @@ class SeriesViewModel @Inject constructor(
     }
 
     private fun List<Series>.orderByIds(ids: List<Long>): List<Series> {
-        val seriesMap = associateBy { it.id }
-        return ids.mapNotNull { seriesMap[it] }
+        val seriesMapById = associateBy { it.id }
+        val seriesMapBySeriesId = associateBy { it.seriesId }
+        return ids.mapNotNull { seriesMapById[it] ?: seriesMapBySeriesId[it] }
     }
 
     private fun List<Series>.markSeriesFavorites(globalFavoriteIds: Set<Long>): List<Series> = map { series ->

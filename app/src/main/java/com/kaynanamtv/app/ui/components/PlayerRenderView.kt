@@ -80,7 +80,7 @@ fun PlayerRenderView(
         }
     }
 
-    key(playerEngine) {
+    key(playerEngine, surfaceType) {
         AndroidView(
             factory = { context ->
                 playerEngine.createRenderView(context, resizeMode, surfaceType).apply {
@@ -96,8 +96,9 @@ fun PlayerRenderView(
                 playerEngine.bindRenderView(renderView, resizeMode)
             },
             onRelease = { renderView ->
-                renderViewRef = null
-                playerEngine.clearRenderBinding()
+                if (renderViewRef === renderView) {
+                    renderViewRef = null
+                }
                 playerEngine.releaseRenderView(renderView)
             },
             modifier = modifier

@@ -145,7 +145,7 @@
              channelId = channel.epgChannelId,
              internalId = channel.id,
              categoryId = effectiveCategoryId,
-             providerId = providerId,
+             providerId = providerId ?: channel.providerId,
              isVirtual = isVirtual,
              combinedProfileId = combinedProfileId,
              combinedSourceFilterProviderId = combinedSourceFilterProviderId,

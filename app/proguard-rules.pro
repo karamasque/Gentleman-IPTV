@@ -90,12 +90,6 @@
     <fields>;
 }
 
-# ── LibVLC ──────────────────────────────────────────────────
--keep class org.videolan.libvlc.** { *; }
--dontwarn org.videolan.libvlc.**
--keepclassmembers class org.videolan.libvlc.** {
-    native <methods>;
-}
 
 # ── General ─────────────────────────────────────────────────
 -keepattributes SourceFile,LineNumberTable       # Better crash reports

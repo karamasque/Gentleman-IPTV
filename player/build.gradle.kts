@@ -137,8 +137,6 @@ dependencies {
     // OkHttp (for custom data source)
     implementation(libs.okhttp)
 
-    // LibVLC (Internal VLC Player Engine)
-    implementation(libs.libvlc.all)
 
     // Hilt
     implementation(libs.hilt.android)

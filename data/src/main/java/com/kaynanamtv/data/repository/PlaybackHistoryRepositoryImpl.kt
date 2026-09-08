@@ -162,7 +162,7 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
             val persistedItems = persistedEntities.map { it.toDomain() }
             val movieItems = movieEntities.map { movie ->
                 PlaybackHistory(
-                    contentId = movie.id,
+                    contentId = movie.streamId.takeIf { it > 0L } ?: movie.id,
                     contentType = ContentType.MOVIE,
                     providerId = movie.providerId,
                     title = movie.name,
@@ -176,7 +176,7 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
             }
             val episodeItems = episodeEntities.map { ep ->
                 PlaybackHistory(
-                    contentId = ep.id,
+                    contentId = ep.episodeId.takeIf { it > 0L } ?: ep.id,
                     contentType = ContentType.SERIES_EPISODE,
                     providerId = ep.providerId,
                     seriesId = ep.seriesId.takeIf { it > 0L },
@@ -221,7 +221,7 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
             val persistedItems = persistedEntities.map { it.toDomain() }
             val movieItems = movieEntities.map { movie ->
                 PlaybackHistory(
-                    contentId = movie.id,
+                    contentId = movie.streamId.takeIf { it > 0L } ?: movie.id,
                     contentType = ContentType.MOVIE,
                     providerId = movie.providerId,
                     title = movie.name,
@@ -235,7 +235,7 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
             }
             val episodeItems = episodeEntities.map { ep ->
                 PlaybackHistory(
-                    contentId = ep.id,
+                    contentId = ep.episodeId.takeIf { it > 0L } ?: ep.id,
                     contentType = ContentType.SERIES_EPISODE,
                     providerId = ep.providerId,
                     seriesId = ep.seriesId.takeIf { it > 0L },

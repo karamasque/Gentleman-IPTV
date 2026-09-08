@@ -1057,8 +1057,13 @@ class MoviesViewModel @Inject constructor(
                         )
                     )
                     .first()
+                val filteredItems = if (request.filterType == LibraryFilterType.IN_PROGRESS) {
+                    result.items
+                } else {
+                    result.items.filterNot { movie -> movie.categoryId in request.hiddenCategoryIds }
+                }
                 Triple(
-                    result.items.filterNot { movie -> movie.categoryId in request.hiddenCategoryIds },
+                    filteredItems,
                     result.totalCount,
                     result.hasMoreRemote
                 )
@@ -1172,8 +1177,9 @@ class MoviesViewModel @Inject constructor(
     }
 
     private fun List<Movie>.orderByIds(ids: List<Long>): List<Movie> {
-        val movieMap = associateBy { it.id }
-        return ids.mapNotNull { movieMap[it] }
+        val movieMapById = associateBy { it.id }
+        val movieMapByStreamId = associateBy { it.streamId }
+        return ids.mapNotNull { movieMapById[it] ?: movieMapByStreamId[it] }
     }
 
     private fun List<Movie>.markMovieFavorites(globalFavoriteIds: Set<Long>): List<Movie> = map { movie ->

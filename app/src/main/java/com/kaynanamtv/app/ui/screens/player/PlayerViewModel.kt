@@ -255,7 +255,7 @@ class PlayerViewModel @Inject constructor(
     val externalPlaybackUrl: StateFlow<String> = _externalPlaybackUrl.asStateFlow()
     private val _engineSwitchConfirmation = MutableStateFlow(EngineSwitchConfirmationState())
     val engineSwitchConfirmation: StateFlow<EngineSwitchConfirmationState> = _engineSwitchConfirmation.asStateFlow()
-    private var activeEnginePreference: com.kaynanamtv.domain.model.PlayerEnginePreference? = null
+    internal var activeEnginePreference: com.kaynanamtv.domain.model.PlayerEnginePreference? = null
     private val _launchExternalVlcEvent = MutableStateFlow(false)
     val launchExternalVlcEvent: StateFlow<Boolean> = _launchExternalVlcEvent.asStateFlow()
 
@@ -425,74 +425,41 @@ class PlayerViewModel @Inject constructor(
         activePlayerEngineFlow.value = engine
     }
 
-    internal fun handleEnginePreferenceChange(newPref: com.kaynanamtv.domain.model.PlayerEnginePreference) {
-        runCatching {
-            val currentPref = activeEnginePreference
-            if (currentPref == null) {
-                activeEnginePreference = newPref
-                val targetType = playerEngineFactory.resolveEngineType(newPref)
-                val currentEngine = activePlayerEngineFlow.value
-                val isCurrentVlc = currentEngine is com.kaynanamtv.player.VlcPlayerEngine
-                val needsVlc = targetType == com.kaynanamtv.player.PlayerEngineType.VLC
-                if (needsVlc == isCurrentVlc) {
-                    return
-                }
-                val streamInfo = currentResolvedStreamInfo
-                val resumePosMs = currentEngine.currentPosition.value
-                val wasPlaying = currentEngine.isPlaying.value
-                val newEngine = playerEngineFactory.createEngine(targetType)
-                currentEngine.stop()
-                currentEngine.release()
-                setActivePlayerEngine(newEngine)
-                if (streamInfo != null) {
-                    newEngine.prepare(streamInfo)
-                    if (resumePosMs > 0L) {
-                        newEngine.seekTo(resumePosMs)
-                    }
-                    if (wasPlaying) {
-                        newEngine.play()
-                    }
-                }
-                return
-            }
-            if (currentPref == newPref) return
-            activeEnginePreference = newPref
-
-            val isSessionActive = playerEngine.playbackState.value != PlaybackState.IDLE && currentResolvedStreamInfo != null
-            if (isSessionActive) {
-                _engineSwitchConfirmation.value = EngineSwitchConfirmationState(
-                    isVisible = true,
-                    targetPreference = newPref
-                )
-            } else {
-                val targetType = playerEngineFactory.resolveEngineType(newPref)
-                val oldEngine = activePlayerEngineFlow.value
-                val isOldVlc = oldEngine is com.kaynanamtv.player.VlcPlayerEngine
-                val needsVlc = targetType == com.kaynanamtv.player.PlayerEngineType.VLC
-                if (needsVlc == isOldVlc) return
-
-                val streamInfo = currentResolvedStreamInfo
-                val resumePosMs = oldEngine.currentPosition.value
-                val wasPlaying = oldEngine.isPlaying.value
-                val newEngine = playerEngineFactory.createEngine(targetType)
-                oldEngine.stop()
-                oldEngine.release()
-                setActivePlayerEngine(newEngine)
-                if (streamInfo != null) {
-                    newEngine.prepare(streamInfo)
-                    if (resumePosMs > 0L) {
-                        newEngine.seekTo(resumePosMs)
-                    }
-                    if (wasPlaying) {
-                        newEngine.play()
-                    }
-                }
-            }
-        }.onFailure { error ->
-            android.util.Log.e("PlayerViewModel", "Failed to handle engine preference change: ${error.message}", error)
-            showPlayerNotice(message = "Dahili VLC başlatılamadı.")
-            fallbackToMedia3Engine()
+    internal suspend fun ensureActiveEngineAlive(): PlayerEngine {
+        val current = activePlayerEngineFlow.value
+        if (!current.isDisposed) {
+            return current
         }
+        val pref = activeEnginePreference ?: runCatching { preferencesRepository.playerEnginePreference.first() }
+            .getOrDefault(com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO)
+        val targetType = playerEngineFactory.resolveEngineType(pref)
+        val freshEngine = playerEngineFactory.createEngine(targetType)
+        android.util.Log.i(
+            "PlayerViewModel",
+            "[ENGINE_LIFECYCLE] Recreated fresh engine (type=$targetType, hash=${System.identityHashCode(freshEngine)}) replacing disposed engine (hash=${System.identityHashCode(current)})"
+        )
+        setActivePlayerEngine(freshEngine)
+        return freshEngine
+    }
+
+    internal fun handleEnginePreferenceChange(newPref: com.kaynanamtv.domain.model.PlayerEnginePreference) {
+        activeEnginePreference = newPref
+    }
+
+    fun prepareForExternalPlayback() {
+        isAppInForeground = false
+        shouldResumeAfterForeground = false
+        val activeEngine = playerEngine
+        activeEngine.pause()
+        activeEngine.stop()
+        viewModelScope.launch {
+            persistPlaybackProgress(forceCloudSync = true)
+            playbackHistoryRepository.flushPendingProgress()
+        }
+        zapBufferWatchdogJob?.cancel()
+        zapDebounceJob?.cancel()
+        tokenRenewalJob?.cancel()
+        recoveryJob?.cancel()
     }
 
     fun confirmEngineSwitch() {
@@ -500,39 +467,9 @@ class PlayerViewModel @Inject constructor(
         _engineSwitchConfirmation.value = EngineSwitchConfirmationState(isVisible = false, targetPreference = null)
 
         if (targetPref == com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC) {
-            viewModelScope.launch {
-                persistPlaybackProgress()
-            }
+            prepareForExternalPlayback()
             _launchExternalVlcEvent.value = true
             return
-        }
-
-        runCatching {
-            val targetType = playerEngineFactory.resolveEngineType(targetPref)
-            val resumePosMs = playerEngine.currentPosition.value
-            val wasPlaying = playerEngine.isPlaying.value
-            val oldEngine = activePlayerEngineFlow.value
-            val newEngine = playerEngineFactory.createEngine(targetType)
-
-            oldEngine.pause()
-            oldEngine.stop()
-            oldEngine.release()
-
-            setActivePlayerEngine(newEngine)
-
-            currentResolvedStreamInfo?.let { stream ->
-                newEngine.prepare(stream)
-                if (resumePosMs > 0L) {
-                    newEngine.seekTo(resumePosMs)
-                }
-                if (wasPlaying) {
-                    newEngine.play()
-                }
-            }
-        }.onFailure { error ->
-            android.util.Log.e("PlayerViewModel", "Failed to switch player engine: ${error.message}", error)
-            showPlayerNotice(message = "Dahili VLC başlatılamadı.")
-            fallbackToMedia3Engine()
         }
     }
 
@@ -541,19 +478,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun fallbackToMedia3Engine() {
-        if (activePlayerEngineFlow.value is com.kaynanamtv.player.VlcPlayerEngine) {
-            val oldEngine = activePlayerEngineFlow.value
-            val newEngine = playerEngineFactory.createEngine(com.kaynanamtv.player.PlayerEngineType.MEDIA3)
-            val pos = oldEngine.currentPosition.value
-            val wasPlaying = oldEngine.isPlaying.value
-            oldEngine.release()
-            setActivePlayerEngine(newEngine)
-            currentResolvedStreamInfo?.let { stream ->
-                newEngine.prepare(stream)
-                if (pos > 0L) newEngine.seekTo(pos)
-                if (wasPlaying) newEngine.play()
-            }
-        }
+        activeEnginePreference = com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
     }
 
     private fun <T> activeEngineState(
@@ -979,6 +904,9 @@ class PlayerViewModel @Inject constructor(
         recoveryJob?.cancel()
         if (error is PlayerError.DecoderError && !hasRetriedWithSoftwareDecoder) {
             if (!isActivePlaybackSession(requestVersion, playbackUrl)) return
+            val isUhdOrHdr = videoFormat.value.height >= 1440 || videoFormat.value.width >= 2560 || videoFormat.value.isHdr ||
+                error.message.contains("3840", ignoreCase = true) || error.message.contains("2160", ignoreCase = true) ||
+                error.message.contains("4K", ignoreCase = true)
             if (currentContentType == ContentType.LIVE) {
                 val currentLiveHlsSession = currentResolvedStreamInfo?.streamType == StreamType.HLS
                 if (currentLiveHlsSession) {
@@ -997,26 +925,29 @@ class PlayerViewModel @Inject constructor(
                         "Decoder error on live HLS. Keeping hardware path to match Sparkle-like playback on ${appContext.packageName}."
                     )
                 }
+            } else if (isUhdOrHdr) {
+                android.util.Log.w("PlayerVM", "Decoder error on 4K/HDR stream. Keeping hardware path.")
+            } else {
+                hasRetriedWithSoftwareDecoder = true
+                android.util.Log.w("PlayerVM", "Decoder error detected. Retrying with software decoder mode.")
+                playerEngine.setDecoderModes(
+                    audioMode = DecoderMode.SOFTWARE,
+                    videoMode = DecoderMode.SOFTWARE
+                )
+                updateDecoderModes(
+                    audioMode = DecoderMode.SOFTWARE,
+                    videoMode = DecoderMode.SOFTWARE
+                )
+                setLastFailureReason(error.message)
+                appendRecoveryAction("Yazılımsal kod çözücüye geçildi")
+                currentResolvedStreamInfo?.let { playerEngine.prepare(it) } ?: playerEngine.play()
+                showPlayerNotice(
+                    message = "Bu yayın için yazılımsal kod çözücü ile yeniden deneniyor.",
+                    recoveryType = PlayerRecoveryType.DECODER,
+                    actions = buildRecoveryActions(PlayerRecoveryType.DECODER)
+                )
+                return
             }
-            hasRetriedWithSoftwareDecoder = true
-            android.util.Log.w("PlayerVM", "Decoder error detected. Retrying with software decoder mode.")
-            playerEngine.setDecoderModes(
-                audioMode = DecoderMode.SOFTWARE,
-                videoMode = DecoderMode.SOFTWARE
-            )
-            updateDecoderModes(
-                audioMode = DecoderMode.SOFTWARE,
-                videoMode = DecoderMode.SOFTWARE
-            )
-            setLastFailureReason(error.message)
-            appendRecoveryAction("Yazılımsal kod çözücüye geçildi")
-            playerEngine.play()
-            showPlayerNotice(
-                message = "Bu yayın için yazılımsal kod çözücü ile yeniden deneniyor.",
-                recoveryType = PlayerRecoveryType.DECODER,
-                actions = buildRecoveryActions(PlayerRecoveryType.DECODER)
-            )
-            return
         }
         recordMovieVariantFailureObservation(error)
         // After software decoder retry fails, also try an alternate stream format
@@ -1238,6 +1169,7 @@ class PlayerViewModel @Inject constructor(
         lastRecordedVariantObservationSignature = null
         lastRecordedVodVariantObservationSignature = null
         livePlaybackReadyForCurrentSession = false
+        lastRecordedLivePlaybackKey = null
         readySideEffectsRequestVersion = null
         playerEngine.setScrubbingMode(false)
         showControlsFlow.value = true
@@ -1462,12 +1394,16 @@ class PlayerViewModel @Inject constructor(
             )
         }
         if (!isActivePlaybackSession(requestVersion)) return false
+        val activeEngine = ensureActiveEngineAlive()
         currentResolvedPlaybackUrl = preparedStreamInfo.url
         currentResolvedStreamInfo = preparedStreamInfo
         readySideEffectsRequestVersion = requestVersion
         applyPlaybackPreferences()
         android.util.Log.d("PlayerZapTrace", "[NEW_PREPARE_START] sessionVersion=$requestVersion url=${preparedStreamInfo.url.substringBefore('?')}")
-        playerEngine.prepare(preparedStreamInfo)
+        activeEngine.prepare(preparedStreamInfo)
+        if (currentContentType == ContentType.LIVE) {
+            recordActiveLivePlayback()
+        }
         refreshLiveTranslationAvailability()
         startTokenRenewalMonitoring(preparedStreamInfo.expirationTime)
         maybeStartLiveTimeshift(preparedStreamInfo)
@@ -1602,9 +1538,25 @@ class PlayerViewModel @Inject constructor(
                     livePreviewHandoffManager.clear(activeEngine)
                     activeEngine.stop()
                     activeEngine.release()
-                    setActivePlayerEngine(mainPlayerEngine)
+                    if (!mainPlayerEngine.isDisposed) {
+                        setActivePlayerEngine(mainPlayerEngine)
+                    } else {
+                        val pref = activeEnginePreference ?: runCatching { preferencesRepository.playerEnginePreference.first() }
+                            .getOrDefault(com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO)
+                        val targetType = playerEngineFactory.resolveEngineType(pref)
+                        val freshEngine = playerEngineFactory.createEngine(targetType)
+                        setActivePlayerEngine(freshEngine)
+                    }
                 } else {
-                    mainPlayerEngine.stop()
+                    if (!mainPlayerEngine.isDisposed) {
+                        mainPlayerEngine.stop()
+                    } else {
+                        val pref = activeEnginePreference ?: runCatching { preferencesRepository.playerEnginePreference.first() }
+                            .getOrDefault(com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO)
+                        val targetType = playerEngineFactory.resolveEngineType(pref)
+                        val freshEngine = playerEngineFactory.createEngine(targetType)
+                        setActivePlayerEngine(freshEngine)
+                    }
                 }
                 var playbackLogicalUrl = streamUrl
                 var playbackContentId = internalChannelId

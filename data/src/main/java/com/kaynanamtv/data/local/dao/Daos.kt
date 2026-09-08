@@ -1017,7 +1017,7 @@ interface MovieDao {
               SELECT 1 FROM playback_history
               WHERE playback_history.provider_id = movies.provider_id
                 AND playback_history.content_type = 'MOVIE'
-                AND playback_history.content_id = movies.id
+                AND (playback_history.content_id = movies.stream_id OR playback_history.content_id = movies.id)
                 AND playback_history.resume_position_ms > 0
                 AND (
                     playback_history.total_duration_ms <= 0
@@ -1039,7 +1039,7 @@ interface MovieDao {
               SELECT 1 FROM playback_history
               WHERE playback_history.provider_id = movies.provider_id
                 AND playback_history.content_type = 'MOVIE'
-                AND playback_history.content_id = movies.id
+                AND (playback_history.content_id = movies.stream_id OR playback_history.content_id = movies.id)
                 AND playback_history.resume_position_ms > 0
                 AND (
                     playback_history.total_duration_ms <= 0
@@ -1058,7 +1058,7 @@ interface MovieDao {
               SELECT 1 FROM playback_history
               WHERE playback_history.provider_id = movies.provider_id
                 AND playback_history.content_type = 'MOVIE'
-                AND playback_history.content_id = movies.id
+                AND (playback_history.content_id = movies.stream_id OR playback_history.content_id = movies.id)
                 AND playback_history.resume_position_ms > 0
           )
         ORDER BY movies.name ASC
@@ -1076,7 +1076,7 @@ interface MovieDao {
               SELECT 1 FROM playback_history
               WHERE playback_history.provider_id = movies.provider_id
                 AND playback_history.content_type = 'MOVIE'
-                AND playback_history.content_id = movies.id
+                AND (playback_history.content_id = movies.stream_id OR playback_history.content_id = movies.id)
                 AND playback_history.resume_position_ms > 0
           )
         """
@@ -1194,7 +1194,7 @@ interface MovieDao {
               SELECT 1 FROM playback_history
               WHERE playback_history.provider_id = movies.provider_id
                 AND playback_history.content_type = 'MOVIE'
-                AND playback_history.content_id = movies.id
+                AND (playback_history.content_id = movies.stream_id OR playback_history.content_id = movies.id)
                 AND playback_history.resume_position_ms > 0
                 AND (
                     playback_history.total_duration_ms <= 0
@@ -1217,7 +1217,7 @@ interface MovieDao {
               SELECT 1 FROM playback_history
               WHERE playback_history.provider_id = movies.provider_id
                 AND playback_history.content_type = 'MOVIE'
-                AND playback_history.content_id = movies.id
+                AND (playback_history.content_id = movies.stream_id OR playback_history.content_id = movies.id)
                 AND playback_history.resume_position_ms > 0
                 AND (
                     playback_history.total_duration_ms <= 0
@@ -1237,7 +1237,7 @@ interface MovieDao {
               SELECT 1 FROM playback_history
               WHERE playback_history.provider_id = movies.provider_id
                 AND playback_history.content_type = 'MOVIE'
-                AND playback_history.content_id = movies.id
+                AND (playback_history.content_id = movies.stream_id OR playback_history.content_id = movies.id)
                 AND playback_history.resume_position_ms > 0
           )
         ORDER BY movies.name ASC
@@ -1256,7 +1256,7 @@ interface MovieDao {
               SELECT 1 FROM playback_history
               WHERE playback_history.provider_id = movies.provider_id
                 AND playback_history.content_type = 'MOVIE'
-                AND playback_history.content_id = movies.id
+                AND (playback_history.content_id = movies.stream_id OR playback_history.content_id = movies.id)
                 AND playback_history.resume_position_ms > 0
           )
         """
@@ -1634,7 +1634,7 @@ interface MovieDao {
     @Query("SELECT tmdb_id FROM movies WHERE provider_id = :providerId AND tmdb_id IS NOT NULL")
     suspend fun getTmdbIdsByProvider(providerId: Long): List<TmdbIdMapping>
 
-    @Query("SELECT * FROM movies WHERE id IN (:ids)")
+    @Query("SELECT * FROM movies WHERE id IN (:ids) OR stream_id IN (:ids)")
     fun getByIds(ids: List<Long>): Flow<List<MovieBrowseEntity>>
 
     @Query("SELECT * FROM movies WHERE provider_id = :providerId AND stream_id = :streamId")
@@ -2635,7 +2635,7 @@ interface SeriesDao {
     @Query("SELECT tmdb_id FROM series WHERE provider_id = :providerId AND tmdb_id IS NOT NULL")
     suspend fun getTmdbIdsByProvider(providerId: Long): List<TmdbIdMapping>
 
-    @Query("SELECT * FROM series WHERE id IN (:ids)")
+    @Query("SELECT * FROM series WHERE id IN (:ids) OR series_id IN (:ids)")
     fun getByIds(ids: List<Long>): Flow<List<SeriesBrowseEntity>>
 
     @Query("SELECT * FROM series WHERE provider_id = :providerId AND series_id = :seriesId LIMIT 1")

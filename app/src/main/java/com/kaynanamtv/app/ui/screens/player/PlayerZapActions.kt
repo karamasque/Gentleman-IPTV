@@ -37,15 +37,16 @@ internal fun buildLivePlaybackRecordCandidate(
     currentStreamUrl: String,
     channel: Channel?
 ): LivePlaybackRecordCandidate? {
-    if (currentProviderId <= 0L || currentContentType != ContentType.LIVE) return null
+    if (currentContentType != ContentType.LIVE) return null
+    val effectiveProviderId = currentProviderId.takeIf { it > 0L } ?: channel?.providerId ?: return null
 
     channel?.let {
         return LivePlaybackRecordCandidate(
-            playbackKey = currentProviderId to it.id,
+            playbackKey = effectiveProviderId to it.id,
             history = PlaybackHistory(
                 contentId = it.id,
                 contentType = ContentType.LIVE,
-                providerId = currentProviderId,
+                providerId = effectiveProviderId,
                 title = it.name,
                 streamUrl = it.streamUrl,
                 lastWatchedAt = System.currentTimeMillis()

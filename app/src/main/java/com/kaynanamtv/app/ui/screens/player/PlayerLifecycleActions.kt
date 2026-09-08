@@ -100,7 +100,9 @@ fun PlayerViewModel.onAppBackgrounded() {
     if (shouldResumeAfterForeground) {
         playerEngine.pause()
     }
-    if (currentContentType != ContentType.LIVE) {
+    if (currentContentType == ContentType.LIVE) {
+        recordActiveLivePlayback()
+    } else {
         viewModelScope.launch {
             persistPlaybackProgress(forceCloudSync = true)
             playbackHistoryRepository.flushPendingProgress()
@@ -127,7 +129,9 @@ fun PlayerViewModel.onPictureInPictureDismissed() {
     isAppInForeground = false
     shouldResumeAfterForeground = false
     playerEngine.pause()
-    if (currentContentType != ContentType.LIVE) {
+    if (currentContentType == ContentType.LIVE) {
+        recordActiveLivePlayback()
+    } else {
         viewModelScope.launch {
             persistPlaybackProgress(forceCloudSync = true)
             playbackHistoryRepository.flushPendingProgress()
@@ -139,15 +143,32 @@ fun PlayerViewModel.onPictureInPictureDismissed() {
 }
 
 fun PlayerViewModel.onPlayerScreenDisposed() {
+    if (currentContentType == ContentType.LIVE) {
+        recordActiveLivePlayback()
+    }
     val activeEngine = playerEngine
     activeEngine.pause()
     activeEngine.stop()
     if (activeEngine !== mainPlayerEngine) {
         livePreviewHandoffManager.clear(activeEngine)
         activeEngine.release()
-        setActivePlayerEngine(mainPlayerEngine)
+        if (!mainPlayerEngine.isDisposed) {
+            setActivePlayerEngine(mainPlayerEngine)
+        } else {
+            val pref = activeEnginePreference ?: com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
+            val targetType = playerEngineFactory.resolveEngineType(pref)
+            val freshEngine = playerEngineFactory.createEngine(targetType)
+            setActivePlayerEngine(freshEngine)
+        }
     } else {
-        mainPlayerEngine.stop()
+        if (!mainPlayerEngine.isDisposed) {
+            mainPlayerEngine.stop()
+        } else {
+            val pref = activeEnginePreference ?: com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
+            val targetType = playerEngineFactory.resolveEngineType(pref)
+            val freshEngine = playerEngineFactory.createEngine(targetType)
+            setActivePlayerEngine(freshEngine)
+        }
     }
     if (currentContentType != ContentType.LIVE) {
         viewModelScope.launch {

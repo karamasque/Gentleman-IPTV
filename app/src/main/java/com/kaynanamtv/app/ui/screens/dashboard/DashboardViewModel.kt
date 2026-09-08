@@ -137,6 +137,7 @@ class DashboardViewModel @Inject constructor(
                     old.first == new.first && old.second?.id == new.second?.id && old.third.map { it.id } == new.third.map { it.id }
                 }
                 .flatMapLatest { (activeSource, activeProvider, allProviders) ->
+                    android.util.Log.d("DASH_RECENT_DBG", "resolved: activeSource=$activeSource, activeProvider=${activeProvider?.id}, allProviders=${allProviders.map { it.id }}")
                     flow {
                         if (allProviders.isEmpty() && activeSource == null && activeProvider == null) {
                             emit(DashboardUiState(isLoading = false, provider = null))
@@ -157,11 +158,12 @@ class DashboardViewModel @Inject constructor(
                                     emit(DashboardUiState(isLoading = false, provider = null))
                                     return@flow
                                 }
-                                emitAll(observeDashboard(provider, listOf(activeSource.providerId), combinedProfileId = null))
+                                emitAll(observeDashboard(provider, listOf(provider.id), combinedProfileId = null))
                             }
 
                             is ActiveLiveSource.CombinedM3uSource -> {
-                                val liveProviderIds = combinedM3uRepository.getProfile(activeSource.profileId)
+                                val profile = combinedM3uRepository.getProfile(activeSource.profileId)
+                                val liveProviderIds = profile
                                     ?.members
                                     .orEmpty()
                                     .filter { it.enabled }
@@ -176,7 +178,9 @@ class DashboardViewModel @Inject constructor(
                                     emit(DashboardUiState(isLoading = false, currentCombinedProfileId = activeSource.profileId))
                                     return@flow
                                 }
-                                emitAll(observeDashboard(provider, if (liveProviderIds.isNotEmpty()) liveProviderIds else listOf(provider.id), combinedProfileId = activeSource.profileId))
+                                val effectiveLiveProviderIds = if (liveProviderIds.isNotEmpty()) liveProviderIds else listOf(provider.id)
+                                android.util.Log.d("DASH_RECENT_DBG", "CombinedM3uSource: profileId=${activeSource.profileId}, profile=$profile, effectiveLiveProviderIds=$effectiveLiveProviderIds")
+                                emitAll(observeDashboard(provider, effectiveLiveProviderIds, combinedProfileId = activeSource.profileId))
                             }
 
                             null -> {
@@ -405,11 +409,8 @@ class DashboardViewModel @Inject constructor(
 
     private fun observeRecentChannels(providerIds: List<Long>): Flow<List<Channel>> =
         combine(
-            preferencesRepository.showRecentChannelsCategory.flatMapLatest { show ->
-                if (!show) flowOf(emptyList())
-                else observeRecentLiveIds(providerIds, RECENT_CHANNEL_LIMIT)
-                    .flatMapLatest(::loadChannelsByOrderedIds)
-            },
+            observeRecentLiveIds(providerIds, RECENT_CHANNEL_LIMIT)
+                .flatMapLatest(::loadChannelsByOrderedIds),
             preferencesRepository.parentalControlLevel
         ) { channels, level ->
             AdultContentVisibilityPolicy.filterForAggregatedSurface(
@@ -431,12 +432,14 @@ class DashboardViewModel @Inject constructor(
                             history.contentType == ContentType.SERIES || history.contentType == ContentType.SERIES_EPISODE
                         }
                         .map { history -> history.seriesId ?: history.contentId }
+                        .filter { it > 0L }
                         .distinct()
                         .toList()
                     val movieIds = result.items
                         .asSequence()
-                        .filter { history -> history.contentType == ContentType.MOVIE && (history.posterUrl.isNullOrBlank() || history.title.isBlank()) }
+                        .filter { history -> history.contentType == ContentType.MOVIE }
                         .map { it.contentId }
+                        .filter { it > 0L }
                         .distinct()
                         .toList()
 
@@ -444,34 +447,31 @@ class DashboardViewModel @Inject constructor(
                     val movieFlow = if (movieIds.isEmpty()) flowOf(emptyList<Movie>()) else movieRepository.getMoviesByIds(movieIds)
 
                     combine(seriesFlow, movieFlow) { series, movies ->
-                        val seriesById = series.associateBy { it.id }
-                        val movieById = movies.associateBy { it.id }
                         val enrichedItems = result.items.map { history ->
                             when (history.contentType) {
                                 ContentType.SERIES,
                                 ContentType.SERIES_EPISODE -> {
-                                    if (history.posterUrl.isNullOrBlank()) {
-                                        val parent = seriesById[history.seriesId ?: history.contentId]
-                                        val artwork = parent?.posterUrl?.takeIf { it.isNotBlank() } ?: parent?.backdropUrl?.takeIf { it.isNotBlank() }
-                                        if (artwork != null) history.copy(posterUrl = artwork) else history
-                                    } else {
-                                        history
-                                    }
+                                    val targetId = history.seriesId ?: history.contentId
+                                    val parent = (if (history.providerId > 0L) {
+                                        series.firstOrNull { it.seriesId == targetId && it.providerId == history.providerId }
+                                            ?: series.firstOrNull { it.id == targetId && it.providerId == history.providerId }
+                                    } else null) ?: series.firstOrNull { it.seriesId == targetId } ?: series.firstOrNull { it.id == targetId }
+                                    val artwork = history.posterUrl?.takeIf { it.isNotBlank() }
+                                        ?: parent?.posterUrl?.takeIf { it.isNotBlank() }
+                                        ?: parent?.backdropUrl?.takeIf { it.isNotBlank() }
+                                    val title = history.title.takeIf { it.isNotBlank() } ?: parent?.name.orEmpty()
+                                    history.copy(posterUrl = artwork, title = title)
                                 }
                                 ContentType.MOVIE -> {
-                                    if (history.posterUrl.isNullOrBlank() || history.title.isBlank()) {
-                                        val movie = movieById[history.contentId]
-                                        if (movie != null) {
-                                            history.copy(
-                                                title = history.title.ifBlank { movie.name },
-                                                posterUrl = history.posterUrl?.takeIf { it.isNotBlank() } ?: movie.posterUrl
-                                            )
-                                        } else {
-                                            history
-                                        }
-                                    } else {
-                                        history
-                                    }
+                                    val movie = (if (history.providerId > 0L) {
+                                        movies.firstOrNull { it.streamId == history.contentId && it.providerId == history.providerId }
+                                            ?: movies.firstOrNull { it.id == history.contentId && it.providerId == history.providerId }
+                                    } else null) ?: movies.firstOrNull { it.streamId == history.contentId } ?: movies.firstOrNull { it.id == history.contentId }
+                                    val artwork = history.posterUrl?.takeIf { it.isNotBlank() }
+                                        ?: movie?.posterUrl?.takeIf { it.isNotBlank() }
+                                        ?: movie?.backdropUrl?.takeIf { it.isNotBlank() }
+                                    val title = history.title.takeIf { it.isNotBlank() } ?: movie?.name.orEmpty()
+                                    history.copy(posterUrl = artwork, title = title)
                                 }
                                 else -> history
                             }

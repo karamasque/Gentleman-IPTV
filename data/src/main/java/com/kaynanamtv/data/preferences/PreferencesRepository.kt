@@ -438,15 +438,15 @@ class PreferencesRepository @Inject constructor(
     val playerEnginePreference: Flow<com.kaynanamtv.domain.model.PlayerEnginePreference> = context.dataStore.data.map { preferences ->
         when (preferences[PreferencesKeys.PLAYER_ENGINE_PREFERENCE]) {
             "MEDIA3" -> com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
-            "VLC" -> com.kaynanamtv.domain.model.PlayerEnginePreference.VLC
+            "VLC" -> com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
             "EXTERNAL_VLC" -> com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC
-            "AUTO" -> com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO
+            "AUTO" -> com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
             else -> {
                 val legacyExternal = preferences[PreferencesKeys.PLAYER_EXTERNAL_PLAYBACK_MODE]
                 if (legacyExternal == "external") {
                     com.kaynanamtv.domain.model.PlayerEnginePreference.EXTERNAL_VLC
                 } else {
-                    com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO
+                    com.kaynanamtv.domain.model.PlayerEnginePreference.MEDIA3
                 }
             }
         }
@@ -2410,7 +2410,19 @@ class PreferencesRepository @Inject constructor(
         return if (decoded.isEmpty()) {
             AppHomeDashboardShelf.defaultOrder
         } else {
-            AppHomeDashboardShelf.normalizeForStorage(decoded)
+            val normalized = AppHomeDashboardShelf.normalizeForStorage(decoded)
+            if (AppHomeDashboardShelf.RECENT_CHANNELS !in normalized && !encoded.contains("recent_channels")) {
+                val withRecent = normalized.toMutableList()
+                val idx = withRecent.indexOf(AppHomeDashboardShelf.CONTINUE_WATCHING)
+                if (idx >= 0) {
+                    withRecent.add(idx, AppHomeDashboardShelf.RECENT_CHANNELS)
+                } else {
+                    withRecent.add(0, AppHomeDashboardShelf.RECENT_CHANNELS)
+                }
+                AppHomeDashboardShelf.normalizeForStorage(withRecent)
+            } else {
+                normalized
+            }
         }
     }
 
