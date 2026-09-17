@@ -48,6 +48,7 @@ import com.kaynanamtv.domain.model.RemoteShortcutProfile
 import com.kaynanamtv.domain.model.RemoteShortcutSelection
 import com.kaynanamtv.domain.model.SearchHistoryScope
 import com.kaynanamtv.domain.model.AppColorTheme
+import com.kaynanamtv.domain.model.PlayerHudTheme
 import com.kaynanamtv.domain.model.TimeshiftBackendPreference
 import com.kaynanamtv.domain.model.VisualEffectsMode
 import com.kaynanamtv.domain.manager.ParentalPinVerifier
@@ -180,6 +181,7 @@ class PreferencesRepository @Inject constructor(
         val PLAYER_AUDIO_DECODER_MODE = stringPreferencesKey("player_audio_decoder_mode")
         val PLAYER_VIDEO_DECODER_MODE = stringPreferencesKey("player_video_decoder_mode")
         val PLAYER_ENGINE_PREFERENCE = stringPreferencesKey("player_engine_preference")
+        val PLAYER_HUD_THEME = stringPreferencesKey("player_hud_theme")
         val PLAYER_PLAYBACK_BUFFER_MODE = stringPreferencesKey("player_playback_buffer_mode")
         val PLAYER_LIVE_STREAM_FORMAT_MODE = stringPreferencesKey("player_live_stream_format_mode")
         val PLAYER_VOD_HTTP_PROTOCOL_MODE = stringPreferencesKey("player_vod_http_protocol_mode")
@@ -450,6 +452,10 @@ class PreferencesRepository @Inject constructor(
                 }
             }
         }
+    }
+
+    val playerHudTheme: Flow<PlayerHudTheme> = context.dataStore.data.map { preferences ->
+        PlayerHudTheme.fromStorageKey(preferences[PreferencesKeys.PLAYER_HUD_THEME])
     }
 
     val playerPlaybackBufferMode: Flow<PlaybackBufferMode> = context.dataStore.data.map { preferences ->
@@ -1215,6 +1221,12 @@ class PreferencesRepository @Inject constructor(
     suspend fun setPlayerEnginePreference(preference: com.kaynanamtv.domain.model.PlayerEnginePreference) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PLAYER_ENGINE_PREFERENCE] = preference.name
+        }
+    }
+
+    suspend fun setPlayerHudTheme(theme: PlayerHudTheme) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYER_HUD_THEME] = theme.storageKey
         }
     }
 

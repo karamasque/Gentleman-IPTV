@@ -51,6 +51,7 @@ import com.kaynanamtv.domain.model.LiveChannelGroupingMode
 import com.kaynanamtv.domain.model.LiveStreamFormatMode
 import com.kaynanamtv.domain.model.LiveVariantPreferenceMode
 import com.kaynanamtv.domain.model.PlaybackBufferMode
+import com.kaynanamtv.domain.model.PlayerHudTheme
 import com.kaynanamtv.domain.model.VodDuplicateHandlingMode
 import com.kaynanamtv.domain.model.VodHttpProtocolMode
 import com.kaynanamtv.domain.model.ProviderStatus
@@ -143,6 +144,13 @@ class SettingsViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = LiveStreamFormatMode.AUTO
+        )
+
+    val playerHudTheme: StateFlow<PlayerHudTheme> =
+        preferencesRepository.playerHudTheme.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = PlayerHudTheme.DEFAULT
         )
     val backgroundSyncEnabled: StateFlow<Boolean> =
         preferencesRepository.backgroundSyncEnabled.stateIn(
@@ -1005,6 +1013,12 @@ class SettingsViewModel @Inject constructor(
     fun setPlayerLiveStreamFormatMode(mode: LiveStreamFormatMode) {
         viewModelScope.launch {
             preferencesRepository.setPlayerLiveStreamFormatMode(mode)
+        }
+    }
+
+    fun setPlayerHudTheme(theme: PlayerHudTheme) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerHudTheme(theme)
         }
     }
 

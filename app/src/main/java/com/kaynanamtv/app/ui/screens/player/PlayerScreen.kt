@@ -269,6 +269,7 @@ fun PlayerScreen(
     val preventStandbyDuringPlayback by viewModel.preventStandbyDuringPlayback.collectAsStateWithLifecycle()
     val timeshiftUiState by viewModel.timeshiftUiState.collectAsStateWithLifecycle()
     val sleepTimerUiState by viewModel.sleepTimerUiState.collectAsStateWithLifecycle()
+    val playerHudTheme by viewModel.playerHudTheme.collectAsStateWithLifecycle()
 
     var ambilightColor by remember { mutableStateOf(Color.Transparent) }
     val sleepTimerExitEvent by viewModel.sleepTimerExitEvent.collectAsStateWithLifecycle()
@@ -791,9 +792,10 @@ fun PlayerScreen(
         else -> Modifier
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
+    CompositionLocalProvider(LocalPlayerHudTheme provides playerHudTheme) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
             .background(Color.Black)
             .focusRequester(focusRequester)
             .focusProperties {
@@ -1943,6 +1945,7 @@ fun PlayerScreen(
             }
         }
     }
+}
 }
 
 private fun AspectRatio.toPlayerSurfaceResizeMode(): PlayerSurfaceResizeMode = when (this) {

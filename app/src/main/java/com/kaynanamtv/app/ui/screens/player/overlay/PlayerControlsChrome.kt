@@ -139,11 +139,12 @@ import com.kaynanamtv.app.R
 import com.kaynanamtv.app.ui.design.AppColors
 import com.kaynanamtv.app.device.rememberIsTelevisionDevice
 import com.kaynanamtv.app.ui.components.rememberCrossfadeImageModel
-import com.kaynanamtv.app.ui.model.isArchivePlayable
+import com.kaynanamtv.app.ui.screens.player.LocalPlayerHudTheme
 import com.kaynanamtv.app.ui.screens.player.NumericChannelInputState
 import com.kaynanamtv.app.ui.screens.player.PlayerTimeshiftUiState
 import com.kaynanamtv.app.ui.screens.player.SeekPreviewState
 import com.kaynanamtv.app.ui.screens.player.SleepTimerUiState
+import com.kaynanamtv.app.ui.screens.player.toUiTokens
 import com.kaynanamtv.app.ui.time.LocalAppTimeFormat
 import com.kaynanamtv.app.ui.time.createTimeFormat
 import com.kaynanamtv.app.ui.theme.ErrorColor
@@ -521,16 +522,18 @@ fun PlayerResolutionBadge(
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
+    val hudTokens = LocalPlayerHudTheme.current.toUiTokens()
 
     Box(
         modifier = modifier
-            .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+            .background(hudTokens.badgeContainer, RoundedCornerShape(6.dp))
+            .border(1.dp, hudTokens.primary.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
             .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         Text(
             text = resolutionLabel,
             style = MaterialTheme.typography.labelMedium,
-            color = Color.White,
+            color = hudTokens.textPrimary,
             fontWeight = FontWeight.Bold
         )
     }
@@ -1498,20 +1501,20 @@ private fun PlayerVodInfo(
     onClose: () -> Unit = {}
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val hudTokens = LocalPlayerHudTheme.current.toUiTokens()
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        val dockBorderBrush = Brush.linearGradient(VodControlsColors.DockBorderGradient)
         Surface(
             modifier = Modifier
                 .fillMaxWidth(if (screenWidth < 700.dp) 0.94f else 0.82f)
                 .widthIn(max = 1040.dp),
             shape = RoundedCornerShape(22.dp),
-            colors = SurfaceDefaults.colors(containerColor = VodControlsColors.DockBackground),
+            colors = SurfaceDefaults.colors(containerColor = hudTokens.dockBackground),
             border = Border(
-                border = BorderStroke(1.2.dp, dockBorderBrush),
+                border = BorderStroke(1.2.dp, hudTokens.dockBorderBrush),
                 shape = RoundedCornerShape(22.dp)
             )
         ) {
@@ -1688,7 +1691,7 @@ private fun PlayerVodInfo(
             Text(
                 text = "✤ Seç   |   ↔ 10 sn ileri/geri   |   ☰ Menü   |   ↩ Geri",
                 style = MaterialTheme.typography.labelSmall,
-                color = VodControlsColors.HintText
+                color = hudTokens.hintText
             )
         }
     }
@@ -1761,14 +1764,13 @@ private fun VodInteractiveTimeline(
     val latestSetScrubbingMode by rememberUpdatedState(onSetScrubbingMode)
     val latestSeekPreviewPositionChanged by rememberUpdatedState(onSeekPreviewPositionChanged)
 
-    // Smooth continuous position interpolation anchored to last genuine ExoPlayer sample
     var lastSamplePositionMs by remember { mutableLongStateOf(currentPosition) }
-    var lastSampleTimestampNs by remember { mutableLongStateOf(System.nanoTime()) }
+    var lastSampleTimestampMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var interpolatedPositionMs by remember { mutableLongStateOf(currentPosition) }
 
     LaunchedEffect(currentPosition) {
         lastSamplePositionMs = currentPosition
-        lastSampleTimestampNs = System.nanoTime()
+        lastSampleTimestampMs = System.currentTimeMillis()
         interpolatedPositionMs = currentPosition
     }
 
@@ -1778,11 +1780,9 @@ private fun VodInteractiveTimeline(
     LaunchedEffect(isPlaying, isScrubbingActive, isSeekPreviewActive, playbackSpeed, duration) {
         if (isPlaying && !isScrubbingActive && !isSeekPreviewActive && duration > 0L) {
             while (isActive) {
-                withFrameNanos { frameTimeNanos ->
-                    val elapsedNanos = (frameTimeNanos - lastSampleTimestampNs).coerceAtLeast(0L)
-                    val elapsedMs = ((elapsedNanos / 1_000_000.0) * playbackSpeed).toLong()
-                    interpolatedPositionMs = (lastSamplePositionMs + elapsedMs).coerceIn(0L, duration)
-                }
+                delay(250)
+                val elapsedMs = ((System.currentTimeMillis() - lastSampleTimestampMs) * playbackSpeed).toLong()
+                interpolatedPositionMs = (lastSamplePositionMs + elapsedMs).coerceIn(0L, duration)
             }
         } else if (!isPlaying) {
             interpolatedPositionMs = currentPosition
@@ -1799,6 +1799,8 @@ private fun VodInteractiveTimeline(
         (displayedPositionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
     } else 0f
 
+    val hudTokens = LocalPlayerHudTheme.current.toUiTokens()
+
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -1807,7 +1809,7 @@ private fun VodInteractiveTimeline(
         Text(
             text = formatDuration(displayedPositionMs),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            color = VodControlsColors.TextPrimary
+            color = hudTokens.textPrimary
         )
 
         // Center: Interactive Track
@@ -1931,24 +1933,24 @@ private fun VodInteractiveTimeline(
             contentAlignment = Alignment.CenterStart
         ) {
             val isScrubbingActive = userScrubbingPositionMs != null
-            val progressBrush = Brush.horizontalGradient(VodControlsColors.ProgressGradient)
+            val progressBrush = hudTokens.progressBrush
 
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(if (isTimelineFocused || isScrubbingActive) 8.dp else 6.dp)
+                    .height(if (isTimelineFocused || isScrubbingActive) 8.dp else if (hudTokens.isMinimalist) 3.dp else 6.dp)
             ) {
                 val trackHeight = size.height
                 val cornerRadius = CornerRadius(trackHeight / 2f, trackHeight / 2f)
 
                 // Background track
                 drawRoundRect(
-                    color = VodControlsColors.TrackBackground,
+                    color = hudTokens.trackBackground,
                     size = size,
                     cornerRadius = cornerRadius
                 )
 
-                // Played track with Indigo -> Violet gradient
+                // Played track
                 if (progressFraction > 0f) {
                     val playedWidth = size.width * progressFraction
                     drawRoundRect(
@@ -1958,23 +1960,30 @@ private fun VodInteractiveTimeline(
                     )
                 }
 
-                // Glowing White + Light Violet Thumb (●)
+                // Glowing Thumb (●)
                 val thumbX = size.width * progressFraction
-                val thumbRadius = if (isTimelineFocused || isScrubbingActive) 8.dp.toPx() else 6.dp.toPx()
-                val glowRadius = thumbRadius + 3.dp.toPx()
+                val thumbRadius = if (hudTokens.isMinimalist) {
+                    if (isTimelineFocused || isScrubbingActive) 5.dp.toPx() else 0f
+                } else {
+                    if (isTimelineFocused || isScrubbingActive) 8.dp.toPx() else 6.dp.toPx()
+                }
 
-                // Glow ring
-                drawCircle(
-                    color = VodControlsColors.ThumbGlow.copy(alpha = if (isTimelineFocused || isScrubbingActive) 0.60f else 0.30f),
-                    radius = glowRadius,
-                    center = Offset(thumbX, trackHeight / 2f)
-                )
-                // Solid White center (●)
-                drawCircle(
-                    color = VodControlsColors.ThumbWhite,
-                    radius = thumbRadius,
-                    center = Offset(thumbX, trackHeight / 2f)
-                )
+                if (thumbRadius > 0f) {
+                    val glowRadius = thumbRadius + 3.dp.toPx()
+
+                    // Glow ring
+                    drawCircle(
+                        color = hudTokens.thumbGlow.copy(alpha = if (isTimelineFocused || isScrubbingActive) 0.60f else 0.30f),
+                        radius = glowRadius,
+                        center = Offset(thumbX, trackHeight / 2f)
+                    )
+                    // Solid center (●)
+                    drawCircle(
+                        color = hudTokens.thumbColor,
+                        radius = thumbRadius,
+                        center = Offset(thumbX, trackHeight / 2f)
+                    )
+                }
             }
         }
 
@@ -1982,7 +1991,7 @@ private fun VodInteractiveTimeline(
         Text(
             text = formatDuration(duration),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = VodControlsColors.TextSecondary
+            color = hudTokens.textSecondary
         )
     }
 }
@@ -2005,6 +2014,7 @@ private fun TvVodControlButton(
     focusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
+    val hudTokens = LocalPlayerHudTheme.current.toUiTokens()
     var isFocused by remember { mutableStateOf(false) }
     val tier = com.kaynanamtv.app.ui.theme.LocalVisualEffectsProfile.current.tier
     val scaleAnim = if (tier.isFocusScaleEnabled) {
@@ -2015,7 +2025,7 @@ private fun TvVodControlButton(
     } else {
         1.0f
     }
-    val focusColor = if (isPrimary) VodControlsColors.PrimaryIndigo else accentColor
+    val focusColor = if (isPrimary) hudTokens.primary else accentColor
 
     val surfaceModifier = modifier
         .scale(scaleAnim)
@@ -2027,21 +2037,21 @@ private fun TvVodControlButton(
         onClick = onClick,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (isPrimary) VodControlsColors.PrimaryButtonContainer else VodControlsColors.ButtonNormalContainer,
-            focusedContainerColor = if (isPrimary) VodControlsColors.PrimaryButtonFocusedContainer else VodControlsColors.ButtonFocusedContainer
+            containerColor = if (isPrimary) hudTokens.primaryButtonContainer else hudTokens.buttonNormalContainer,
+            focusedContainerColor = if (isPrimary) hudTokens.primaryButtonFocusedContainer else hudTokens.buttonFocusedContainer
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(
                 border = BorderStroke(
                     1.dp,
-                    if (isPrimary) VodControlsColors.PrimaryButtonBorder else VodControlsColors.ButtonNormalBorder
+                    if (isPrimary) hudTokens.primaryButtonBorder else hudTokens.buttonNormalBorder
                 ),
                 shape = RoundedCornerShape(14.dp)
             ),
             focusedBorder = Border(
                 border = BorderStroke(
                     2.2.dp,
-                    if (isPrimary) VodControlsColors.PrimaryButtonFocusedBorder else VodControlsColors.ButtonFocusedBorder
+                    if (isPrimary) hudTokens.primaryButtonFocusedBorder else hudTokens.buttonFocusedBorder
                 ),
                 shape = RoundedCornerShape(14.dp)
             )
@@ -2061,7 +2071,7 @@ private fun TvVodControlButton(
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = if (isFocused) (if (isPrimary) Color.White else focusColor) else (if (isPrimary) Color.White else VodControlsColors.TextPrimary),
+                        tint = if (isFocused) (if (isPrimary) Color.White else focusColor) else (if (isPrimary) Color.White else hudTokens.textPrimary),
                         modifier = Modifier.size(if (isPrimary) 24.dp else 20.dp)
                     )
                     if (badgeActive) {
@@ -2069,7 +2079,7 @@ private fun TvVodControlButton(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .size(5.dp)
-                                .background(VodControlsColors.PrimaryIndigo, CircleShape)
+                                .background(hudTokens.primary, CircleShape)
                         )
                     }
                 }
@@ -2078,7 +2088,7 @@ private fun TvVodControlButton(
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = if (isFocused || isPrimary) FontWeight.Bold else FontWeight.Medium
                     ),
-                    color = if (isFocused) (if (isPrimary) Color.White else focusColor) else VodControlsColors.TextSecondary,
+                    color = if (isFocused) (if (isPrimary) Color.White else focusColor) else hudTokens.textSecondary,
                     maxLines = 1
                 )
             }

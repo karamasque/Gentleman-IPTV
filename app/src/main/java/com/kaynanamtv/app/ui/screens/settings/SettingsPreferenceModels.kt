@@ -6,6 +6,7 @@ import com.kaynanamtv.app.ui.model.LiveTvChannelMode
 import com.kaynanamtv.app.ui.model.LiveTvQuickFilterVisibilityMode
 import com.kaynanamtv.app.ui.model.VodViewMode
 import com.kaynanamtv.domain.model.AppColorTheme
+import com.kaynanamtv.domain.model.PlayerHudTheme
 import com.kaynanamtv.domain.model.AppTimeFormat
 import com.kaynanamtv.domain.model.AppHomeDashboardShelf
 import com.kaynanamtv.domain.model.AppLandingDestination
@@ -62,6 +63,7 @@ internal data class SettingsPreferenceSnapshot(
     val playerAudioDecoderMode: DecoderMode,
     val playerVideoDecoderMode: DecoderMode,
     val playerEnginePreference: com.kaynanamtv.domain.model.PlayerEnginePreference,
+    val playerHudTheme: PlayerHudTheme,
     val playerPlaybackBufferMode: PlaybackBufferMode,
     val playerAudioOutputPreference: AudioOutputPreference,
     val playerCompatibilityMemoryEnabled: Boolean,

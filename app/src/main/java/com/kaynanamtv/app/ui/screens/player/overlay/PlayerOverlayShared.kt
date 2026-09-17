@@ -75,6 +75,8 @@ import androidx.compose.material.icons.filled.VolumeOff
 import com.kaynanamtv.app.R
 import com.kaynanamtv.app.ui.design.AppColors
 import com.kaynanamtv.app.ui.interaction.TvClickableSurface
+import com.kaynanamtv.app.ui.screens.player.LocalPlayerHudTheme
+import com.kaynanamtv.app.ui.screens.player.toUiTokens
 import java.util.Locale
 
 internal enum class TvLiveState {
@@ -88,25 +90,19 @@ internal fun PlayerOverlayPanel(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val borderBrush = Brush.linearGradient(
-        colors = listOf(
-            AppColors.Brand.copy(alpha = 0.55f),
-            AppColors.NeonCyan.copy(alpha = 0.55f),
-            AppColors.Brand.copy(alpha = 0.12f)
-        )
-    )
+    val themeTokens = LocalPlayerHudTheme.current.toUiTokens()
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(26.dp),
         border = Border(
             border = androidx.compose.foundation.BorderStroke(
-                1.2.dp,
-                borderBrush
+                1.5.dp,
+                themeTokens.dockBorderBrush
             ),
             shape = RoundedCornerShape(26.dp)
         ),
         colors = androidx.tv.material3.SurfaceDefaults.colors(
-            containerColor = Color(0xFF060B12).copy(alpha = 0.86f)
+            containerColor = themeTokens.dockBackground
         )
     ) {
         Column(

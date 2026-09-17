@@ -11,6 +11,7 @@ import com.kaynanamtv.domain.manager.DriveSyncStatus
 import com.kaynanamtv.domain.manager.ProviderCredentials
 import com.kaynanamtv.domain.model.ActiveLiveSource
 import com.kaynanamtv.domain.model.AppColorTheme
+import com.kaynanamtv.domain.model.PlayerHudTheme
 import com.kaynanamtv.domain.model.AppHomeDashboardShelf
 import com.kaynanamtv.domain.model.AppLandingDestination
 import com.kaynanamtv.domain.model.AppTopLevelDestination
@@ -84,6 +85,7 @@ data class SettingsUiState(
     val playerAudioDecoderMode: DecoderMode = DecoderMode.AUTO,
     val playerVideoDecoderMode: DecoderMode = DecoderMode.AUTO,
     val playerEnginePreference: com.kaynanamtv.domain.model.PlayerEnginePreference = com.kaynanamtv.domain.model.PlayerEnginePreference.AUTO,
+    val playerHudTheme: PlayerHudTheme = PlayerHudTheme.DEFAULT,
     val playerPlaybackBufferMode: PlaybackBufferMode = PlaybackBufferMode.AUTO,
     val playerAudioOutputPreference: AudioOutputPreference = AudioOutputPreference.AUTO,
     val playerCompatibilityMemoryEnabled: Boolean = true,

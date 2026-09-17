@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -41,6 +42,10 @@ import com.kaynanamtv.app.ui.screens.epg.GuideSearchOverlay
 import com.kaynanamtv.app.ui.screens.epg.GuideToolbarButton
 import com.kaynanamtv.app.ui.screens.epg.currentGuideNow
 import com.kaynanamtv.app.ui.screens.epg.isGuideCategoryLocked
+import com.kaynanamtv.app.ui.screens.player.LocalPlayerHudTheme
+import com.kaynanamtv.app.ui.screens.player.toUiTokens
+import androidx.tv.material3.Border
+import androidx.compose.foundation.BorderStroke
 import com.kaynanamtv.app.ui.theme.OnSurfaceDim
 import com.kaynanamtv.app.ui.theme.Primary
 import com.kaynanamtv.domain.model.Category
@@ -65,6 +70,7 @@ fun PlayerTransparentGuideOverlay(
     onRequestMoreChannels: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val themeTokens = LocalPlayerHudTheme.current.toUiTokens()
     var focusedChannel by remember(uiState.channels, currentPlayerChannelId) {
         mutableStateOf(uiState.channels.firstOrNull { it.id == currentPlayerChannelId } ?: uiState.channels.firstOrNull())
     }
@@ -115,9 +121,9 @@ fun PlayerTransparentGuideOverlay(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.30f),
-                            Color.Black.copy(alpha = 0.12f),
-                            Color.Black.copy(alpha = 0.22f)
+                            Color.Black.copy(alpha = 0.40f),
+                            Color.Black.copy(alpha = 0.15f),
+                            Color.Black.copy(alpha = 0.30f)
                         )
                     )
                 )
@@ -128,8 +134,9 @@ fun PlayerTransparentGuideOverlay(
                     .fillMaxWidth()
                     .padding(start = 18.dp, top = 16.dp, end = 18.dp),
                 shape = RoundedCornerShape(18.dp),
+                border = Border(BorderStroke(1.2.dp, themeTokens.dockBorderBrush)),
                 colors = SurfaceDefaults.colors(
-                    containerColor = Color.Black.copy(alpha = 0.32f)
+                    containerColor = themeTokens.dockBackground
                 )
             ) {
                 Row(
@@ -144,7 +151,8 @@ fun PlayerTransparentGuideOverlay(
                         Text(
                             text = headerDateFormat.format(Date(now)),
                             style = MaterialTheme.typography.labelMedium,
-                            color = Primary
+                            color = themeTokens.primary,
+                            fontWeight = FontWeight.Bold
                         )
                         Text(
                             text = headerTitle,

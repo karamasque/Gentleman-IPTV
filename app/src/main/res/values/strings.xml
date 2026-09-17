@@ -1749,4 +1749,28 @@
     <string name="download_delete">Sil</string>
     <string name="downloads_resumed">İndirme devam ettirildi</string>
     <string name="download_error_no_url">İndirme için yayın URL\'si çözümlenemedi</string>
-    </resources>
+
+    <!-- Player HUD Themes -->
+    <string name="settings_player_hud_theme">Oynatıcı HUD Teması</string>
+    <string name="settings_player_hud_theme_subtitle">Oynatıcı kontrol paneli, ilerleme çubuğu ve göstergelerin renk temasını özelleştirin.</string>
+    <string name="hud_theme_modern_glass">Modern Glassmorphism</string>
+    <string name="hud_theme_modern_glass_desc">Buzlu cam dokusu, canlı cam göbeği ve mor neon parlamalar.</string>
+    <string name="hud_theme_neon_cyber">Neon Cyberpunk</string>
+    <string name="hud_theme_neon_cyber_desc">OLED siyah zemin, elektrik cam göbeği ve sıcak macenta neon vurgular.</string>
+    <string name="hud_theme_minimalist_clean">Minimalist Sade</string>
+    <string name="hud_theme_minimalist_clean_desc">İncecik zarif çizgi, dikkat dağıtmayan beyaz ve kehribar tonları.</string>
+    <string name="hud_theme_cinema_gold">Sinema Altını</string>
+    <string name="hud_theme_cinema_gold_desc">Koyu antrasit gövde, lüks sıcak altın ve kehribar detaylar.</string>
+    <string name="hud_theme_emerald_matrix">Zümrüt Matrisi</string>
+    <string name="hud_theme_emerald_matrix_desc">Koyu fütüristik yeşil zemin ve parlak matriks yeşili parıltı.</string>
+    <string name="hud_theme_crimson_red">Kadife Kızıl</string>
+    <string name="hud_theme_crimson_red_desc">Sinematik derin siyah zemin ve cesur kırmızı vurgular.</string>
+    <string name="hud_theme_aurora_nordic">Kutup Işıkları</string>
+    <string name="hud_theme_aurora_nordic_desc">İskandinav gece göğü, zümrüt kutup ışıltısı ve buzul mavisi.</string>
+    <string name="hud_theme_sunset_orange">Gün Batımı</string>
+    <string name="hud_theme_sunset_orange_desc">Alacakaranlık mor zemin, sıcak mandalina ve mercan ışıltısı.</string>
+    <string name="hud_theme_retro_synthwave">Retro Synthwave</string>
+    <string name="hud_theme_retro_synthwave_desc">80\'ler atari salonu, elektrikli macenta ve neon mor gradyanlar.</string>
+    <string name="hud_theme_titanium_steel">Titanyum Çelik</string>
+    <string name="hud_theme_titanium_steel_desc">Endüstriyel fırçalanmış çelik gri ve buz beyazı yüksek kontrast.</string>
+</resources>

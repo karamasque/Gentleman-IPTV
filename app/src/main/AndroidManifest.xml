@@ -55,6 +55,8 @@
     <application
         android:name=".KaynanamTVApp"
         android:allowBackup="false"
+        android:largeHeap="true"
+        android:hardwareAccelerated="true"
         android:banner="@drawable/app_banner"
         android:icon="@mipmap/ic_launcher_vault"
         android:roundIcon="@mipmap/ic_launcher_vault_round"

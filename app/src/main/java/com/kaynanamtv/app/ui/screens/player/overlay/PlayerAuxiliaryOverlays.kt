@@ -77,7 +77,11 @@ import com.kaynanamtv.domain.model.Channel
 import com.kaynanamtv.domain.model.Program
 import com.kaynanamtv.player.PlayerStats
 import java.util.Date
+import com.kaynanamtv.app.ui.screens.player.LocalPlayerHudTheme
+import com.kaynanamtv.app.ui.screens.player.toUiTokens
 import kotlinx.coroutines.launch
+import androidx.tv.material3.Border
+import androidx.compose.foundation.BorderStroke
 import com.kaynanamtv.app.ui.design.AppColors.Brand as Primary
 import com.kaynanamtv.app.ui.design.AppColors.SurfaceElevated as SurfaceVariant
 import com.kaynanamtv.app.ui.design.AppColors.TextSecondary as TextSecondary
@@ -96,6 +100,7 @@ fun ChannelListOverlay(
     onDismiss: () -> Unit,
     onOverlayInteracted: () -> Unit = {}
 ) {
+    val themeTokens = LocalPlayerHudTheme.current.toUiTokens()
     val listState = rememberLazyListState()
     val currentIndex = remember(channels, currentChannelId) {
         channels.indexOfFirst { it.id == currentChannelId }.coerceAtLeast(0)
@@ -126,7 +131,7 @@ fun ChannelListOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.18f))
+            .background(Color.Black.copy(alpha = 0.22f))
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val isTelevisionDevice = rememberIsTelevisionDevice()
@@ -167,7 +172,8 @@ fun ChannelListOverlay(
                                 Text(
                                     text = stringResource(R.string.player_channel_list_title, channels.size),
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = Primary
+                                    color = themeTokens.primary,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 if (!lastVisitedCategoryName.isNullOrBlank()) {
                                     TvClickableSurface(
@@ -177,8 +183,12 @@ fun ChannelListOverlay(
                                         },
                                         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(999.dp)),
                                         colors = ClickableSurfaceDefaults.colors(
-                                            containerColor = AppColors.SurfaceEmphasis,
-                                            focusedContainerColor = Primary
+                                            containerColor = themeTokens.buttonNormalContainer,
+                                            focusedContainerColor = themeTokens.primaryButtonFocusedContainer
+                                        ),
+                                        border = ClickableSurfaceDefaults.border(
+                                            border = Border(BorderStroke(1.dp, themeTokens.buttonNormalBorder)),
+                                            focusedBorder = Border(BorderStroke(1.5.dp, themeTokens.primaryButtonFocusedBorder))
                                         ),
                                         modifier = Modifier.onFocusChanged {
                                             if (it.isFocused) onOverlayInteracted()
@@ -199,7 +209,7 @@ fun ChannelListOverlay(
                                 Text(
                                     text = stringResource(R.string.player_last_group_hint),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = OnSurfaceDim,
+                                    color = themeTokens.hintText,
                                     modifier = Modifier.padding(horizontal = 8.dp)
                                 )
                             }
@@ -208,7 +218,7 @@ fun ChannelListOverlay(
                             Text(
                                 text = stringResource(R.string.player_channel_list_hint),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceDim,
+                                color = themeTokens.hintText,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
@@ -222,7 +232,7 @@ fun ChannelListOverlay(
                                     Text(
                                         text = stringResource(R.string.player_recent_channels),
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = OnSurfaceDim,
+                                        color = themeTokens.hintText,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
                                     )
                                     LazyRow(
@@ -243,8 +253,12 @@ fun ChannelListOverlay(
                                                 },
                                                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(999.dp)),
                                                 colors = ClickableSurfaceDefaults.colors(
-                                                    containerColor = AppColors.SurfaceEmphasis,
-                                                    focusedContainerColor = Primary
+                                                    containerColor = themeTokens.buttonNormalContainer,
+                                                    focusedContainerColor = themeTokens.primaryButtonFocusedContainer
+                                                ),
+                                                border = ClickableSurfaceDefaults.border(
+                                                    border = Border(BorderStroke(1.dp, themeTokens.buttonNormalBorder)),
+                                                    focusedBorder = Border(BorderStroke(1.5.dp, themeTokens.primaryButtonFocusedBorder))
                                                 ),
                                                 modifier = Modifier.onFocusChanged {
                                                     if (it.isFocused) onOverlayInteracted()
@@ -262,7 +276,7 @@ fun ChannelListOverlay(
                                                             .takeIf { it > 0 }
                                                             ?.toString()
                                                             ?.padStart(2, '0')
-                                                        ?: "--"
+                                                            ?: "--"
                                                     Text(
                                                         text = recentNumber,
                                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
@@ -289,9 +303,14 @@ fun ChannelListOverlay(
                             val channelNumber = channel.number.takeIf { it > 0 } ?: (index + 1)
                             var isFocused by remember { mutableStateOf(false) }
                             val bgColor = when {
-                                isFocused -> Primary
-                                isSelected -> Primary.copy(alpha = 0.20f)
-                                else -> AppColors.Surface.copy(alpha = 0.68f)
+                                isFocused -> themeTokens.primaryButtonFocusedContainer
+                                isSelected -> themeTokens.primary.copy(alpha = 0.25f)
+                                else -> themeTokens.buttonNormalContainer
+                            }
+                            val itemBorder = when {
+                                isFocused -> Border(BorderStroke(1.5.dp, themeTokens.primaryButtonFocusedBorder))
+                                isSelected -> Border(BorderStroke(1.dp, themeTokens.primary.copy(alpha = 0.60f)))
+                                else -> Border(BorderStroke(1.dp, themeTokens.buttonNormalBorder))
                             }
 
                             TvClickableSurface(
@@ -312,8 +331,12 @@ fun ChannelListOverlay(
                                         if (shouldRequestFocus) Modifier.focusRequester(overlayFocusRequester)
                                         else Modifier
                                     ),
-                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
                                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
+                                border = ClickableSurfaceDefaults.border(
+                                    border = itemBorder,
+                                    focusedBorder = Border(BorderStroke(1.5.dp, themeTokens.primaryButtonFocusedBorder))
+                                ),
                                 colors = ClickableSurfaceDefaults.colors(
                                     containerColor = bgColor,
                                     focusedContainerColor = bgColor
@@ -329,7 +352,8 @@ fun ChannelListOverlay(
                                     Text(
                                         text = channelNumber.toString().padStart(2, '0'),
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 13.sp),
-                                        color = Color.White.copy(alpha = 0.72f),
+                                        color = if (isSelected) themeTokens.primary else Color.White.copy(alpha = 0.72f),
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         textAlign = TextAlign.Start,
                                         modifier = Modifier.width(32.dp)
                                     )
@@ -337,6 +361,7 @@ fun ChannelListOverlay(
                                         text = channel.name,
                                         style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp),
                                         color = Color.White,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         maxLines = 1,
                                         overflow = if (isFocused) TextOverflow.Clip else TextOverflow.Ellipsis,
                                         modifier = Modifier
@@ -360,12 +385,13 @@ fun ChannelListOverlay(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             AudioEqualizerAnimation(
-                                                color = AppColors.NeonCyan,
+                                                color = themeTokens.accent,
                                                 barCount = 3
                                             )
                                             StatusPill(
                                                 label = stringResource(R.string.player_channel_selected),
-                                                containerColor = AppColors.BrandMuted
+                                                containerColor = themeTokens.primary.copy(alpha = 0.35f),
+                                                contentColor = Color.White
                                             )
                                         }
                                     }
@@ -395,7 +421,7 @@ fun ChannelListOverlay(
                         .height(48.dp)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(AppColors.Canvas.copy(alpha = 0.9f), Color.Transparent)
+                                colors = listOf(themeTokens.background.copy(alpha = 0.95f), Color.Transparent)
                             ),
                             RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
                         ),
@@ -422,7 +448,7 @@ fun ChannelListOverlay(
                         .height(48.dp)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, AppColors.Canvas.copy(alpha = 0.9f))
+                                colors = listOf(Color.Transparent, themeTokens.background.copy(alpha = 0.95f))
                             ),
                             RoundedCornerShape(bottomStart = 26.dp, bottomEnd = 26.dp)
                         ),
@@ -451,8 +477,12 @@ fun ChannelListOverlay(
                     else RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp)
                 ),
                 colors = ClickableSurfaceDefaults.colors(
-                    containerColor = AppColors.SurfaceEmphasis.copy(alpha = 0.92f),
-                    focusedContainerColor = Primary
+                    containerColor = themeTokens.buttonNormalContainer,
+                    focusedContainerColor = themeTokens.primaryButtonFocusedContainer
+                ),
+                border = ClickableSurfaceDefaults.border(
+                    border = Border(BorderStroke(1.dp, themeTokens.buttonNormalBorder)),
+                    focusedBorder = Border(BorderStroke(1.5.dp, themeTokens.primaryButtonFocusedBorder))
                 )
             ) {
                 Column(
@@ -1033,6 +1063,7 @@ fun CategoryListOverlay(
     onDismiss: () -> Unit,
     onOverlayInteracted: () -> Unit = {}
 ) {
+    val themeTokens = LocalPlayerHudTheme.current.toUiTokens()
     val listState = rememberLazyListState()
     val currentIndex = remember(categories, currentCategoryId) {
         categories.indexOfFirst { it.id == currentCategoryId }.coerceAtLeast(0)
@@ -1049,7 +1080,7 @@ fun CategoryListOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.18f))
+            .background(Color.Black.copy(alpha = 0.22f))
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val isTelevisionDevice = rememberIsTelevisionDevice()
@@ -1083,7 +1114,8 @@ fun CategoryListOverlay(
                             Text(
                                 text = stringResource(R.string.label_categories),
                                 style = MaterialTheme.typography.titleMedium,
-                                color = Primary,
+                                color = themeTokens.primary,
+                                fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)
                             )
                         }
@@ -1094,9 +1126,14 @@ fun CategoryListOverlay(
                             var isFocused by remember { mutableStateOf(false) }
                             val shouldRequestFocus = isSelected
                             val bgColor = when {
-                                isFocused -> Primary
-                                isSelected -> Primary.copy(alpha = 0.20f)
-                                else -> AppColors.Surface.copy(alpha = 0.68f)
+                                isFocused -> themeTokens.primaryButtonFocusedContainer
+                                isSelected -> themeTokens.primary.copy(alpha = 0.25f)
+                                else -> themeTokens.buttonNormalContainer
+                            }
+                            val itemBorder = when {
+                                isFocused -> Border(BorderStroke(1.5.dp, themeTokens.primaryButtonFocusedBorder))
+                                isSelected -> Border(BorderStroke(1.dp, themeTokens.primary.copy(alpha = 0.60f)))
+                                else -> Border(BorderStroke(1.dp, themeTokens.buttonNormalBorder))
                             }
 
                             TvClickableSurface(
@@ -1116,8 +1153,12 @@ fun CategoryListOverlay(
                                         if (shouldRequestFocus) Modifier.focusRequester(overlayFocusRequester)
                                         else Modifier
                                     ),
-                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
                                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                                border = ClickableSurfaceDefaults.border(
+                                    border = itemBorder,
+                                    focusedBorder = Border(BorderStroke(1.5.dp, themeTokens.primaryButtonFocusedBorder))
+                                ),
                                 colors = ClickableSurfaceDefaults.colors(
                                     containerColor = bgColor,
                                     focusedContainerColor = bgColor
@@ -1134,6 +1175,7 @@ fun CategoryListOverlay(
                                         text = category.name,
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = Color.White,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
@@ -1150,7 +1192,7 @@ fun CategoryListOverlay(
                                         Text(
                                             text = "●",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White.copy(alpha = 0.8f),
+                                            color = themeTokens.accent,
                                             modifier = Modifier.padding(start = 8.dp)
                                         )
                                     } else if (category.count > 0) {

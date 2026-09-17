@@ -60,8 +60,8 @@ android {
         applicationId = "com.kaynanamtv.app"
         minSdk = 25
         targetSdk = 36
-        versionCode = 164
-        versionName = "1.1.64"
+        versionCode = 165
+        versionName = "1.1.65"
         multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "OFFICIAL_APPLICATION_ID", "\"com.kaynanamtv.app\"")
@@ -119,6 +119,20 @@ android {
             reset()
             include("arm64-v8a", "armeabi-v7a")
             isUniversalApk = true
+        }
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            pickFirsts += listOf(
+                "lib/**/libc++_shared.so",
+                "lib/**/libdatastore_shared_counter.so",
+                "lib/**/libandroidx.graphics.path.so",
+                "lib/**/libffmpegJNI.so"
+            )
         }
     }
 

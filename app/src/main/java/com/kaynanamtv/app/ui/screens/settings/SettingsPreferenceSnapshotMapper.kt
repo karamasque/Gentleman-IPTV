@@ -22,6 +22,7 @@ internal fun SettingsUiState.applyPreferenceSnapshot(snapshot: SettingsPreferenc
         playerAudioDecoderMode = snapshot.playerAudioDecoderMode,
         playerVideoDecoderMode = snapshot.playerVideoDecoderMode,
         playerEnginePreference = snapshot.playerEnginePreference,
+        playerHudTheme = snapshot.playerHudTheme,
         playerPlaybackBufferMode = snapshot.playerPlaybackBufferMode,
         playerAudioOutputPreference = snapshot.playerAudioOutputPreference,
         playerCompatibilityMemoryEnabled = snapshot.playerCompatibilityMemoryEnabled,

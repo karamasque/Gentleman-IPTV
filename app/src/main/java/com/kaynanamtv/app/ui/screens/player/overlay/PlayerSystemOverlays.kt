@@ -70,6 +70,8 @@ import com.kaynanamtv.app.ui.screens.player.PlayerNoticeState
 import com.kaynanamtv.app.ui.screens.player.PlayerAudioVideoOffsetUiState
 import com.kaynanamtv.app.ui.screens.player.PlayerRecoveryType
 import com.kaynanamtv.app.ui.screens.player.SleepTimerUiState
+import com.kaynanamtv.app.ui.screens.player.LocalPlayerHudTheme
+import com.kaynanamtv.app.ui.screens.player.toUiTokens
 import com.kaynanamtv.app.ui.theme.AccentAmber
 import com.kaynanamtv.app.ui.theme.ErrorColor
 import com.kaynanamtv.app.ui.theme.OnBackground
@@ -1356,14 +1358,22 @@ private fun TrackSelectionItem(
     enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    val themeTokens = LocalPlayerHudTheme.current.toUiTokens()
+    var isFocused by remember { mutableStateOf(false) }
     TvClickableSurface(
         onClick = { if (enabled) onClick() },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (isSelected) Primary.copy(alpha = 0.2f) else Color.Transparent,
-            focusedContainerColor = SurfaceHighlight
+            containerColor = if (isSelected) themeTokens.primary.copy(alpha = 0.22f) else themeTokens.buttonNormalContainer,
+            focusedContainerColor = themeTokens.primaryButtonFocusedContainer
         ),
-        modifier = modifier.fillMaxWidth()
+        border = ClickableSurfaceDefaults.border(
+            border = Border(androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) themeTokens.primary.copy(alpha = 0.50f) else themeTokens.buttonNormalBorder)),
+            focusedBorder = Border(androidx.compose.foundation.BorderStroke(1.5.dp, themeTokens.primaryButtonFocusedBorder))
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .onFocusChanged { isFocused = it.isFocused }
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -1374,15 +1384,17 @@ private fun TrackSelectionItem(
                 style = MaterialTheme.typography.bodyLarge,
                 color = when {
                     !enabled -> Color.White.copy(alpha = 0.38f)
-                    isSelected -> Primary
+                    isSelected -> themeTokens.primary
                     else -> Color.White
                 },
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                 modifier = Modifier.weight(1f)
             )
             if (isSelected) {
                 Text(
                     text = stringResource(R.string.player_selected),
-                    color = Primary,
+                    color = themeTokens.accent,
+                    fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.labelSmall
                 )
             }

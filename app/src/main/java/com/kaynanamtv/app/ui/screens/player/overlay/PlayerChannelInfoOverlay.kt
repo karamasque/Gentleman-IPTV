@@ -86,7 +86,9 @@ import com.kaynanamtv.app.R
 import com.kaynanamtv.app.ui.components.ChannelLogoBadge
 import com.kaynanamtv.app.ui.design.AppColors
 import com.kaynanamtv.app.ui.interaction.TvClickableSurface
+import com.kaynanamtv.app.ui.screens.player.LocalPlayerHudTheme
 import com.kaynanamtv.app.ui.screens.player.PlayerTimeshiftUiState
+import com.kaynanamtv.app.ui.screens.player.toUiTokens
 import com.kaynanamtv.app.ui.time.LocalAppTimeFormat
 import com.kaynanamtv.app.ui.time.createTimeFormat
 import com.kaynanamtv.domain.model.Channel
@@ -163,6 +165,7 @@ fun ChannelInfoOverlay(
     val appTimeFormat = LocalAppTimeFormat.current
     val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
     val showTimeshiftControls = timeshiftUiState.available && !isCastConnected
+    val hudTokens = LocalPlayerHudTheme.current.toUiTokens()
 
     val isTimeshiftActive = showTimeshiftControls && (timeshiftUiState.canSeekToLive || timeshiftUiState.bufferedBehindLiveMs > 1_000L)
     val liveState = when {
@@ -206,18 +209,9 @@ fun ChannelInfoOverlay(
                 .widthIn(max = 1100.dp)
                 .fillMaxWidth(0.80f),
             shape = RoundedCornerShape(22.dp),
-            colors = SurfaceDefaults.colors(containerColor = Color(0xFF070B14).copy(alpha = 0.88f)),
+            colors = SurfaceDefaults.colors(containerColor = hudTokens.dockBackground),
             border = Border(
-                border = BorderStroke(
-                    1.2.dp,
-                    Brush.linearGradient(
-                        listOf(
-                            Color(0xFF2563EB).copy(alpha = 0.50f),
-                            Color(0xFF6366F1).copy(alpha = 0.40f),
-                            Color(0xFF00E5FF).copy(alpha = 0.30f)
-                        )
-                    )
-                ),
+                border = BorderStroke(1.2.dp, hudTokens.dockBorderBrush),
                 shape = RoundedCornerShape(22.dp)
             )
         ) {
@@ -344,18 +338,20 @@ fun ChannelInfoOverlay(
                                     currentChannel?.name?.contains("HD", ignoreCase = true) == true -> "HD"
                                     else -> "FHD"
                                 }
-                            Box(
-                                modifier = Modifier
-                                    .background(Color(0xFF4F46E5).copy(alpha = 0.35f), RoundedCornerShape(4.dp))
-                                    .border(0.8.dp, Color(0xFF818CF8).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 5.dp, vertical = 1.dp)
-                            ) {
-                                Text(
-                                    text = resBadge,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFC7D2FE)
-                                )
+                            if (!resBadge.isNullOrBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(hudTokens.badgeContainer, RoundedCornerShape(4.dp))
+                                        .border(0.8.dp, hudTokens.primary.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = resBadge,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = hudTokens.textPrimary
+                                    )
+                                }
                             }
 
                             // Runtime Debug Badge (only in DEBUG builds)
@@ -452,15 +448,7 @@ fun ChannelInfoOverlay(
                                             .fillMaxWidth(progProgress.coerceIn(0f, 1f))
                                             .height(4.dp)
                                             .clip(RoundedCornerShape(99.dp))
-                                            .background(
-                                                Brush.horizontalGradient(
-                                                    listOf(
-                                                        Color(0xFF6366F1),
-                                                        Color(0xFF818CF8),
-                                                        Color(0xFFA855F7)
-                                                    )
-                                                )
-                                            )
+                                            .background(hudTokens.progressBrush)
                                     )
                                     // Live Indicator Dot (●)
                                     if (progProgress in 0.01f..0.99f) {
@@ -819,11 +807,13 @@ private fun LiveActionButton(
     badgeActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val hudTokens = LocalPlayerHudTheme.current.toUiTokens()
     var isFocused by remember { mutableStateOf(false) }
     val scaleAnim by animateFloatAsState(
         targetValue = if (isFocused && enabled) 1.08f else 1.0f,
         label = "liveCtrlScale"
     )
+    val focusColor = if (isPrimary) hudTokens.primary else accentColor
 
     TvClickableSurface(
         onClick = {
@@ -834,16 +824,16 @@ private fun LiveActionButton(
         enabled = enabled,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (isPrimary) Color(0xFF4F46E5).copy(alpha = 0.28f) else Color(0xFF0F172A).copy(alpha = 0.60f),
-            focusedContainerColor = if (isPrimary) Color(0xFF6366F1).copy(alpha = 0.45f) else Color(0xFF4338CA).copy(alpha = 0.35f)
+            containerColor = if (isPrimary) hudTokens.primaryButtonContainer else hudTokens.buttonNormalContainer,
+            focusedContainerColor = if (isPrimary) hudTokens.primaryButtonFocusedContainer else hudTokens.buttonFocusedContainer
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(
-                border = BorderStroke(1.dp, if (isPrimary) Color(0xFF6366F1).copy(alpha = 0.55f) else Color.White.copy(alpha = if (enabled) 0.10f else 0.04f)),
+                border = BorderStroke(1.dp, if (isPrimary) hudTokens.primaryButtonBorder else hudTokens.buttonNormalBorder),
                 shape = RoundedCornerShape(12.dp)
             ),
             focusedBorder = Border(
-                border = BorderStroke(2.dp, if (isPrimary) Color(0xFFA5B4FC) else Color(0xFF818CF8)),
+                border = BorderStroke(2.dp, if (isPrimary) hudTokens.primaryButtonFocusedBorder else hudTokens.buttonFocusedBorder),
                 shape = RoundedCornerShape(12.dp)
             )
         ),
@@ -860,14 +850,14 @@ private fun LiveActionButton(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (!enabled) Color.White.copy(alpha = 0.25f) else if (isFocused) Color.White else accentColor,
+                    tint = if (!enabled) Color.White.copy(alpha = 0.25f) else if (isFocused) Color.White else focusColor,
                     modifier = Modifier.size(20.dp)
                 )
                 if (badgeActive && enabled) {
                     Box(
                         modifier = Modifier
                             .size(6.dp)
-                            .background(AppColors.NeonCyan, CircleShape)
+                            .background(hudTokens.primary, CircleShape)
                     )
                 }
             }
@@ -878,7 +868,7 @@ private fun LiveActionButton(
                     fontSize = 11.sp,
                     fontWeight = if (isPrimary || isFocused) FontWeight.Bold else FontWeight.Medium
                 ),
-                color = if (!enabled) Color(0xFF64748B).copy(alpha = 0.50f) else if (isFocused) Color.White else Color(0xFF94A3B8),
+                color = if (!enabled) Color(0xFF64748B).copy(alpha = 0.50f) else if (isFocused) Color.White else hudTokens.textSecondary,
                 maxLines = 1
             )
         }

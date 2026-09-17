@@ -31,7 +31,13 @@ import com.kaynanamtv.app.ui.interaction.TvClickableSurface
 import com.kaynanamtv.app.ui.theme.OnBackground
 import com.kaynanamtv.app.ui.theme.OnSurface
 import com.kaynanamtv.app.ui.theme.Primary
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import com.kaynanamtv.domain.model.LiveStreamFormatMode
+import com.kaynanamtv.domain.model.PlayerHudTheme
 
 internal fun LazyListScope.settingsPlaybackSection(
     uiState: SettingsUiState,
@@ -89,8 +95,10 @@ internal fun LazyListScope.settingsPlaybackSection(
 ) {
     item(key = "settings_playback_section_content") {
         val liveStreamFormatMode by viewModel.playerLiveStreamFormatMode.collectAsStateWithLifecycle()
+        val currentHudTheme by viewModel.playerHudTheme.collectAsStateWithLifecycle()
         var showLiveStreamFormatDialog by rememberSaveable { mutableStateOf(false) }
         var showPlayerEngineDialog by rememberSaveable { mutableStateOf(false) }
+        var showPlayerHudThemeDialog by rememberSaveable { mutableStateOf(false) }
         var showAdvancedSettings by rememberSaveable { mutableStateOf(false) }
         val liveStreamFormatOptions = remember {
             listOf(
@@ -149,6 +157,24 @@ internal fun LazyListScope.settingsPlaybackSection(
             }
         }
 
+        if (showPlayerHudThemeDialog) {
+            PremiumSelectionDialog(
+                title = stringResource(R.string.settings_player_hud_theme),
+                onDismiss = { showPlayerHudThemeDialog = false }
+            ) {
+                playerHudThemeOptions.forEach { option ->
+                    PlayerHudThemeOptionItem(
+                        option = option,
+                        isSelected = currentHudTheme == option.theme,
+                        onSelect = {
+                            viewModel.setPlayerHudTheme(option.theme)
+                            showPlayerHudThemeDialog = false
+                        }
+                    )
+                }
+            }
+        }
+
         // ==========================================
         // 1. TEMEL OYNATMA AYARLARI (ESSENTIAL SETTINGS)
         // ==========================================
@@ -165,6 +191,13 @@ internal fun LazyListScope.settingsPlaybackSection(
             label = "Oynatıcı",
             value = playerEnginePreferenceLabel,
             onClick = { showPlayerEngineDialog = true }
+        )
+
+        // Oynatıcı HUD Teması (10 Özel Tema)
+        ClickableSettingsRow(
+            label = stringResource(R.string.settings_player_hud_theme),
+            value = stringResource(playerHudThemeOptions.firstOrNull { it.theme == currentHudTheme }?.titleResId ?: R.string.hud_theme_modern_glass),
+            onClick = { showPlayerHudThemeDialog = true }
         )
 
         // Canlı Yayın Formatı (HLS / MPEG-TS)
@@ -425,6 +458,93 @@ internal fun LazyListScope.settingsPlaybackSection(
                     value = subtitleBackgroundLabel,
                     onClick = { onShowSubtitleBackgroundDialogChange(true) }
                 )
+            }
+        }
+    }
+}
+
+private data class PlayerHudThemeOption(
+    val theme: PlayerHudTheme,
+    val titleResId: Int,
+    val descriptionResId: Int
+)
+
+private val playerHudThemeOptions = listOf(
+    PlayerHudThemeOption(PlayerHudTheme.MODERN_GLASS, R.string.hud_theme_modern_glass, R.string.hud_theme_modern_glass_desc),
+    PlayerHudThemeOption(PlayerHudTheme.NEON_CYBER, R.string.hud_theme_neon_cyber, R.string.hud_theme_neon_cyber_desc),
+    PlayerHudThemeOption(PlayerHudTheme.MINIMALIST_CLEAN, R.string.hud_theme_minimalist_clean, R.string.hud_theme_minimalist_clean_desc),
+    PlayerHudThemeOption(PlayerHudTheme.CINEMA_GOLD, R.string.hud_theme_cinema_gold, R.string.hud_theme_cinema_gold_desc),
+    PlayerHudThemeOption(PlayerHudTheme.EMERALD_MATRIX, R.string.hud_theme_emerald_matrix, R.string.hud_theme_emerald_matrix_desc),
+    PlayerHudThemeOption(PlayerHudTheme.CRIMSON_RED, R.string.hud_theme_crimson_red, R.string.hud_theme_crimson_red_desc),
+    PlayerHudThemeOption(PlayerHudTheme.AURORA_NORDIC, R.string.hud_theme_aurora_nordic, R.string.hud_theme_aurora_nordic_desc),
+    PlayerHudThemeOption(PlayerHudTheme.SUNSET_ORANGE, R.string.hud_theme_sunset_orange, R.string.hud_theme_sunset_orange_desc),
+    PlayerHudThemeOption(PlayerHudTheme.RETRO_SYNTHWAVE, R.string.hud_theme_retro_synthwave, R.string.hud_theme_retro_synthwave_desc),
+    PlayerHudThemeOption(PlayerHudTheme.TITANIUM_STEEL, R.string.hud_theme_titanium_steel, R.string.hud_theme_titanium_steel_desc)
+)
+
+@Composable
+private fun PlayerHudThemeOptionItem(
+    option: PlayerHudThemeOption,
+    isSelected: Boolean,
+    onSelect: () -> Unit
+) {
+    TvClickableSurface(
+        onClick = onSelect,
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (isSelected) Primary.copy(alpha = 0.15f) else Color.Transparent,
+            focusedContainerColor = Primary.copy(alpha = 0.30f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(
+                    text = stringResource(option.titleResId),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isSelected) Primary else OnSurface,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                )
+                Text(
+                    text = stringResource(option.descriptionResId),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnBackground.copy(alpha = 0.65f)
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .background(Color(option.theme.primaryColorHex), CircleShape)
+                )
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .background(Color(option.theme.accentColorHex), CircleShape)
+                )
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .background(Color(option.theme.backgroundColorHex), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape)
+                )
+                if (isSelected) {
+                    Text(
+                        text = " ✓",
+                        color = Primary,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
         }
     }
