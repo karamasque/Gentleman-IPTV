@@ -71,11 +71,19 @@ object TvLightweightProfile {
     var isTelevision: Boolean = false
         private set
 
+    @Volatile
+    var isLowResourceDevice: Boolean = false
+        private set
+
     fun initialize(context: Context) {
         isTelevision = context.isTelevisionDevice()
+        val totalRam = com.kaynanamtv.app.util.DevicePerformanceProfiler.getTotalRamMb(context)
+        val isLowRam = com.kaynanamtv.app.util.DevicePerformanceProfiler.isLowRamDevice(context)
+        val cores = com.kaynanamtv.app.util.DevicePerformanceProfiler.getCpuCoreCount()
+        isLowResourceDevice = isTelevision || isLowRam || totalRam <= 2560L || cores <= 4
     }
 
-    val isEnabled: Boolean get() = isTelevision
+    val isEnabled: Boolean get() = isLowResourceDevice
 
     val reduceAnimations: Boolean get() = isEnabled
     val disableLiveTranslation: Boolean get() = isEnabled

@@ -96,15 +96,24 @@ internal fun LazyListScope.settingsPlaybackSection(
     item(key = "settings_playback_section_content") {
         val liveStreamFormatMode by viewModel.playerLiveStreamFormatMode.collectAsStateWithLifecycle()
         val currentHudTheme by viewModel.playerHudTheme.collectAsStateWithLifecycle()
+        val performanceMode by viewModel.performanceModePreference.collectAsStateWithLifecycle()
         var showLiveStreamFormatDialog by rememberSaveable { mutableStateOf(false) }
         var showPlayerEngineDialog by rememberSaveable { mutableStateOf(false) }
         var showPlayerHudThemeDialog by rememberSaveable { mutableStateOf(false) }
+        var showPerformanceModeDialog by rememberSaveable { mutableStateOf(false) }
         var showAdvancedSettings by rememberSaveable { mutableStateOf(false) }
         val liveStreamFormatOptions = remember {
             listOf(
                 LiveStreamFormatMode.AUTO,
                 LiveStreamFormatMode.HLS,
                 LiveStreamFormatMode.MPEG_TS
+            )
+        }
+        val performanceModeOptions = remember {
+            listOf(
+                com.kaynanamtv.domain.model.PerformanceModePreference.AUTO to R.string.settings_performance_mode_auto,
+                com.kaynanamtv.domain.model.PerformanceModePreference.ALWAYS_ON to R.string.settings_performance_mode_always_on,
+                com.kaynanamtv.domain.model.PerformanceModePreference.OFF to R.string.settings_performance_mode_off
             )
         }
         val playerEngineOptions = remember {
@@ -175,6 +184,25 @@ internal fun LazyListScope.settingsPlaybackSection(
             }
         }
 
+        if (showPerformanceModeDialog) {
+            PremiumSelectionDialog(
+                title = stringResource(R.string.settings_performance_mode),
+                onDismiss = { showPerformanceModeDialog = false }
+            ) {
+                performanceModeOptions.forEachIndexed { index, (mode, labelRes) ->
+                    LevelOption(
+                        level = index,
+                        text = stringResource(labelRes),
+                        currentLevel = if (performanceMode == mode) index else -1,
+                        onSelect = {
+                            viewModel.setPerformanceModePreference(mode)
+                            showPerformanceModeDialog = false
+                        }
+                    )
+                }
+            }
+        }
+
         // ==========================================
         // 1. TEMEL OYNATMA AYARLARI (ESSENTIAL SETTINGS)
         // ==========================================
@@ -191,6 +219,13 @@ internal fun LazyListScope.settingsPlaybackSection(
             label = "Oynatıcı",
             value = playerEnginePreferenceLabel,
             onClick = { showPlayerEngineDialog = true }
+        )
+
+        // Roket / Performans Modu (Otomatik Cihaz Zekası / Açık / Kapalı)
+        ClickableSettingsRow(
+            label = stringResource(R.string.settings_performance_mode),
+            value = stringResource(performanceModeOptions.firstOrNull { it.first == performanceMode }?.second ?: R.string.settings_performance_mode_auto),
+            onClick = { showPerformanceModeDialog = true }
         )
 
         // Oynatıcı HUD Teması (10 Özel Tema)

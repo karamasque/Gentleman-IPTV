@@ -1773,4 +1773,11 @@
     <string name="hud_theme_retro_synthwave_desc">80\'ler atari salonu, elektrikli macenta ve neon mor gradyanlar.</string>
     <string name="hud_theme_titanium_steel">Titanyum Çelik</string>
     <string name="hud_theme_titanium_steel_desc">Endüstriyel fırçalanmış çelik gri ve buz beyazı yüksek kontrast.</string>
+
+    <!-- Performance / Rocket Mode -->
+    <string name="settings_performance_mode">Roket / Performans Modu</string>
+    <string name="settings_performance_mode_desc">Arayüz akıcılığını ve 60 FPS menü hızını cihazın donanım gücüne göre akıllıca optimize eder.</string>
+    <string name="settings_performance_mode_auto">Otomatik (Cihaz Zekası — Önerilen)</string>
+    <string name="settings_performance_mode_always_on">Her Zaman Açık (Maksimum Akıcılık)</string>
+    <string name="settings_performance_mode_off">Kapalı (Tam Efektler &amp; Canlı Işık)</string>
 </resources>

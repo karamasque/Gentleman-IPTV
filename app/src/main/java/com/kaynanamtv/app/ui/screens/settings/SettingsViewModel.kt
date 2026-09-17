@@ -50,6 +50,7 @@ import com.kaynanamtv.domain.model.AudioOutputPreference
 import com.kaynanamtv.domain.model.LiveChannelGroupingMode
 import com.kaynanamtv.domain.model.LiveStreamFormatMode
 import com.kaynanamtv.domain.model.LiveVariantPreferenceMode
+import com.kaynanamtv.domain.model.PerformanceModePreference
 import com.kaynanamtv.domain.model.PlaybackBufferMode
 import com.kaynanamtv.domain.model.PlayerHudTheme
 import com.kaynanamtv.domain.model.VodDuplicateHandlingMode
@@ -151,6 +152,13 @@ class SettingsViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = PlayerHudTheme.DEFAULT
+        )
+
+    val performanceModePreference: StateFlow<PerformanceModePreference> =
+        preferencesRepository.performanceModePreference.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = PerformanceModePreference.AUTO
         )
     val backgroundSyncEnabled: StateFlow<Boolean> =
         preferencesRepository.backgroundSyncEnabled.stateIn(
@@ -631,6 +639,12 @@ class SettingsViewModel @Inject constructor(
     fun setShowFavoritesCategory(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setShowFavoritesCategory(enabled)
+        }
+    }
+
+    fun setPerformanceModePreference(mode: PerformanceModePreference) {
+        viewModelScope.launch {
+            preferencesRepository.setPerformanceModePreference(mode)
         }
     }
 

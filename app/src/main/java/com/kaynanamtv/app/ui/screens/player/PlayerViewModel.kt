@@ -32,6 +32,7 @@ import com.kaynanamtv.domain.model.Episode
 import com.kaynanamtv.domain.model.Favorite
 import com.kaynanamtv.domain.model.LiveChannelObservedQuality
 import com.kaynanamtv.domain.model.PlaybackHistory
+import com.kaynanamtv.domain.model.PerformanceModePreference
 import com.kaynanamtv.domain.model.PlayerHudTheme
 import com.kaynanamtv.domain.model.RecordingItem
 import com.kaynanamtv.domain.model.RecordingRecurrence
@@ -145,6 +146,22 @@ class PlayerViewModel @Inject constructor(
             started = SharingStarted.Eagerly,
             initialValue = PlayerHudTheme.DEFAULT
         )
+
+    val performanceModePreference: StateFlow<PerformanceModePreference> =
+        preferencesRepository.performanceModePreference.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = PerformanceModePreference.AUTO
+        )
+
+    val isRocketMode: StateFlow<Boolean> =
+        preferencesRepository.performanceModePreference
+            .map { pref -> com.kaynanamtv.app.util.DevicePerformanceProfiler.isRocketModeActive(pref, appContext) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = com.kaynanamtv.app.util.DevicePerformanceProfiler.isRocketModeActive(PerformanceModePreference.AUTO, appContext)
+            )
 
     internal val showControlsFlow = MutableStateFlow(false)
     val showControls: StateFlow<Boolean> = showControlsFlow.asStateFlow()

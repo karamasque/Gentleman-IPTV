@@ -270,6 +270,7 @@ fun PlayerScreen(
     val timeshiftUiState by viewModel.timeshiftUiState.collectAsStateWithLifecycle()
     val sleepTimerUiState by viewModel.sleepTimerUiState.collectAsStateWithLifecycle()
     val playerHudTheme by viewModel.playerHudTheme.collectAsStateWithLifecycle()
+    val isRocketMode by viewModel.isRocketMode.collectAsStateWithLifecycle()
 
     var ambilightColor by remember { mutableStateOf(Color.Transparent) }
     val sleepTimerExitEvent by viewModel.sleepTimerExitEvent.collectAsStateWithLifecycle()
@@ -1157,7 +1158,7 @@ fun PlayerScreen(
             playerEngine = playerEngine,
             resizeMode = aspectRatio.toPlayerSurfaceResizeMode(),
             surfaceType = renderSurfaceType,
-            onColorDetected = { ambilightColor = it },
+            onColorDetected = if (isRocketMode) null else { { ambilightColor = it } },
             modifier = playerViewModifier
         )
 
@@ -1191,13 +1192,14 @@ fun PlayerScreen(
             }
         }
 
-        // Premium Ambient Light (Ambilight) Glow
-        val animatedAmbilightColor by androidx.compose.animation.animateColorAsState(
-            targetValue = ambilightColor,
-            animationSpec = androidx.compose.animation.core.tween(1000)
-        )
+        // Premium Ambient Light (Ambilight) Glow (Active only when Rocket Mode is off)
+        if (!isRocketMode) {
+            val animatedAmbilightColor by androidx.compose.animation.animateColorAsState(
+                targetValue = ambilightColor,
+                animationSpec = androidx.compose.animation.core.tween(1000)
+            )
 
-        if (animatedAmbilightColor != Color.Transparent) {
+            if (animatedAmbilightColor != Color.Transparent) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1213,6 +1215,7 @@ fun PlayerScreen(
                     )
             )
         }
+    }
 
         // Double-Tap Seek Feedback Overlay (YouTube Style)
         AnimatedVisibility(
